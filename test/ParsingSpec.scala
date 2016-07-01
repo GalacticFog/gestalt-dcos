@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.marathon.{HealthCheck, PortDefinition, MarathonAppPayload}
+import com.galacticfog.gestalt.dcos.marathon._
 import play.api.libs.json.Json
 import play.api.test.Helpers._
 import play.api.test._
@@ -6,7 +6,6 @@ import org.specs2.mutable._
 import org.specs2.mutable.Specification
 import org.specs2.matcher.JsonMatchers
 import org.specs2.runner._
-import com.galacticfog.gestalt.dcos.marathon.JSONImports._
 
 class ParsingSpec extends Specification with JsonMatchers {
 
@@ -17,7 +16,6 @@ class ParsingSpec extends Specification with JsonMatchers {
         """
           |{
           |  "id": "/gestalt-security",
-          |  "cmd": null,
           |  "cpus": 0.2,
           |  "mem": 512,
           |  "disk": 0,
@@ -39,8 +37,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           |      "gracePeriodSeconds": 300,
           |      "intervalSeconds": 60,
           |      "timeoutSeconds": 20,
-          |      "maxConsecutiveFailures": 3,
-          |      "ignoreHttp1xx": false
+          |      "maxConsecutiveFailures": 3
           |    }
           |  ],
           |  "labels": {
@@ -61,7 +58,6 @@ class ParsingSpec extends Specification with JsonMatchers {
           |  ],
           |  "container": {
           |    "type": "DOCKER",
-          |    "volumes": [],
           |    "docker": {
           |      "image": "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
           |      "network": "BRIDGE",
@@ -103,6 +99,25 @@ class ParsingSpec extends Specification with JsonMatchers {
         mem = 512,
         disk = 0,
         requirePorts = true,
+        container = MarathonContainerInfo(
+          containerType = "DOCKER",
+          docker = Some(MarathonDockerContainer(
+            image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
+            network = "BRIDGE",
+            privileged = false,
+            parameters = Seq(),
+            forcePullImage = true,
+            portMappings = Some(Seq(DockerPortMapping(
+              containerPort = 9000,
+              hostPort = Some(0),
+              servicePort = Some(10104),
+              protocol = "tcp",
+              labels = Some(Map(
+                "VIP_0" -> "10.0.0.2:80"
+              ))
+            )))
+          ))
+        ),
         portDefinitions = Some(Seq(
           PortDefinition(port = 10104, "tcp", Some(Map()))
         )),

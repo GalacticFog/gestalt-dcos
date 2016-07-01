@@ -1,7 +1,5 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import play.api.libs.json._
-import play.api.libs.functional.syntax._
 import org.joda.time.DateTime
 
 case class KeyValuePair(key: String, value: String)
@@ -13,11 +11,18 @@ case class PortDefinition(port: Int,
 case class MarathonContainerInfo(containerType: String,
                                  docker: Option[MarathonDockerContainer])
 
+case class DockerPortMapping(containerPort: Int,
+                             hostPort: Option[Int] = None,
+                             servicePort: Option[Int] = None,
+                             protocol: String,
+                             labels: Option[Map[String,String]] = None)
+
 case class MarathonDockerContainer(image: String,
                                    network: String,
                                    privileged: Boolean,
                                    parameters: Seq[KeyValuePair],
-                                   forcePullImage: Boolean)
+                                   forcePullImage: Boolean,
+                                   portMappings: Option[Seq[DockerPortMapping]])
 
 case class HealthCheck(path: String,
                        protocol: String,
@@ -57,6 +62,7 @@ case class MarathonAppPayload(id: String,
                               cpus: Double,
                               mem: Int,
                               disk: Int,
+                              container: MarathonContainerInfo,
                               portDefinitions: Option[Seq[PortDefinition]] = None,
                               requirePorts: Boolean,
                               healthChecks: Seq[HealthCheck],
@@ -69,16 +75,3 @@ case class MarathonAppPayload(id: String,
                               tasksUnhealthy: Option[Int] = None,
                               tasks: Option[Seq[MarathonTask]] = None)
 
-object JSONImports {
-  implicit val keyValuePairFmt = Json.format[KeyValuePair]
-  implicit val portDefinitionFmt = Json.format[PortDefinition]
-  implicit val marDockerFmt = Json.format[MarathonDockerContainer]
-  implicit val marContainerInfoFmt = Json.format[MarathonContainerInfo]
-  implicit val healthCheckFmt = Json.format[HealthCheck]
-  implicit val discoverPortInfoFmt = Json.format[DiscoveryPortInfo]
-  implicit val discoveryInfoFmt = Json.format[DiscoveryInfo]
-  implicit val ipPerTaskInfoFmt = Json.format[IPPerTaskInfo]
-  implicit val ipAddressFmt = Json.format[IPAddress]
-  implicit val marTaskFmt = Json.format[MarathonTask]
-  implicit val marAppPayloadFmt = Json.format[MarathonAppPayload]
-}
