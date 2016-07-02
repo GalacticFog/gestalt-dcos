@@ -1,5 +1,6 @@
 import javax.inject.Inject
 
+import com.galacticfog.gestalt.dcos.mesos.{GestaltHttpSchedulerDriver, GestaltSchedulerDriver, GestaltMesosScheduler}
 import com.google.inject.AbstractModule
 import play.api.db._
 
@@ -16,9 +17,9 @@ import play.api.db._
 class Module extends AbstractModule {
 
   override def configure() = {
-    // Ask Guice to create an instance of ApplicationTimer when the
-    // application starts.
-    bind(classOf[DBSetup]).asEagerSingleton()
+//    bind(classOf[DBSetup]).asEagerSingleton()
+//    bind(classOf[GestaltSchedulerDriver]).asEagerSingleton()
+    bind(classOf[GestaltHttpSchedulerDriver]).asEagerSingleton()
   }
 
 }
