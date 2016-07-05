@@ -14,13 +14,11 @@ import play.api.Configuration
 sealed trait State
 case object SeekingOffers extends State
 case object MatchedTasks extends State
-case object LaunchingTasks extends State
-case object RunningTasks extends State
+case object UpdatingTasks extends State
 
-case class Data(waiting: Map[String,TaskInfo.Builder],
+case class Data(waiting: Seq[String],
                 matches: Seq[OfferMatch],
-                launched: Map[String,TaskInfo],
-                running: Map[String,TaskInfo])
+                active: Map[String,TaskStatus])
 
 case class OfferMatch(name: String, offer: Offer, taskInfo: TaskInfo)
 case object ServiceStatusRequest
@@ -30,10 +28,9 @@ final case object MatchesLaunched
 
 case object Data {
   def init(gtf: GestaltTaskFactory) = Data(
-    waiting = gtf.allTasks.map(n => n -> gtf.getTaskInfo(n)).toMap,
+    waiting = gtf.allTasks,
     matches = Seq.empty,
-    launched = Map.empty,
-    running = Map.empty
+    active = Map.empty
   )
 }
 
@@ -42,20 +39,23 @@ class SchedulerFSM @Inject()(configuration: Configuration,
                              gsd: GestaltSchedulerDriver) extends LoggingFSM[State,Data] {
 
   def matchOffer(o: Offer, d: Data): this.State = {
-    val found = d.waiting.find {
-      case (srvName,taskInfo) => taskInfo.getResourcesList.asScala.forall(
-        taskResource => o.getResourcesList.asScala.exists(
-          offerResource => offerResource.getType == taskResource.getType &&
-            offerResource.getScalar.getValue >= taskResource.getScalar.getValue
-        )
+    log.info("attempting to match offer {}",o.getId.getValue)
+    val waiting = d.waiting.map(taskFactory.getAppSpec)
+    val found = waiting.find { app =>
+      log.info("checking app: {}",app.name)
+      o.getResourcesList.asScala.exists(
+          offerResource => offerResource.getName == "cpus" && offerResource.getScalar.getValue >= app.cpu
+      ) && o.getResourcesList.asScala.exists(
+        offerResource => offerResource.getName == "mem" && offerResource.getScalar.getValue >= app.mem
       )
     }
     found match {
-      case Some((srvName,taskInfoBuilder)) =>
-        val taskInfo = taskFactory.complete(taskInfoBuilder, o)
+      case Some(app) =>
+        log.info("MATCH: {} against {}", app.name, o.getId.getValue)
+        val taskInfo = taskFactory.toTaskInfo(app, o)
         goto(MatchedTasks) using d.copy(
-          waiting = d.waiting - srvName,
-          matches = d.matches :+ OfferMatch(srvName,o,taskInfo)
+          waiting = d.waiting.diff(Seq(app.name)),
+          matches = d.matches :+ OfferMatch(app.name,o,taskInfo)
         )
       case None =>
         log.info("rejecting offer {}", o.getId.getValue)
@@ -75,30 +75,20 @@ class SchedulerFSM @Inject()(configuration: Configuration,
   }
 
   def updateTask(ts: TaskStatus, d: Data): this.State = {
-    val taskInfo = d.launched.find(_._2.getTaskId == ts.getTaskId) orElse
-                  d.running.find(_._2.getTaskId == ts.getTaskId)
-    taskInfo match {
-      case None =>
-        log.warning(s"received update for unknown task: ${ts.getTaskId.getValue}")
-        stay
-      case Some((srvName,taskInfo)) =>
-        val newData = if (ts.getState == TaskState.TASK_RUNNING) d.copy(
-          waiting = d.waiting - srvName,
-          launched = d.launched - srvName,
-          running = d.running + (srvName -> taskInfo)
-        ) else if (isStopped(ts.getState)) d.copy(
-          waiting = d.waiting + (srvName -> TaskInfo.newBuilder(taskInfo)),
-          launched = d.launched - srvName,
-          running = d.running - srvName
-        ) else d
-        if (newData.matches.nonEmpty) {
-          assert(stateName == MatchedTasks)
-          goto(MatchedTasks) using newData
-        } else if (newData.waiting.isEmpty && newData.launched.isEmpty) {
-          goto(RunningTasks) using newData
-        } else {
-          goto(SeekingOffers) using newData
-        }
+    val srvName = ts.getTaskId.getValue.split("-",1).head
+    val newData = if (isStopped(ts.getState)) d.copy(
+      waiting = d.waiting :+ srvName,
+      active = d.active + (srvName -> ts)
+    ) else d.copy(
+      active = d.active + (srvName -> ts)
+    )
+    if (newData.matches.nonEmpty) {
+      assert(stateName == MatchedTasks)
+      goto(MatchedTasks) using newData
+    } else if (newData.waiting.nonEmpty) {
+      goto(SeekingOffers) using newData
+    } else {
+      goto(UpdatingTasks) using newData
     }
   }
 
@@ -111,37 +101,32 @@ class SchedulerFSM @Inject()(configuration: Configuration,
   when(MatchedTasks) {
     case Event(MatchesLaunched, d) =>
       val newD = d.copy(
-        matches = Seq.empty,
-        launched = d.launched ++ d.matches.map(m => m.name -> m.taskInfo)
+        matches = Seq.empty
       )
-      if (newD.waiting.isEmpty) goto(LaunchingTasks) using newD
+      if (newD.waiting.isEmpty) goto(UpdatingTasks) using newD
       else goto(SeekingOffers) using newD
+    case Event(o: Offer, d) =>
+      log.info("rejecting offer {}", o.getId.getValue)
+      gsd.driver.declineOffer(o.getId)
+      stay
   }
 
-  when(LaunchingTasks) {
-    case Event(ts: TaskStatus, d) =>
-      updateTask(ts,d)
-  }
-
-  when(RunningTasks) {
-    case Event(ts: TaskStatus, d) =>
-      updateTask(ts,d)
-  }
-
-  whenUnhandled {
-    case Event(ts: TaskStatus, d) =>
-      updateTask(ts,d)
+  when(UpdatingTasks) {
     case Event(o: Offer, d) =>
       log.info("rejecting offer {}", o.getId.getValue)
       val filters = Filters.newBuilder().setRefuseSeconds(60)
       gsd.driver.declineOffer(o.getId, filters.build)
       stay
+  }
+
+  whenUnhandled {
+    case Event(ts: TaskStatus, d) =>
+      updateTask(ts,d)
     case Event(ServiceStatusRequest,d) =>
       sender ! ServiceStatusResponse(
-        d.waiting.map({case (name,_) => (name -> "WAITING")})
-        ++ d.matches.map(o => (o.name -> "MATCHED"))
-        ++ d.launched.map({case (name,_) => (name -> "LAUNCHED")})
-        ++ d.running.map({case (name,_) => (name -> "RUNNING")})
+        d.waiting.map(name => (name -> "WAITING")).toMap
+        ++ d.matches.map(o => (o.name -> "MATCHED_OFFER")).toMap
+        ++ d.active.mapValues(_.getState.getValueDescriptor.getName)
       )
       stay
   }
