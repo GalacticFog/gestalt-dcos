@@ -40,8 +40,6 @@
 
   <logger name="akka" level="INFO" />
 
-  <logger name="com.galacticfog.gestalt.dcos.actors.SchedulerFSM" level="DEBUG" />
-
   <logger name="akka.actor.LoggingFSM" level="DEBUG" />
 
 </configuration>

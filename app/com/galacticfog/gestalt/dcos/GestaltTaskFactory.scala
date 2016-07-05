@@ -2,57 +2,84 @@ package com.galacticfog.gestalt.dcos
 
 import java.util.UUID
 
+import com.galacticfog.gestalt.dcos.marathon._
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
+import play.api.libs.json.{Json, JsObject, JsValue}
+
+import scala.util.Try
+
+case class PortSpec(number: Int, labels: Map[String,String])
+case class HealthCheck(portIndex: Int, protocol: String, path: String)
 
 case class AppSpec(name: String,
-                   env: Map[String,String],
                    image: String,
                    network: Protos.ContainerInfo.DockerInfo.Network,
-                   cpu: Double,
-                   mem: Double)
+                   ports: Option[Seq[PortSpec]] = None,
+                   dockerParameters: Seq[KeyValuePair] = Seq.empty,
+                   cpus: Double,
+                   mem: Int,
+                   env: Map[String,String] = Map.empty,
+                   labels: Map[String,String ] = Map.empty,
+                   args: Seq[String] = Seq.empty,
+                   healthChecks: Seq[HealthCheck] = Seq.empty)
 
+
+case class GlobalDBConfig(hostname: String,
+                          port: Int,
+                          username: String,
+                          password: String,
+                          prefix: String)
+
+case object GlobalDBConfig {
+  def apply(global: JsValue): GlobalDBConfig = GlobalDBConfig(
+    hostname = (global \ "database" \ "hostname").asOpt[String].getOrElse("data.gestalt.marathon.mesos"),
+    port = (global \ "database" \ "port").asOpt[Int].getOrElse(5432),
+    username = (global \ "database" \ "username").asOpt[String].getOrElse("gestaltdev"),
+    password = (global \ "database" \ "password").asOpt[String].getOrElse("letmein"),
+    prefix = (global \ "database" \ "prefix").asOpt[String].getOrElse("gestalt-")
+  )
+}
 
 class GestaltTaskFactory {
-  import GestaltTaskFactory._
 
   val allTasks = Seq("security")
 
-  def getAppSpec(name: String): AppSpec = {
+  def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
-      case "security" => getSecurity
-      case "meta" => getMeta
+      case "security" => getSecurity(globals)
+      case "meta" => getMeta(globals)
     }
   }
 
-  def complete(builder: TaskInfo.Builder, offer: Offer) = {
-    builder
-      .setSlaveId(offer.getSlaveId)
-      .setTaskId(
-        Protos.TaskID.newBuilder().setValue(builder.getName + "-" + UUID.randomUUID.toString)
-      )
-      .build()
+  private[this] def getSecurity(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    val secConfig = (globals \ "security").asOpt[JsObject] getOrElse Json.obj()
+    AppSpec(
+      name = "security",
+      env = Map(
+        "DATABASE_HOSTNAME" -> dbConfig.hostname,
+        "DATABASE_PORT" -> dbConfig.port.toString,
+        "DATABASE_NAME" -> (dbConfig.prefix + "security"),
+        "DATABASE_USERNAME" -> dbConfig.username,
+        "DATABASE_PASSWORD" -> dbConfig.password,
+        "OAUTH_RATE_LIMITING_AMOUNT" -> (secConfig \ "oauth" \ "rateLimitingAmount").asOpt[Int].map(_.toString).getOrElse("100"),
+        "OAUTH_RATE_LIMITING_PERIOD" -> (secConfig \ "oauth" \ "rateLimitingPeriod").asOpt[Int].map(_.toString).getOrElse("1")
+      ),
+      args = Seq("-J-Xmx512m"),
+      image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(PortSpec(9000, Map("VIP_0" -> "10.99.99.12:80")))),
+      cpus = 0.50,
+      mem = 768,
+      healthChecks = Seq(HealthCheck(
+          portIndex = 0, protocol = "HTTP", path = "/health"
+      ))
+    )
   }
 
-  private[this] def getSecurity: AppSpec = AppSpec(
-    name = "security",
-    env = Map(
-      "DATABASE_HOSTNAME" -> "10.99.99.10",
-      "DATABASE_PORT" -> "5432",
-      "DATABASE_NAME" -> "gestalt-security",
-      "DATABASE_USERNAME" -> "gestalt-dev",
-      "DATABASE_PASSWORD" -> "letmein",
-      "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
-      "OAUTH_RATE_LIMITING_PERIOD" -> "1"
-    ),
-    image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
-    network = ContainerInfo.DockerInfo.Network.BRIDGE,
-    cpu = 0.25,
-    mem = 512
-  )
-
-  private[this] def getMeta: AppSpec = ???
+  private[this] def getMeta(globals: JsValue): AppSpec = ???
 
   implicit private[this] def getVariables(env: Map[String,String]): Environment = {
     val builder = Environment.newBuilder()
@@ -63,6 +90,44 @@ class GestaltTaskFactory {
       )
     }
     builder.build
+  }
+
+  def toMarathonPayload(app: AppSpec, globals: JsValue): Try[MarathonAppPayload] = {
+    val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse "gestalt"
+    val cleanPrefix = "/" + prefix.stripPrefix("/").stripSuffix("/") + "/"
+    Try{MarathonAppPayload(
+      id = cleanPrefix + app.name,
+      args = Some(app.args),
+      env = app.env,
+      instances = 1,
+      cpus = app.cpus,
+      mem = app.mem,
+      disk = 0,
+      requirePorts = true,
+      container = MarathonContainerInfo(
+        containerType = "DOCKER",
+        docker = Some(MarathonDockerContainer(
+          image = app.image,
+          network = "BRIDGE",
+          privileged = false,
+          parameters = Seq(),
+          forcePullImage = true,
+          portMappings = app.ports.map {_.map(
+            p => DockerPortMapping(containerPort = p.number, protocol = "tcp", labels = Some(p.labels))
+          ) }
+        ))
+      ),
+      labels = app.labels,
+      healthChecks = app.healthChecks.map( hc => MarathonHealthCheck(
+        path = hc.path,
+        protocol = hc.protocol,
+        portIndex = hc.portIndex,
+        gracePeriodSeconds = 300,
+        intervalSeconds = 60,
+        timeoutSeconds = 20,
+        maxConsecutiveFailures = 3
+      ) )
+    )}
   }
 
   def toTaskInfo(app: AppSpec, offer: Offer): TaskInfo = {
@@ -85,11 +150,8 @@ class GestaltTaskFactory {
         Resource.newBuilder()
           .setName("cpus")
           .setType(Value.Type.SCALAR)
-          .setScalar(Value.Scalar.newBuilder().setValue( app.cpu ))
+          .setScalar(Value.Scalar.newBuilder().setValue( app.cpus ))
       )
-      .setLabels(Protos.Labels.newBuilder().addLabels(
-        Protos.Label.newBuilder().setKey(TASK_NAME_KEY).setValue(app.name).build
-      ).build)
       .addResources(
         Resource.newBuilder()
           .setName("mem")
@@ -104,10 +166,5 @@ class GestaltTaskFactory {
       )
       .build()
   }
-
-}
-
-object GestaltTaskFactory {
-  val TASK_NAME_KEY = "gestalt-service-name"
 
 }

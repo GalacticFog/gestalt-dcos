@@ -126,7 +126,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           "HAPROXY_0_VHOST" -> "security.galacticfog.com",
           "HAPROXY_GROUP" -> "external,internal"
         ),
-        healthChecks = Seq(HealthCheck(
+        healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
           protocol = "HTTP",
           portIndex = 0,

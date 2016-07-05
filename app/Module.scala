@@ -1,7 +1,6 @@
 import javax.inject.Inject
 
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
-import com.galacticfog.gestalt.dcos.actors.SchedulerFSM
 import com.galacticfog.gestalt.dcos.mesos.GestaltSchedulerDriver
 import com.google.inject.AbstractModule
 import play.api.db._
@@ -21,12 +20,9 @@ class Module extends AbstractModule with AkkaGuiceSupport {
 
   override def configure() = {
     bind(classOf[GestaltSchedulerDriver]).asEagerSingleton()
-    bind(classOf[GestaltTaskFactory]).asEagerSingleton()
-    bindActor[SchedulerFSM]("scheduler-actor")
+//    bind(classOf[GestaltTaskFactory]).asEagerSingleton()
   }
 
 }
 
-class DBSetup @Inject()(db: Database) {
-  val conn = db.getConnection()
-}
+

@@ -11,10 +11,10 @@ import play.api.mvc._
 import views.html.index
 import scala.concurrent.duration._
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{Future, ExecutionContext}
 
 @Singleton
-class ApplicationController @Inject() (webJarAssets: WebJarAssets, @Named("scheduler-actor") schedulerFSM: ActorRef)(implicit ec: ExecutionContext) extends Controller {
+class ApplicationController @Inject() (webJarAssets: WebJarAssets)(implicit ec: ExecutionContext) extends Controller {
 
   def health = Action {
     Ok(Json.obj(
@@ -23,13 +23,12 @@ class ApplicationController @Inject() (webJarAssets: WebJarAssets, @Named("sched
   }
 
   def dashboard = Action.async {
-    implicit val timeout: Timeout = 3.seconds
-    val fStates = schedulerFSM ? ServiceStatusRequest
-    fStates map {
-      case ServiceStatusResponse(states) => Ok(index.render(webJarAssets, states))
-      case _ => InternalServerError("could not query states")
-    }
-
+//    implicit val timeout: Timeout = 3.seconds
+//    val fStates = schedulerFSM ? ServiceStatusRequest
+//    fStates map {
+//      case ServiceStatusResponse(states) => Ok(index.render(webJarAssets, states))
+//      case _ => InternalServerError("could not query states")
+      Future(Ok(""))
   }
 
 }

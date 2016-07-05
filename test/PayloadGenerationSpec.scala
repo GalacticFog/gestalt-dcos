@@ -1,3 +1,4 @@
+import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import com.galacticfog.gestalt.dcos.marathon._
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
@@ -20,7 +21,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |     "port": 5432,
           |     "username": "test-user",
           |     "password": "test-password",
-          |     "dbPrefix": "test-"
+          |     "prefix": "test-"
           |  },
           |  "security": {
           |     "oauth": {
@@ -59,12 +60,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
             forcePullImage = true,
             portMappings = Some(Seq(DockerPortMapping(
               containerPort = 9000,
-              protocol = "tcp"
+              protocol = "tcp",
+              labels = Some(Map("VIP_0" -> "10.99.99.12:80"))
             )))
           ))
         ),
         labels = Map(),
-        healthChecks = Seq(HealthCheck(
+        healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
           protocol = "HTTP",
           portIndex = 0,
@@ -75,7 +77,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         ))
       )
 
-      val security = AppPayloadFactory.generate(global, "security", Map())
+      val gtf = new GestaltTaskFactory
+
+      val security = gtf.toMarathonPayload(gtf.getAppSpec("security", global), global)
       security must beSuccessfulTry(expected)
 
     }
