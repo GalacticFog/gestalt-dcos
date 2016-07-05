@@ -38,6 +38,10 @@
     <appender-ref ref="ASYNCSTDOUT" />
   </root>
 
-  <logger name="akka" level="TRACE" />
+  <logger name="akka" level="DEBUG" />
+
+  <logger name="com.galacticfog.gestalt.dcos.actors.SchedulerFSM" level="DEBUG" />
+
+  <logger name="com.galacticfog.gestalt.dcos.actors.OfferActor" level="INFO" />
 
 </configuration>

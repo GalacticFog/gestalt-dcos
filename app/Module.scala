@@ -1,8 +1,11 @@
 import javax.inject.Inject
 
-import com.galacticfog.gestalt.dcos.mesos.{GestaltHttpSchedulerDriver, GestaltSchedulerDriver, GestaltMesosScheduler}
+import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.actors.SchedulerFSM
+import com.galacticfog.gestalt.dcos.mesos.GestaltSchedulerDriver
 import com.google.inject.AbstractModule
 import play.api.db._
+import play.api.libs.concurrent.AkkaGuiceSupport
 
 /**
  * This class is a Guice module that tells Guice how to bind several
@@ -14,12 +17,12 @@ import play.api.db._
  * adding `play.modules.enabled` settings to the `application.conf`
  * configuration file.
  */
-class Module extends AbstractModule {
+class Module extends AbstractModule with AkkaGuiceSupport {
 
   override def configure() = {
-//    bind(classOf[DBSetup]).asEagerSingleton()
-//    bind(classOf[GestaltSchedulerDriver]).asEagerSingleton()
-    bind(classOf[GestaltHttpSchedulerDriver]).asEagerSingleton()
+    bind(classOf[GestaltSchedulerDriver]).asEagerSingleton()
+    bind(classOf[GestaltTaskFactory]).asEagerSingleton()
+    bindActor[SchedulerFSM]("scheduler-actor")
   }
 
 }
