@@ -4,6 +4,7 @@ import java.util
 import javax.inject.{Named, Inject}
 
 import akka.actor.ActorRef
+import com.galacticfog.gestalt.dcos.marathon.LaunchServicesRequest
 import org.apache.mesos.Protos._
 import org.apache.mesos.{MesosSchedulerDriver, SchedulerDriver, Scheduler}
 import play.api.{Logger => logger, Configuration}
@@ -43,7 +44,8 @@ class DummyScheduler @Inject() extends Scheduler {
 
 class GestaltSchedulerDriver @Inject() (config: Configuration,
                                         lifecycle: ApplicationLifecycle,
-                                        scheduler: DummyScheduler) {
+                                        scheduler: DummyScheduler,
+                                        @Named("scheduler-actor") schedulerActor: ActorRef) {
   import org.apache.mesos.Protos._
 
   logger.info("creating LambdaScheduler")
@@ -73,6 +75,8 @@ class GestaltSchedulerDriver @Inject() (config: Configuration,
   }
 
   Future{driver.run()} map println
+
+  schedulerActor ! LaunchServicesRequest
 
   def getDriver: SchedulerDriver = driver
 

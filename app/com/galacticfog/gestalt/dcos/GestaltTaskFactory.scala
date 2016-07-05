@@ -44,18 +44,43 @@ case object GlobalDBConfig {
 
 class GestaltTaskFactory {
 
-  val allTasks = Seq("security")
-
   def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
+      case "data" => getData(globals)
       case "security" => getSecurity(globals)
       case "meta" => getMeta(globals)
     }
   }
 
+  private[this] def getData(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    AppSpec(
+      name = "data",
+      env = Map(
+        "DB_USER" -> dbConfig.username,
+        "DB_PASS" -> dbConfig.password
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(PortSpec(5432, Map("VIP_0" -> "10.99.99.10:5432")))),
+      cpus = 0.50,
+      mem = 512,
+      healthChecks = Seq(HealthCheck(
+        portIndex = 0, protocol = "TCP", path = ""
+      ))
+    )
+  }
+
   private[this] def getSecurity(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security").asOpt[JsObject] getOrElse Json.obj()
+    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"security.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
     AppSpec(
       name = "security",
       env = Map(
@@ -75,7 +100,8 @@ class GestaltTaskFactory {
       mem = 768,
       healthChecks = Seq(HealthCheck(
           portIndex = 0, protocol = "HTTP", path = "/health"
-      ))
+      )),
+      labels = labels
     )
   }
 

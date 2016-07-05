@@ -18,8 +18,12 @@ libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.8.4" % "
 resolvers += "Mesosphere Repo" at "http://downloads.mesosphere.io/maven"
 libraryDependencies += "mesosphere" %% "mesos-utils" % "0.28.0" withJavadoc()
 
-//resolvers += "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local"
+resolvers += "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local"
 //libraryDependencies += "com.galacticfog" %% "gestalt-mesos-http" % "0.0.1-SNAPSHOT" withSources()
+libraryDependencies += "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.5-SNAPSHOT" withSources()
+
+resolvers += Resolver.bintrayRepo("hseeberger", "maven")
+libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "1.8.1"
 
 scalacOptions in Test ++= Seq("-Yrangepos")
 

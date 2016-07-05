@@ -42,4 +42,6 @@
 
   <logger name="akka.actor.LoggingFSM" level="DEBUG" />
 
+  <logger name="com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher" level="DEBUG" />
+
 </configuration>

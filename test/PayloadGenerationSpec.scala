@@ -14,7 +14,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """{
           |  "marathon": {
           |     "appGroup": "gestalt",
-          |     "url": "http://marathon.mesos:8080"
+          |     "url": "http://marathon.mesos:8080",
+          |     "tld": "galacticfog.com"
           |  },
           |  "database": {
           |     "hostname": "test-db.marathon.mesos",
@@ -65,7 +66,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
             )))
           ))
         ),
-        labels = Map(),
+        labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_GROUP" -> "external"),
         healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
           protocol = "HTTP",
