@@ -23,7 +23,9 @@ scalacOptions in Test ++= Seq("-Yrangepos")
 libraryDependencies ++= Seq(
   jdbc,
   cache,
-  ws
+  ws,
+  "org.webjars" %% "webjars-play" % "2.5.0",
+  "org.webjars" % "bootstrap" % "3.1.1-2"
 )
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"

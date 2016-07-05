@@ -23,6 +23,8 @@ case class Data(waiting: Map[String,TaskInfo.Builder],
                 running: Map[String,TaskInfo])
 
 case class OfferMatch(name: String, offer: Offer, taskInfo: TaskInfo)
+case object ServiceStatusRequest
+case class ServiceStatusResponse(states: Map[String,String])
 
 final case object MatchesLaunched
 
@@ -133,6 +135,14 @@ class SchedulerFSM @Inject()(configuration: Configuration,
       log.info("rejecting offer {}", o.getId.getValue)
       val filters = Filters.newBuilder().setRefuseSeconds(60)
       gsd.driver.declineOffer(o.getId, filters.build)
+      stay
+    case Event(ServiceStatusRequest,d) =>
+      sender ! ServiceStatusResponse(
+        d.waiting.map({case (name,_) => (name -> "WAITING")})
+        ++ d.matches.map(o => (o.name -> "MATCHED"))
+        ++ d.launched.map({case (name,_) => (name -> "LAUNCHED")})
+        ++ d.running.map({case (name,_) => (name -> "RUNNING")})
+      )
       stay
   }
 
