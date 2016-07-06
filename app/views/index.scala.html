@@ -29,7 +29,11 @@
         @for(srv <- states) {
             <tr>
                 <td>@srv._1</td>
-                <td>@srv._2</td>
+                <td>
+                    <div class="@srv._2.toLowerCase">
+                      @srv._2
+                    </div>
+                </td>
             </tr>
         }
         </tbody>

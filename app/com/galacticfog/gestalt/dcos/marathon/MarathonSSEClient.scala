@@ -73,9 +73,15 @@ class MarathonSSEClient @Inject() (config: Configuration,
     val appId = appPayload.id.stripPrefix("/")
     wsclient.url(s"${marathon}/v2/apps/${appId}").put(
       Json.toJson(appPayload)
-    ).map { resp =>
-      logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
-      resp.json
+    ).flatMap { resp =>
+      resp.status match {
+        case 201 => Future.successful(resp.json)
+        case not201 =>
+          logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
+          Future.failed(new RuntimeException(
+            Try{(resp.json \ "message").as[String]} getOrElse resp.body
+          ))
+      }
     }
   }
 
