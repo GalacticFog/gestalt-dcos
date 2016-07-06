@@ -101,7 +101,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
             val target  = app.instances
 
             if (staged != 0) "STAGING"
-            else if (target != running) "SCALING"
+            else if (target != running) "WAITING"
             else if (target == 0) "STOPPED"
             else if (sickly > 0) "UNHEALTHY"
             else if (target == healthy) "HEALTHY"
