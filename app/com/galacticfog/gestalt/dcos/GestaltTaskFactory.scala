@@ -6,9 +6,7 @@ import com.galacticfog.gestalt.dcos.marathon._
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
-import play.api.libs.json.{Json, JsObject, JsValue}
-
-import scala.util.Try
+import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String])
 case class HealthCheck(portIndex: Int, protocol: String, path: String)
@@ -166,13 +164,11 @@ class GestaltTaskFactory {
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.16:80")))),
       cpus = 0.50,
       mem = 768,
-      healthChecks = Seq(HealthCheck(
-        portIndex = 0, protocol = "HTTP", path = "/about"
-      )),
+      healthChecks = Seq.empty /* Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")) */,
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/about",
+        path = "/info",
         portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
+        httpStatusCodesForReady = Seq(200,401,403),
         intervalSeconds = 5,
         timeoutSeconds = 10
       )),

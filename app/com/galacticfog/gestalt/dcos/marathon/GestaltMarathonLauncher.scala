@@ -14,15 +14,21 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import com.galacticfog.gestalt.dcos.marathon._
 
-sealed trait LauncherState
-case object Uninitialized extends LauncherState
-case object LaunchingDB   extends LauncherState
-case object LaunchingSecurity extends LauncherState
-case object WaitingForAPIKeys extends LauncherState
-case object LaunchingRabbit extends LauncherState
-case object ShuttingDown extends LauncherState
-case object AllServicesLaunched extends LauncherState
-case object Error extends LauncherState
+sealed trait LauncherState {
+  def next: LauncherState
+  def targetService: String
+}
+// in order...
+case object Uninitialized       extends LauncherState {def next = LaunchingDB;          def targetService = ""}
+case object LaunchingDB         extends LauncherState {def next = LaunchingSecurity;    def targetService = "data"}
+case object LaunchingSecurity   extends LauncherState {def next = WaitingForAPIKeys;    def targetService = "security"}
+case object WaitingForAPIKeys   extends LauncherState {def next = LaunchingRabbit;      def targetService = ""}
+case object LaunchingRabbit     extends LauncherState {def next = LaunchingMeta;        def targetService = "rabbit"}
+case object LaunchingMeta       extends LauncherState {def next = AllServicesLaunched;  def targetService = "meta"}
+case object AllServicesLaunched extends LauncherState {def next = Error;                def targetService = ""}
+// failure
+case object ShuttingDown        extends LauncherState {def next = ShuttingDown;         def targetService = ""}
+case object Error               extends LauncherState {def next = Error;                def targetService = ""}
 
 final case class ServiceData(securityUrl: Option[String],
                              adminKey: Option[GestaltAPIKey],
@@ -45,8 +51,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                                         wsclient: WSClient,
                                         gtf: GestaltTaskFactory) extends LoggingFSM[LauncherState,ServiceData] {
 
-
   def getString(path: String, default: String): String = config.getString(path).getOrElse(default)
+
   def getInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
 
   def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
@@ -90,6 +96,12 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     }
   }
 
+  private def standardWhen(state: LauncherState) = when(state) {
+    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, _, _, _, _, _, _) , d) if appId == s"/${appGroup}/${state.targetService}" =>
+      log.info(s"${state.targetService} running")
+      goto(state.next)
+  }
+
   startWith(Uninitialized, ServiceData.empty)
 
   when(Uninitialized) {
@@ -98,12 +110,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   onTransition {
-    case Uninitialized -> LaunchingDB =>
-      launchApp("data")
-    case LaunchingDB -> LaunchingSecurity =>
-      launchApp("security")
-    case WaitingForAPIKeys -> LaunchingRabbit =>
-      launchApp("rabbit")
+    case _ -> LaunchingDB       => launchApp(LaunchingDB.targetService)
+    case _ -> LaunchingSecurity => launchApp(LaunchingSecurity.targetService)
+    case _ -> LaunchingRabbit   => launchApp(LaunchingRabbit.targetService)
+    case _ -> LaunchingMeta     => launchApp(LaunchingMeta.targetService)
+  }
+
+  onTransition {
     case _ -> WaitingForAPIKeys =>
       nextStateData.securityUrl match {
         case None => sendMessageToSelf(0.seconds, ErrorEvent("missing security URL after launching security"))
@@ -136,34 +149,28 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
   }
 
-  when(LaunchingDB) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, _, _, _, _, _, _) , d) if appId == s"/${appGroup}/data" =>
-      log.info("database running")
-      goto(LaunchingSecurity)
-  }
+  standardWhen(LaunchingDB)
+
+  standardWhen(LaunchingRabbit)
+
+  standardWhen(LaunchingMeta)
 
   when(LaunchingSecurity) {
     case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/security" =>
       log.info("security running")
       sendMessageToSelf(5.minutes, StateTimeout)
-      goto(WaitingForAPIKeys) using ServiceData(
+      goto(stateName.next) using ServiceData(
         securityUrl = Some(s"${host}:${ports.headOption.getOrElse(9455)}"),
         adminKey = None,
         error = None
       )
   }
 
-  when(LaunchingRabbit) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, _, _, _, _, _, _) , d) if appId == s"/${appGroup}/rabbit" =>
-      log.info("database running")
-      goto(AllServicesLaunched)
-  }
-
   when(WaitingForAPIKeys) {
     case Event(RetryRequest, d) =>
       goto(WaitingForAPIKeys)
     case Event(SecurityInitializationComplete(apiKey), d) =>
-      goto(LaunchingRabbit) using d.copy(
+      goto(stateName.next) using d.copy(
         adminKey = Some(apiKey)
       )
     case Event(StateTimeout, d) =>
@@ -200,5 +207,4 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   initialize()
-
 }
