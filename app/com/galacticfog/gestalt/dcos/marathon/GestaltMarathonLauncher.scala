@@ -131,7 +131,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   // service launch stages
   onTransition {
-    case _ -> stage if stage.targetService.nonEmpty => launchApp(stage.targetService)
+    case _ -> stage if stage.targetService.nonEmpty => launchApp(stage.targetService, nextStateData.adminKey)
   }
 
   // post-launch stages
@@ -251,6 +251,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(RetryRequest, d) =>
       goto(WaitingForAPIKeys)
     case Event(SecurityInitializationComplete(apiKey), d) =>
+      log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(stateName.next) using d.copy(
         adminKey = Some(apiKey)
       )

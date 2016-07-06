@@ -62,6 +62,7 @@ class GestaltSchedulerDriver @Inject() (config: Configuration,
     .setUser("root")
     .setRole("*")
     .setCheckpoint(false)
+    .setWebuiUrl(s"http://${schedulerHostname}:${sys.env.get("PORT0").getOrElse(9000)}/")
     .setHostname(schedulerHostname)
 
   val frameworkInfo = frameworkInfoBuilder.build()

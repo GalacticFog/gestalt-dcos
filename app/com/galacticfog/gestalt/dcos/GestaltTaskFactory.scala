@@ -13,6 +13,7 @@ case class HealthCheck(portIndex: Int, protocol: String, path: String)
 
 case class AppSpec(name: String,
                    image: String,
+                   numInstances: Int = 1,
                    network: Protos.ContainerInfo.DockerInfo.Network,
                    ports: Option[Seq[PortSpec]] = None,
                    dockerParameters: Seq[KeyValuePair] = Seq.empty,
@@ -196,7 +197,7 @@ class GestaltTaskFactory {
     }
     AppSpec(
       name = "kong",
-      cmd = Some(s"echo 'BEFORE' && cat /etc/kong/kong.yml && echo -en 'database: postgres\\npostgres:\\n  host: ${dbConfig.hostname}\\n  port: ${dbConfig.port}\\n  user: ${dbConfig.username}\\n  password: ${dbConfig.password}\\n  database: ${dbConfig.prefix}kong\\n' > add && cat /etc/kong/kong.yml | sed -e '/postgres:/,+6d' | sed -e '1r add' | sed -e '1d' > /tmp/txt && mv /tmp/txt /etc/kong/kong.yml && cat /etc/kong/kong.yml && kong start && tail -f /usr/local/kong/logs/error.log"),
+      cmd = Some(s"""echo 'BEFORE' && cat /etc/kong/kong.yml && echo -en 'database: postgres\npostgres:\n  host: ${dbConfig.hostname}\n  port: ${dbConfig.port}\n  user: ${dbConfig.username}\n  password: ${dbConfig.password}\n  database: ${dbConfig.prefix}kong\n' > add && cat /etc/kong/kong.yml | sed -e '/postgres:/,+6d' | sed -e '1r add' | sed -e '1d' > /tmp/txt && mv /tmp/txt /etc/kong/kong.yml && cat /etc/kong/kong.yml && kong start && tail -f /usr/local/kong/logs/error.log"""),
       env = Map.empty,
       image = "mashape/kong:0.8.0",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
@@ -439,7 +440,7 @@ class GestaltTaskFactory {
       id = cleanPrefix + app.name,
       args = app.args,
       env = app.env,
-      instances = 1,
+      instances = app.numInstances,
       cpus = app.cpus,
       cmd = app.cmd,
       mem = app.mem,
