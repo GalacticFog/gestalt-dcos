@@ -21,6 +21,7 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
+case class ServiceStatus(name: String, vhosts: Iterable[String], status: String)
 
 class MarathonSSEClient @Inject() (config: Configuration,
                                    lifecycle: ApplicationLifecycle,
@@ -92,7 +93,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
       .map { _.status == 200 }
   }
 
-  def getServiceStatus(name: String): Future[String] = {
+  def getServiceStatus(name: String): Future[ServiceStatus] = {
     val url = marathonBaseUrl.stripSuffix("/")
     wsclient.url(s"${url}/v2/apps/${appGroup}/${name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
@@ -106,30 +107,34 @@ class MarathonSSEClient @Inject() (config: Configuration,
             val sickly  = app.tasksUnhealthy.get
             val target  = app.instances
 
-            if (staged != 0) "STAGING"
+            val status = if (staged != 0) "STAGING"
             else if (target != running) "WAITING"
             else if (target == 0) "STOPPED"
             else if (sickly > 0) "UNHEALTHY"
             else if (target == healthy) "HEALTHY"
             else "RUNNING"
+
+            val vhosts = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values
+
+            ServiceStatus(name,vhosts,status)
           })
-        case 404 => Future.successful("NOT_STARTED")
+        case 404 => Future.successful(ServiceStatus(name,Seq(),"NOT_STARTED"))
         case not200 =>
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => s"error during fetch: ${e.getMessage}"
+      case e: Throwable => ServiceStatus(name, Seq(), s"error during fetch: ${e.getMessage}")
     }
   }
 
-  def getAllServices(): Future[(StatusResponse,Map[String,String])] = {
+  def getAllServices(): Future[(StatusResponse,Seq[ServiceStatus])] = {
     implicit val timeout: Timeout = STATUS_UPDATE_TIMEOUT
-    val fResults = Future.sequence(allServices.map(name => getServiceStatus(name).map(f => name -> f)))
+    val fResults = Future.sequence(allServices.map(name => getServiceStatus(name)))
     val fStatus = (schedulerActor ? StatusRequest).map(_.asInstanceOf[StatusResponse])
     for {
       results <- fResults
       status <- fStatus
-    } yield (status,results.toMap)
+    } yield (status,results)
   }
 
 }

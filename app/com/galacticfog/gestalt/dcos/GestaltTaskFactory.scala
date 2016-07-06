@@ -108,7 +108,7 @@ class GestaltTaskFactory {
       image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.20:80")))),
-      cpus = 1.0,
+      cpus = 0.5,
       mem = 768,
       healthChecks = Seq(HealthCheck(
           portIndex = 0, protocol = "HTTP", path = "/health"
@@ -171,7 +171,7 @@ class GestaltTaskFactory {
       image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.1-SNAPSHOT-29cfc409",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.23:80")))),
-      cpus = 2.0,
+      cpus = 0.5,
       mem = 768,
       healthChecks = Seq.empty /* Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")) */,
       readinessCheck = Some(MarathonReadinessCheck(
@@ -263,7 +263,7 @@ class GestaltTaskFactory {
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.22:80"))
       )),
-      cpus = 2.0,
+      cpus = 0.5,
       cmd = Some("./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
       mem = 1536,
       healthChecks = Seq(HealthCheck(

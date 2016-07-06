@@ -77,11 +77,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
+  val tld = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld)).getOrElse(Json.obj())
+
   // setup a-priori/static globals
   val globals = Json.obj(
     "marathon" -> Json.obj(
       "appGroup" -> appGroup
-    ),
+    ).++(tld),
     "database" -> Json.obj(
       "hostname" -> getString("database.hostname", "10.99.99.10"),
       "port" -> getInt("database.port", 5432),
