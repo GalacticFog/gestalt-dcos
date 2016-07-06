@@ -52,15 +52,15 @@ case class IPPerTaskInfo(discovery: Option[DiscoveryInfo])
 
 case class IPAddress(ipAddress: String, protocol: String)
 
-case class MarathonTask(id: String,
-                        slaveId: String,
-                        host: String,
-                        startedAt: DateTime,
-                        stagedAt: DateTime,
-                        ports: Seq[Int],
-                        version: String,
-                        ipAddresses: Seq[IPAddress],
-                        appId: String)
+case class MarathonTask(id: Option[String],
+                        slaveId: Option[String],
+                        host: Option[String],
+                        startedAt: Option[String],
+                        stagedAt: Option[String],
+                        ports: Option[Seq[Int]],
+                        version: Option[String],
+                        ipAddresses: Option[Seq[IPAddress]],
+                        appId: Option[String])
 
 case class MarathonAppPayload(id: String,
                               cmd: Option[String] = None,

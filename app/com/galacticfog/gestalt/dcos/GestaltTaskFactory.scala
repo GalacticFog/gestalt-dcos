@@ -45,6 +45,8 @@ case object GlobalDBConfig {
 
 class GestaltTaskFactory {
 
+  def allServices = Seq("data","security")
+
   def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
       case "data" => getData(globals)

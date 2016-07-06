@@ -4,8 +4,7 @@ import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM}
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
-import com.galacticfog.gestalt.security.api.{GestaltAPIKey, GestaltAPICredentials}
-import de.heikoseeberger.akkasse.ServerSentEvent
+import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import play.api.Configuration
 import play.api.libs.json.Json
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
@@ -13,6 +12,8 @@ import play.api.libs.ws.WSClient
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
+import com.galacticfog.gestalt.dcos.marathon._
+
 sealed trait LauncherState
 case object Uninitialized extends LauncherState
 case object LaunchingDB   extends LauncherState
@@ -29,21 +30,20 @@ case object ServiceData {
   def empty: ServiceData = ServiceData(None,None,None)
 }
 
-case object ServiceStatusRequest
+case object StatusRequest
 case object LaunchServicesRequest
 case object ShutdownRequest
 case object RetryRequest
 final case class ErrorEvent(message: String)
 final case class SecurityInitializationComplete(key: GestaltAPIKey)
 
-final case class ServiceStatusResponse(states: Map[String,String], error: Option[String])
-
-// TODO: refactor to use stop() and onTermination() for error handling and shutdown
+final case class StatusResponse(launcherStage: String, error: Option[String])
 
 class GestaltMarathonLauncher @Inject()(config: Configuration,
                                         marClient: MarathonSSEClient,
                                         wsclient: WSClient,
                                         gtf: GestaltTaskFactory) extends LoggingFSM[LauncherState,ServiceData] {
+
 
   def getString(path: String, default: String): String = config.getString(path).getOrElse(default)
   def getInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
@@ -52,8 +52,18 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     this.context.system.scheduler.scheduleOnce(delay, self, message)
   }
 
+  implicit val apiKeyReads = Json.format[GestaltAPIKey]
+
+  val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
+
+  val appGroup = getString("marathon.appGroup", "gestalt").stripPrefix("/").stripSuffix("/")
+
+
   // setup a-priori/static globals
   val globals = Json.obj(
+    "marathon" -> Json.obj(
+      "appGroup" -> appGroup
+    ),
     "database" -> Json.obj(
       "hostname" -> getString("database.hostname", "10.99.99.10"),
       "port" -> getInt("database.port", 5432),
@@ -90,7 +100,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       nextStateData.securityUrl match {
         case None => sendMessageToSelf(0.seconds, ErrorEvent("missing security URL after launching security"))
         case Some(secUrl) =>
-          implicit val apiKeyReads = Json.format[GestaltAPIKey]
           val initUrl = s"http://${secUrl}/init"
           log.info(s"initializating security at {}",initUrl)
           val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).post(securityCredentials) flatMap { resp =>
@@ -112,7 +121,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
             case Success(initComplete) =>
               sendMessageToSelf(0.seconds, initComplete)
             case Failure(ex) =>
-              log.warning("error initializing security serive: {}",ex.getMessage)
+              log.warning("error initializing security service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
               sendMessageToSelf(5.seconds, RetryRequest)
           }
@@ -120,13 +129,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   when(LaunchingDB) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, "/gestalt/data", host, ports, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/data" =>
       log.info("database running")
       goto(LaunchingSecurity)
   }
 
   when(LaunchingSecurity) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, "/gestalt/security", host, ports, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/security" =>
       log.info("security running")
       sendMessageToSelf(5.minutes, StateTimeout)
       goto(WaitingForAPIKeys) using ServiceData(
@@ -163,12 +172,12 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   whenUnhandled {
     case Event(ShutdownRequest,d) =>
       goto(ShuttingDown) using ServiceData.empty
-    case Event(ServiceStatusRequest,d) =>
-      stay replying ServiceStatusResponse(Map.empty, d.error)
     case Event(ErrorEvent(message),d) =>
       goto(Error) using d.copy(
         error = Some(message)
       )
+    case Event(StatusRequest,d) =>
+      stay replying StatusResponse(launcherStage = stateName.toString, error = d.error)
   }
 
   onTransition {

@@ -6,6 +6,7 @@ import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Sink
 import akka.util.Timeout
+import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import de.heikoseeberger.akkasse.ServerSentEvent
 import de.heikoseeberger.akkasse.pattern.ServerSentEventClient
 import play.api.Configuration
@@ -24,8 +25,17 @@ import play.api.libs.concurrent.Execution.Implicits.defaultContext
 class MarathonSSEClient @Inject() (config: Configuration,
                                    lifecycle: ApplicationLifecycle,
                                    @Named("scheduler-actor") schedulerActor: ActorRef,
+                                   gtf: GestaltTaskFactory,
                                    wsclient: WSClient)
                                   (implicit system: ActorSystem) {
+
+  val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
+
+  val appGroup = config.getString("marathon.appGroup").getOrElse("gestalt").stripPrefix("/").stripSuffix("/")
+
+  val allServices = gtf.allServices
+
+  val STATUS_UPDATE_TIMEOUT = 15.seconds
 
   import JSONImports._
 
@@ -70,10 +80,49 @@ class MarathonSSEClient @Inject() (config: Configuration,
   }
 
   def killApps(): Future[Boolean] = {
-    wsclient.url(s"${marathon}/v2/groups/gestalt")
+    wsclient.url(s"${marathon}/v2/groups/${appGroup}")
       .withQueryString("force" -> "true")
       .delete()
       .map { _.status == 200 }
+  }
+
+  def getServiceStatus(name: String): Future[String] = {
+    val url = marathonBaseUrl.stripSuffix("/")
+    wsclient.url(s"${url}/v2/apps/${appGroup}/${name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+      response.status match {
+        case 200 =>
+          Future.fromTry(Try {
+            val app = (response.json \ "app").as[MarathonAppPayload]
+
+            val staged  = app.tasksStaged.get
+            val running = app.tasksRunning.get
+            val healthy = app.tasksHealthy.get
+            val sickly  = app.tasksUnhealthy.get
+            val target  = app.instances
+
+            if (staged != 0) "STAGING"
+            else if (target != running) "SCALING"
+            else if (target == 0) "STOPPED"
+            else if (sickly > 0) "UNHEALTHY"
+            else if (target == healthy) "HEALTHY"
+            else "RUNNING"
+          })
+        case not200 =>
+          Future.failed(new RuntimeException(response.statusText))
+      }
+    } recover {
+      case e: Throwable => s"error during fetch: ${e.getMessage}"
+    }
+  }
+
+  def getAllServices(): Future[(StatusResponse,Map[String,String])] = {
+    implicit val timeout: Timeout = STATUS_UPDATE_TIMEOUT
+    val fResults = Future.sequence(allServices.map(name => getServiceStatus(name).map(f => name -> f)))
+    val fStatus = (schedulerActor ? StatusRequest).map(_.asInstanceOf[StatusResponse])
+    for {
+      results <- fResults
+      status <- fStatus
+    } yield (status,results.toMap)
   }
 
 }
