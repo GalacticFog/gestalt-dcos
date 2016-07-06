@@ -32,6 +32,15 @@ case class MarathonHealthCheck(path: String,
                                timeoutSeconds: Int,
                                maxConsecutiveFailures: Int)
 
+case class MarathonReadinessCheck(protocol: String = "HTTP",
+                                  path: String = "",
+                                  portName: String,
+                                  intervalSeconds: Int = 30,
+                                  timeoutSeconds: Int = 10,
+                                  httpStatusCodesForReady: Seq[Int] = Seq(200),
+                                  preserveLastResponse: Boolean = false)
+
+
 case class DiscoveryPortInfo(number: Int,
                              name: Option[String],
                              protocol: Option[String],
@@ -68,6 +77,7 @@ case class MarathonAppPayload(id: String,
                               healthChecks: Seq[MarathonHealthCheck],
                               labels: Map[String,String],
                               acceptedResourceRoles: Option[String] = None,
+                              readinessCheck: Option[MarathonReadinessCheck] = None,
                               ipAddress: Option[IPPerTaskInfo] = None,
                               tasksStaged: Option[Int] = None,
                               tasksRunning: Option[Int] = None,

@@ -23,10 +23,10 @@ class ApplicationController @Inject() (webJarAssets: WebJarAssets, @Named("sched
   }
 
   def dashboard = Action.async {
-    implicit val timeout: Timeout = 3.seconds
+    implicit val timeout: Timeout = 15.seconds
     val fStates = schedulerFSM ? ServiceStatusRequest
     fStates map {
-      case ServiceStatusResponse(states) => Ok(index.render(webJarAssets, states))
+      case ServiceStatusResponse(states,error) => Ok(index.render(webJarAssets, states, error))
       case _ => InternalServerError("could not query states")
     }
   }

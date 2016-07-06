@@ -6,6 +6,7 @@ import play.api.libs.json.Json
 
 package object marathon {
 
+  implicit val readinessCheckFmt = Json.format[MarathonReadinessCheck]
   implicit val dockerPortMappingFmt = Json.format[DockerPortMapping]
   implicit val keyValuePairFmt = Json.format[KeyValuePair]
   implicit val portDefinitionFmt = Json.format[PortDefinition]

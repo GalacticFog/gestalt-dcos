@@ -10,7 +10,7 @@ import play.api.libs.json.{Json, JsObject, JsValue}
 
 import scala.util.Try
 
-case class PortSpec(number: Int, labels: Map[String,String])
+case class PortSpec(number: Int, name: String, labels: Map[String,String])
 case class HealthCheck(portIndex: Int, protocol: String, path: String)
 
 case class AppSpec(name: String,
@@ -23,7 +23,8 @@ case class AppSpec(name: String,
                    env: Map[String,String] = Map.empty,
                    labels: Map[String,String ] = Map.empty,
                    args: Seq[String] = Seq.empty,
-                   healthChecks: Seq[HealthCheck] = Seq.empty)
+                   healthChecks: Seq[HealthCheck] = Seq.empty,
+                   readinessCheck: Option[MarathonReadinessCheck] = None)
 
 
 case class GlobalDBConfig(hostname: String,
@@ -62,7 +63,7 @@ class GestaltTaskFactory {
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(5432, Map("VIP_0" -> "10.99.99.10:5432")))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> "10.99.99.10:5432")))),
       cpus = 0.50,
       mem = 512,
       healthChecks = Seq(HealthCheck(
@@ -95,11 +96,18 @@ class GestaltTaskFactory {
       args = Seq("-J-Xmx512m"),
       image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(9000, Map("VIP_0" -> "10.99.99.12:80")))),
+      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.12:80")))),
       cpus = 0.50,
       mem = 768,
       healthChecks = Seq(HealthCheck(
           portIndex = 0, protocol = "HTTP", path = "/health"
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        path = "/init",
+        portName = "http-api",
+        httpStatusCodesForReady = Seq(200),
+        intervalSeconds = 5,
+        timeoutSeconds = 10
       )),
       labels = labels
     )
@@ -118,10 +126,12 @@ class GestaltTaskFactory {
     builder.build
   }
 
-  def toMarathonPayload(app: AppSpec, globals: JsValue): Try[MarathonAppPayload] = {
+  def getMarathonPayload(name: String, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(name, globals), globals)
+
+  def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
     val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse "gestalt"
     val cleanPrefix = "/" + prefix.stripPrefix("/").stripSuffix("/") + "/"
-    Try{MarathonAppPayload(
+    MarathonAppPayload(
       id = cleanPrefix + app.name,
       args = Some(app.args),
       env = app.env,
@@ -152,8 +162,9 @@ class GestaltTaskFactory {
         intervalSeconds = 60,
         timeoutSeconds = 20,
         maxConsecutiveFailures = 3
-      ) )
-    )}
+      ) ),
+      readinessCheck = app.readinessCheck
+    )
   }
 
   def toTaskInfo(app: AppSpec, offer: Offer): TaskInfo = {

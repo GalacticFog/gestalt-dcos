@@ -4,7 +4,8 @@ import java.util
 import javax.inject.{Named, Inject}
 
 import akka.actor.ActorRef
-import com.galacticfog.gestalt.dcos.marathon.LaunchServicesRequest
+import akka.util.Timeout
+import com.galacticfog.gestalt.dcos.marathon.{ShutdownRequest, LaunchServicesRequest}
 import org.apache.mesos.Protos._
 import org.apache.mesos.{MesosSchedulerDriver, SchedulerDriver, Scheduler}
 import play.api.{Logger => logger, Configuration}
@@ -14,8 +15,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import scala.collection.JavaConversions._
-
-
+import akka.pattern.ask
 
 class DummyScheduler @Inject() extends Scheduler {
   override def offerRescinded(schedulerDriver: SchedulerDriver, offerID: OfferID): Unit = {}

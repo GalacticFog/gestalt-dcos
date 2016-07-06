@@ -9,11 +9,14 @@ case class MarathonStatusUpdateEvent(slaveId: String,
                                      taskStatus: String,
                                      message: String,
                                      appId: String,
-                                     workerHost: String,
-                                     workerPorts: Seq[Int],
+                                     host: String,
+                                     ports: Seq[Int],
+                                     ipAddresses: Seq[IPAddress],
+                                     eventType: String,
                                      version: String,
                                      timestamp: String)
 
 object JSONImports {
   implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
 }
+

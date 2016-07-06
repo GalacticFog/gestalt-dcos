@@ -81,7 +81,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = new GestaltTaskFactory
 
       val security = gtf.toMarathonPayload(gtf.getAppSpec("security", global), global)
-      security must beSuccessfulTry(expected)
+      security must_== expected
 
     }
 
