@@ -21,6 +21,7 @@ case class AppSpec(name: String,
                    env: Map[String,String] = Map.empty,
                    labels: Map[String,String ] = Map.empty,
                    args: Seq[String] = Seq.empty,
+                   cmd: Option[String] = None,
                    healthChecks: Seq[HealthCheck] = Seq.empty,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
 
@@ -43,7 +44,9 @@ case object GlobalDBConfig {
 
 class GestaltTaskFactory {
 
-  def allServices = Seq("data","security","rabbit","meta","api-proxy","ui")
+  import GestaltTaskFactory._
+
+  def allServices = Seq("data","security","rabbit","meta","api-proxy","ui","api-gateway","lambda","kong","policy")
 
   def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
@@ -53,6 +56,10 @@ class GestaltTaskFactory {
       case "meta" => getMeta(globals)
       case "api-proxy" => getApiProxy(globals)
       case "ui" => getUI(globals)
+      case "kong" => getKong(globals)
+      case "api-gateway" => getApiGateway(globals)
+      case "lambda" => getLambda(globals)
+      case "policy" => getPolicy(globals)
     }
   }
 
@@ -68,7 +75,7 @@ class GestaltTaskFactory {
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> "10.99.99.10:5432")))),
       cpus = 0.50,
-      mem = 512,
+      mem = 256,
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = "TCP", path = ""
       ))
@@ -99,7 +106,7 @@ class GestaltTaskFactory {
       args = Seq("-J-Xmx512m"),
       image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.12:80")))),
+      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.20:80")))),
       cpus = 0.50,
       mem = 768,
       healthChecks = Seq(HealthCheck(
@@ -135,8 +142,8 @@ class GestaltTaskFactory {
         "DATABASE_USERNAME" -> dbConfig.username,
         "DATABASE_PASSWORD" -> dbConfig.password,
         //
-        "GESTALT_APIGATEWAY" -> "http://10.99.99.14:80",
-        "GESTALT_LAMBDA" -> "http://10.99.99.15:80",
+        "GESTALT_APIGATEWAY" -> "http://10.99.99.21:80",
+        "GESTALT_LAMBDA" -> "http://10.99.99.22:80",
         "GESTALT_MARATHON_PROVIDER" -> "",
         //
         "GESTALT_ENV" -> "appliance; DEV",
@@ -148,7 +155,7 @@ class GestaltTaskFactory {
         "GESTALT_VERSION" -> "1.0",
         //
         "GESTALT_SECURITY_PROTOCOL" -> "http",
-        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.12",
+        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
         "GESTALT_SECURITY_PORT" -> "80",
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
@@ -161,7 +168,7 @@ class GestaltTaskFactory {
       args = Seq("-J-Xmx512m"),
       image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.1-SNAPSHOT-29cfc409",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.16:80")))),
+      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.23:80")))),
       cpus = 0.50,
       mem = 768,
       healthChecks = Seq.empty /* Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")) */,
@@ -180,6 +187,88 @@ class GestaltTaskFactory {
 
   private[this] def getUI(globals: JsValue): AppSpec = ???
 
+  private[this] def getKong(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"gateway-kong.${tld}",
+        "HAPROXY_1_VHOST" -> s"service-kong.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
+    AppSpec(
+      name = "kong",
+      cmd = Some(s"echo 'BEFORE' && cat /etc/kong/kong.yml && echo -en 'database: postgres\\npostgres:\\n  host: ${dbConfig.hostname}\\n  port: ${dbConfig.port}\\n  user: ${dbConfig.username}\\n  password: ${dbConfig.password}\\n  database: ${dbConfig.prefix}kong\\n' > add && cat /etc/kong/kong.yml | sed -e '/postgres:/,+6d' | sed -e '1r add' | sed -e '1d' > /tmp/txt && mv /tmp/txt /etc/kong/kong.yml && cat /etc/kong/kong.yml && kong start && tail -f /usr/local/kong/logs/error.log"),
+      env = Map.empty,
+      args = Seq("-J-Xmx512m"),
+      image = "mashape/kong:0.8.0",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(
+        PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> "10.99.99.12:80")),
+        PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> "10.99.99.13:80"))
+      )),
+      cpus = 0.25,
+      mem = 256,
+      healthChecks = Seq.empty,
+      readinessCheck = None,
+      labels = labels
+    )
+  }
+
+  private[this] def getApiGateway(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    val secConfig = (globals \ "security")
+    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"apigateway.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
+    AppSpec(
+      name = "api-gateway",
+      cmd = None,
+      env = Map(
+        "GATEWAY_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
+        "GATEWAY_DATABASE_MIGRATE" -> "true",
+        "GATEWAY_DATABASE_NAME" -> s"${dbConfig.prefix}apigateway",
+        "GATEWAY_DATABASE_PASSWORD" -> s"${dbConfig.password}",
+        "GATEWAY_DATABASE_PORT" -> s"${dbConfig.port}",
+        "GATEWAY_DATABASE_USER" -> s"${dbConfig.username}",
+        "GESTALT_SECURITY_PROTOCOL" -> "http",
+        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
+        "GESTALT_SECURITY_PORT" -> "80",
+        "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        "OVERRIDE_UPSTREAM_PROTOCOL" -> "http"
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-api-gateway:1.0.3-SNAPSHOT-ebf0f14b",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.21:80"))
+      )),
+      cpus = 0.20,
+      mem = 1300,
+      healthChecks = Seq(HealthCheck(
+        path = "/health",
+        protocol = "HTTP",
+        portIndex = 0
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        protocol = "HTTP",
+        path = "/health",
+        portName = "http-api",
+        intervalSeconds = 5
+      )),
+      labels = labels
+    )
+  }
+
+  private[this] def getPolicy(globals: JsValue): AppSpec = ???
+
+  private[this] def getLambda(globals: JsValue): AppSpec = ???
+
   private[this] def getRabbit(globals: JsValue): AppSpec = {
     AppSpec(
       name = "rabbit",
@@ -192,7 +281,7 @@ class GestaltTaskFactory {
         PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> "10.99.99.11:80"))
       )),
       cpus = 0.20,
-      mem = 512,
+      mem = 256,
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = "HTTP", path = "/"
       )),
@@ -221,7 +310,7 @@ class GestaltTaskFactory {
   def getMarathonPayload(name: String, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(name, globals), globals)
 
   def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
-    val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse "gestalt"
+    val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse DEFAULT_APP_GROUP
     val cleanPrefix = "/" + prefix.stripPrefix("/").stripSuffix("/") + "/"
     MarathonAppPayload(
       id = cleanPrefix + app.name,
@@ -229,6 +318,7 @@ class GestaltTaskFactory {
       env = app.env,
       instances = 1,
       cpus = app.cpus,
+      cmd = app.cmd,
       mem = app.mem,
       disk = 0,
       requirePorts = true,
@@ -296,4 +386,8 @@ class GestaltTaskFactory {
       .build()
   }
 
+}
+
+case object GestaltTaskFactory {
+  val DEFAULT_APP_GROUP = "gestalt-framework"
 }

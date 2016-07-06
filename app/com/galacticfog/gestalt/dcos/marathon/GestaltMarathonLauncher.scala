@@ -23,7 +23,10 @@ case object Uninitialized       extends LauncherState {def next = LaunchingDB;  
 case object LaunchingDB         extends LauncherState {def next = LaunchingSecurity;    def targetService = "data"}
 case object LaunchingSecurity   extends LauncherState {def next = WaitingForAPIKeys;    def targetService = "security"}
 case object WaitingForAPIKeys   extends LauncherState {def next = LaunchingRabbit;      def targetService = ""}
-case object LaunchingRabbit     extends LauncherState {def next = LaunchingMeta;        def targetService = "rabbit"}
+case object LaunchingRabbit     extends LauncherState {def next = LaunchingKong;        def targetService = "rabbit"}
+case object LaunchingKong       extends LauncherState {def next = LaunchingApiGateway;  def targetService = "kong"}
+case object LaunchingApiGateway extends LauncherState {def next = LaunchingLambda;      def targetService = "api-gateway"}
+case object LaunchingLambda     extends LauncherState {def next = LaunchingMeta;        def targetService = "lambda"}
 case object LaunchingMeta       extends LauncherState {def next = AllServicesLaunched;  def targetService = "meta"}
 case object AllServicesLaunched extends LauncherState {def next = Error;                def targetService = ""}
 // failure
@@ -63,7 +66,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
-  val appGroup = getString("marathon.appGroup", "gestalt").stripPrefix("/").stripSuffix("/")
+  val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
   // setup a-priori/static globals
   val globals = Json.obj(
@@ -110,10 +113,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   onTransition {
-    case _ -> LaunchingDB       => launchApp(LaunchingDB.targetService)
-    case _ -> LaunchingSecurity => launchApp(LaunchingSecurity.targetService)
-    case _ -> LaunchingRabbit   => launchApp(LaunchingRabbit.targetService)
-    case _ -> LaunchingMeta     => launchApp(LaunchingMeta.targetService)
+    case _ -> LaunchingDB         => launchApp(LaunchingDB.targetService)
+    case _ -> LaunchingSecurity   => launchApp(LaunchingSecurity.targetService)
+    case _ -> LaunchingRabbit     => launchApp(LaunchingRabbit.targetService)
+    case _ -> LaunchingKong       => launchApp(LaunchingKong.targetService)
+    case _ -> LaunchingApiGateway => launchApp(LaunchingApiGateway.targetService)
+    case _ -> LaunchingLambda     => launchApp(LaunchingLambda.targetService)
+    case _ -> LaunchingMeta       => launchApp(LaunchingMeta.targetService)
   }
 
   onTransition {
