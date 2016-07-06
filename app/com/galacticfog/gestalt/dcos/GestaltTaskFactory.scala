@@ -293,7 +293,7 @@ class GestaltTaskFactory {
     }
     AppSpec(
       name = "api-gateway",
-      cmd = None,
+      args = Some(Seq("-J-Xmx512m")),
       env = Map(
         "GATEWAY_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "GATEWAY_DATABASE_MIGRATE" -> "true",
@@ -313,8 +313,8 @@ class GestaltTaskFactory {
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.21:80"))
       )),
-      cpus = 0.5,
-      mem = 1536,
+      cpus = 0.25,
+      mem = 768,
       healthChecks = Seq(HealthCheck(
         path = "/health",
         protocol = "HTTP",
