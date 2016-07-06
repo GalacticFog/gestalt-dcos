@@ -19,6 +19,7 @@ case object Uninitialized extends LauncherState
 case object LaunchingDB   extends LauncherState
 case object LaunchingSecurity extends LauncherState
 case object WaitingForAPIKeys extends LauncherState
+case object LaunchingRabbit extends LauncherState
 case object ShuttingDown extends LauncherState
 case object AllServicesLaunched extends LauncherState
 case object Error extends LauncherState
@@ -58,7 +59,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val appGroup = getString("marathon.appGroup", "gestalt").stripPrefix("/").stripSuffix("/")
 
-
   // setup a-priori/static globals
   val globals = Json.obj(
     "marathon" -> Json.obj(
@@ -77,8 +77,14 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     "username" -> getString("security.username","gestalt-admin")
   ) ++ config.getString("security.password").map(p => Json.obj("password" -> p)).getOrElse(Json.obj())
 
-  private def launchApp(name: String): Unit = {
-    val payload = gtf.getMarathonPayload(name, globals)
+  private def launchApp(name: String, apiKey: Option[GestaltAPIKey] = None): Unit = {
+    val allConfig = apiKey.map(apiKey => Json.obj(
+      "security" -> Json.obj(
+        "apiKey" -> apiKey.apiKey,
+        "apiSecret" -> apiKey.apiSecret
+      )
+    )).fold(globals)(sec => sec ++ globals)
+    val payload = gtf.getMarathonPayload(name, allConfig)
     marClient.launchApp(payload) map {
       r => log.info(s"'${name}' launch response: " + r.toString())
     }
@@ -96,6 +102,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       launchApp("data")
     case LaunchingDB -> LaunchingSecurity =>
       launchApp("security")
+    case WaitingForAPIKeys -> LaunchingRabbit =>
+      launchApp("rabbit")
     case _ -> WaitingForAPIKeys =>
       nextStateData.securityUrl match {
         case None => sendMessageToSelf(0.seconds, ErrorEvent("missing security URL after launching security"))
@@ -129,7 +137,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   when(LaunchingDB) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/data" =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, _, _, _, _, _, _) , d) if appId == s"/${appGroup}/data" =>
       log.info("database running")
       goto(LaunchingSecurity)
   }
@@ -145,11 +153,17 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       )
   }
 
+  when(LaunchingRabbit) {
+    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, _, _, _, _, _, _) , d) if appId == s"/${appGroup}/rabbit" =>
+      log.info("database running")
+      goto(AllServicesLaunched)
+  }
+
   when(WaitingForAPIKeys) {
     case Event(RetryRequest, d) =>
       goto(WaitingForAPIKeys)
     case Event(SecurityInitializationComplete(apiKey), d) =>
-      goto(AllServicesLaunched) using d.copy(
+      goto(LaunchingRabbit) using d.copy(
         adminKey = Some(apiKey)
       )
     case Event(StateTimeout, d) =>

@@ -107,6 +107,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
             else if (target == healthy) "HEALTHY"
             else "RUNNING"
           })
+        case 404 => Future.successful("NOT_STARTED")
         case not200 =>
           Future.failed(new RuntimeException(response.statusText))
       }
