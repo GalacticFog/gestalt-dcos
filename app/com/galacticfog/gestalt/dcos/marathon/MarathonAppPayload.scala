@@ -5,6 +5,7 @@ import org.joda.time.DateTime
 case class KeyValuePair(key: String, value: String)
 
 case class PortDefinition(port: Int,
+                          name: Option[String],
                           protocol: String,
                           labels: Option[Map[String,String]])
 
@@ -14,6 +15,7 @@ case class MarathonContainerInfo(containerType: String,
 case class DockerPortMapping(containerPort: Int,
                              hostPort: Option[Int] = None,
                              servicePort: Option[Int] = None,
+                             name: Option[String] = None,
                              protocol: String,
                              labels: Option[Map[String,String]] = None)
 

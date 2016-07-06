@@ -50,6 +50,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           |    {
           |      "port": 10104,
           |      "protocol": "tcp",
+          |      "name": "http-api",
           |      "labels": {}
           |    }
           |  ],
@@ -119,7 +120,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           ))
         ),
         portDefinitions = Some(Seq(
-          PortDefinition(port = 10104, "tcp", Some(Map()))
+          PortDefinition(port = 10104, name = Some("http-api"), protocol = "tcp", labels = Some(Map()))
         )),
         labels = Map(
           "HAPROXY_0_MODE" -> "http",

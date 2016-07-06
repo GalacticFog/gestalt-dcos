@@ -183,10 +183,6 @@ class GestaltTaskFactory {
     )
   }
 
-  private[this] def getApiProxy(globals: JsValue): AppSpec = ???
-
-  private[this] def getUI(globals: JsValue): AppSpec = ???
-
   private[this] def getKong(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
@@ -214,6 +210,75 @@ class GestaltTaskFactory {
       readinessCheck = None,
       labels = labels
     )
+  }
+
+  private[this] def getPolicy(globals: JsValue): AppSpec = ???
+
+  private[this] def getLambda(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    val secConfig = (globals \ "security")
+    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"lambda.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
+    AppSpec(
+      name = "lambda",
+      env = Map(
+        "LAMBDA_DATABASE_NAME" -> s"${dbConfig.prefix}lambda",
+        "LAMBDA_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
+        "LAMBDA_DATABASE_PORT" -> s"${dbConfig.port}",
+        "LAMBDA_DATABASE_USER" -> s"${dbConfig.username}",
+        "LAMBDA_DATABASE_PASSWORD" -> s"${dbConfig.password}",
+        "LAMBDA_FLYWAY_MIGRATE" -> "true",
+        //
+        "GESTALT_SECURITY_PROTOCOL" -> "http",
+        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
+        "GESTALT_SECURITY_PORT" -> "80",
+        "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        //
+        "META_PROTOCOL" -> "http",
+        "META_HOSTNAME" -> "10.99.99.23",
+        "META_PORT" -> "80",
+        "META_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        //
+        "MESOS_ROLE" -> "*",
+        "MESOS_NATIVE_JAVA_LIBRARY" -> "/usr/lib/libmesos.so",
+        "MESOS_NATIVE_LIBRARY" -> "/usr/lib/libmesos.so",
+        "MESOS_MASTER_CONNECTION" -> "zk://master.mesos:2181/mesos",
+        //
+        "NEW_RELIC_LICENSE_KEY" -> "64300aae4a006efc6fa13ab9f88386f186707003",
+        "CACHE_EXPIRE_SECONDS" -> "900",
+        "SCHEDULER_NAME" -> "gestalt-lambda-scheduler",
+        "MAX_LAMBDAS_PER_OFFER" -> "6",
+        "OFFER_TTL" -> "5"
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-lambda:1.0.3-SNAPSHOT-2de5aaf0",
+      network = ContainerInfo.DockerInfo.Network.HOST,
+      ports = Some(Seq(
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.22:80"))
+      )),
+      cpus = 0.20,
+      cmd = Some("./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
+      mem = 1536,
+      healthChecks = Seq(HealthCheck(
+        path = "/health",
+        protocol = "HTTP",
+        portIndex = 0
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        protocol = "HTTP",
+        path = "/health",
+        portName = "http-api",
+        intervalSeconds = 5
+      )),
+      labels = labels
+    )
+
   }
 
   private[this] def getApiGateway(globals: JsValue): AppSpec = {
@@ -265,9 +330,68 @@ class GestaltTaskFactory {
     )
   }
 
-  private[this] def getPolicy(globals: JsValue): AppSpec = ???
+  private[this] def getApiProxy(globals: JsValue): AppSpec = {
+    AppSpec(
+      name = "api-proxy",
+      env = Map(
+        "API_URL" -> "http://10.99.99.23:80",
+        "SEC_URL" -> "http://10.99.99.20:80"
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.8-c03ffa57",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(
+        PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> "10.99.99.24:80"))
+      )),
+      cpus = 0.20,
+      mem = 256,
+      healthChecks = Seq(HealthCheck(
+        path = "/service-status",
+        protocol = "HTTP",
+        portIndex = 0
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        protocol = "HTTP",
+        path = "/service-status",
+        portName = "http",
+        intervalSeconds = 5
+      ))
+    )
+  }
 
-  private[this] def getLambda(globals: JsValue): AppSpec = ???
+  private[this] def getUI(globals: JsValue): AppSpec = {
+    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"ui.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
+    AppSpec(
+      name = "ui",
+      env = Map(
+        "API_URL" -> "http://10.99.99.24"
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-ui:0.7.9-507bbf18",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(
+        PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> "10.99.99.25:80"))
+      )),
+      cpus = 0.10,
+      mem = 128,
+      healthChecks = Seq(HealthCheck(
+        path = "/#/login",
+        protocol = "HTTP",
+        portIndex = 0
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        protocol = "HTTP",
+        path = "/#/login",
+        portName = "http",
+        intervalSeconds = 5
+      )),
+      labels = labels
+    )
+  }
 
   private[this] def getRabbit(globals: JsValue): AppSpec = {
     AppSpec(
@@ -312,6 +436,7 @@ class GestaltTaskFactory {
   def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
     val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse DEFAULT_APP_GROUP
     val cleanPrefix = "/" + prefix.stripPrefix("/").stripSuffix("/") + "/"
+    val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
       id = cleanPrefix + app.name,
       args = Some(app.args),
@@ -326,13 +451,13 @@ class GestaltTaskFactory {
         containerType = "DOCKER",
         docker = Some(MarathonDockerContainer(
           image = app.image,
-          network = "BRIDGE",
+          network = app.network.getValueDescriptor.getName,
           privileged = false,
           parameters = Seq(),
           forcePullImage = true,
-          portMappings = app.ports.map {_.map(
-            p => DockerPortMapping(containerPort = p.number, protocol = "tcp", labels = Some(p.labels))
-          ) }
+          portMappings = if (isBridged) app.ports.map {_.map(
+            p => DockerPortMapping(containerPort = p.number, name = Some(p.name), protocol = "tcp", labels = Some(p.labels))
+          ) } else None
         ))
       ),
       labels = app.labels,
@@ -345,7 +470,10 @@ class GestaltTaskFactory {
         timeoutSeconds = 20,
         maxConsecutiveFailures = 3
       ) ),
-      readinessCheck = app.readinessCheck
+      readinessCheck = app.readinessCheck,
+      portDefinitions = if (!isBridged) app.ports.map {_.map(
+        p => PortDefinition(port = p.number, protocol = "tcp", name = Some(p.name), labels = Some(p.labels))
+      )} else None
     )
   }
 
