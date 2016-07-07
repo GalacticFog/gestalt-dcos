@@ -1,3 +1,4 @@
+import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import com.galacticfog.gestalt.dcos.marathon._
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
@@ -7,20 +8,21 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   "Payload generation" should {
 
-    "work from global" in {
+    "work from global (BRIDGE)" in {
 
       val global = Json.parse(
         """{
           |  "marathon": {
           |     "appGroup": "gestalt",
-          |     "url": "http://marathon.mesos:8080"
+          |     "url": "http://marathon.mesos:8080",
+          |     "tld": "galacticfog.com"
           |  },
           |  "database": {
           |     "hostname": "test-db.marathon.mesos",
           |     "port": 5432,
           |     "username": "test-user",
           |     "password": "test-password",
-          |     "dbPrefix": "test-"
+          |     "prefix": "test-"
           |  },
           |  "security": {
           |     "oauth": {
@@ -59,12 +61,14 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
             forcePullImage = true,
             portMappings = Some(Seq(DockerPortMapping(
               containerPort = 9000,
-              protocol = "tcp"
+              protocol = "tcp",
+              name = Some("http-api"),
+              labels = Some(Map("VIP_0" -> "10.99.99.20:80"))
             )))
           ))
         ),
-        labels = Map(),
-        healthChecks = Seq(HealthCheck(
+        labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_GROUP" -> "external"),
+        healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
           protocol = "HTTP",
           portIndex = 0,
@@ -72,12 +76,57 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           intervalSeconds = 60,
           timeoutSeconds = 20,
           maxConsecutiveFailures = 3
+        )),
+        readinessCheck = Some(MarathonReadinessCheck(
+          protocol = "HTTP",
+          path = "/init",
+          portName = "http-api",
+          intervalSeconds = 5
         ))
       )
 
-      val security = AppPayloadFactory.generate(global, "security", Map())
-      security must beSuccessfulTry(expected)
+      val gtf = new GestaltTaskFactory
 
+      val security = gtf.getMarathonPayload("security", global)
+      security must_== expected
+
+    }
+
+    "map HOST ports appropriately" in {
+
+      val global = Json.parse(
+        """{
+          |  "marathon": {
+          |     "appGroup": "gestalt",
+          |     "url": "http://marathon.mesos:8080",
+          |     "tld": "galacticfog.com"
+          |  },
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "apiSecret": "apisecret",
+          |     "oauth": {
+          |       "rateLimitingPeriod": 5,
+          |       "rateLimitingAmount": 1000
+          |     }
+          |  }
+          |}
+        """.stripMargin
+      )
+
+      val gtf = new GestaltTaskFactory
+
+      val lambda = gtf.getMarathonPayload("lambda", global)
+      lambda.container.docker must beSome
+      lambda.container.docker.get.network must_== "HOST"
+      lambda.container.docker.get.portMappings must beNone
+      lambda.portDefinitions must beSome
     }
 
   }

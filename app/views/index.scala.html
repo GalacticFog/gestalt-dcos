@@ -2,7 +2,7 @@
  * This template takes a single argument, a String containing a
  * message to display.
  *@
-@(webJarAssets: WebJarAssets, states: Map[String,String])
+@(webJarAssets: WebJarAssets, launcherStage: String, states: Seq[com.galacticfog.gestalt.dcos.marathon.ServiceStatus], error: Option[String])
 
 @*
  * Call the `main` template with two arguments. The first
@@ -10,7 +10,13 @@
  * argument is an `Html` object containing the body of the page.
  *@
 @main(webJarAssets, "Gestalt Framework", Some(5)) {
-    <h1>gestalt-framework services status</h1>
+    <h3>gestalt-framework: @launcherStage</h3>
+
+    @if(error.isDefined) {
+        <div class="alert alert-danger">
+            <strong>Error!</strong> @error.get
+        </div>
+    }
 
     <table class="table table-bordered table-striped">
         <thead>
@@ -20,10 +26,21 @@
             </tr>
         </thead>
         <tbody>
-        @for(srv <- states) {
+        @for(s <- states) {
             <tr>
-                <td>@srv._1</td>
-                <td>@srv._2</td>
+                <td>@s.name
+                    @if(s.vhosts.nonEmpty) {
+                        <br>
+                        @for(vhost <- s.vhosts) {
+                            <a href="https://@vhost">https://@vhost</a>
+                        }
+                    }
+                </td>
+                <td>
+                    <div class="@s.status.toLowerCase">
+                      @s.status
+                    </div>
+                </td>
             </tr>
         }
         </tbody>

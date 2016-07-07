@@ -1,0 +1,15 @@
+.running {
+    color: blue;
+}
+
+.healthy {
+    color: limegreen;
+}
+
+.not_started {
+    color: gray;
+}
+
+.unhealthy {
+    color: red;
+}
