@@ -1,11 +1,13 @@
 package com.galacticfog.gestalt.dcos
 
 import java.util.UUID
+import javax.inject.Inject
 
 import com.galacticfog.gestalt.dcos.marathon._
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
+import play.api.Configuration
 import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String])
@@ -43,11 +45,32 @@ case object GlobalDBConfig {
   )
 }
 
-class GestaltTaskFactory {
+class GestaltTaskFactory @Inject() (config: Configuration) {
+
+  val RABBIT_EXCHANGE = "policy-exchange"
+
+  val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
+
+  def dest(svc: String) = s"${VIP}:${ports(svc)}"
+
+  val ports = Map(
+    "db"           ->   "5432",
+    "rabbit"       ->   "5672",
+    "rabbit-http" ->   "15672",
+    "kong-gateway" ->   "8000",
+    "kong-service" ->   "8001",
+    "security"     ->   "9455",
+    "api-gateway"  ->   "6473",
+    "lambda"       ->   "1111",
+    "meta"         ->  "14374",
+    "api-proxy"    ->     "81",
+    "ui"           ->     "80",
+    "policy"       ->   "9999"
+  )
 
   import GestaltTaskFactory._
 
-  def allServices = Seq("data","security","rabbit","meta","api-proxy","ui","api-gateway","lambda","kong","policy")
+  def allServices = GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
 
   def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
@@ -74,7 +97,7 @@ class GestaltTaskFactory {
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> "10.99.99.10:5432")))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> dest("db"))))),
       cpus = 0.50,
       mem = 256,
       healthChecks = Seq(HealthCheck(
@@ -107,7 +130,7 @@ class GestaltTaskFactory {
       args = Some(Seq("-J-Xmx512m")),
       image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.20:80")))),
+      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("security"))))),
       cpus = 0.5,
       mem = 768,
       healthChecks = Seq(HealthCheck(
@@ -144,9 +167,8 @@ class GestaltTaskFactory {
         "DATABASE_USERNAME" -> dbConfig.username,
         "DATABASE_PASSWORD" -> dbConfig.password,
         //
-        "GESTALT_APIGATEWAY" -> "http://10.99.99.21:80",
-        "GESTALT_LAMBDA" -> "http://10.99.99.22:80",
-        "GESTALT_MARATHON_PROVIDER" -> "",
+        "GESTALT_APIGATEWAY" -> s"http://${dest("api-gateway")}",
+        "GESTALT_LAMBDA" -> s"http://${dest("lambda")}",
         //
         "GESTALT_ENV" -> "appliance; DEV",
         "GESTALT_ID" -> "bd96d05a-7065-4fa2-bea2-98beebe8ebe4",
@@ -157,25 +179,26 @@ class GestaltTaskFactory {
         "GESTALT_VERSION" -> "1.0",
         //
         "GESTALT_SECURITY_PROTOCOL" -> "http",
-        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
-        "GESTALT_SECURITY_PORT" -> "80",
+        "GESTALT_SECURITY_HOSTNAME" -> VIP,
+        "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         //
-        "RABBIT_EXCHANGE" -> "test-exchange",
-        "RABBIT_HOST" -> "10.99.99.11",
-        "RABBIT_PORT" -> "5672",
+        "RABBIT_HOST" -> VIP,
+        "RABBIT_PORT" -> ports("rabbit"),
+        "RABBIT_HTTP_PORT" -> ports("rabbit-http"),
+        "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
         "RABBIT_ROUTE" -> "policy"
       ),
       args = Some(Seq("-J-Xmx512m")),
-      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.1-SNAPSHOT-29cfc409",
+      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.1-SNAPSHOT-4313d5d1",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.23:80")))),
+      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("meta"))))),
       cpus = 0.5,
       mem = 768,
-      healthChecks = Seq.empty /* Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")) */,
+      healthChecks = Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/info",
+        path = "/health",
         portName = "http-api",
         httpStatusCodesForReady = Seq(200,401,403),
         intervalSeconds = 5,
@@ -197,23 +220,75 @@ class GestaltTaskFactory {
     }
     AppSpec(
       name = "kong",
-      cmd = Some(s"""echo 'BEFORE' && cat /etc/kong/kong.yml && echo -en 'database: postgres\npostgres:\n  host: ${dbConfig.hostname}\n  port: ${dbConfig.port}\n  user: ${dbConfig.username}\n  password: ${dbConfig.password}\n  database: ${dbConfig.prefix}kong\n' > add && cat /etc/kong/kong.yml | sed -e '/postgres:/,+6d' | sed -e '1r add' | sed -e '1d' > /tmp/txt && mv /tmp/txt /etc/kong/kong.yml && cat /etc/kong/kong.yml && kong start && tail -f /usr/local/kong/logs/error.log"""),
-      env = Map.empty,
-      image = "mashape/kong:0.8.0",
+      env = Map(
+        "POSTGRES_HOST" -> dbConfig.hostname,
+        "POSTGRES_PORT" -> dbConfig.port.toString,
+        "POSTGRES_DATABASE" -> s"${dbConfig.prefix}kong",
+        "POSTGRES_USER" -> dbConfig.username,
+        "POSTGRES_PASSWORD" -> dbConfig.password
+      ),
+      image = "galacticfog/kong:0.8.0",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
-        PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> "10.99.99.12:80")),
-        PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> "10.99.99.13:80"))
+        PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> dest("kong-gateway"))),
+        PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> dest("kong-service")))
       )),
       cpus = 0.25,
       mem = 128,
-      healthChecks = Seq.empty,
+      healthChecks = Seq(HealthCheck(portIndex = 1, protocol = "HTTP", path = "/cluster")),
       readinessCheck = None,
       labels = labels
     )
   }
 
-  private[this] def getPolicy(globals: JsValue): AppSpec = ???
+  private[this] def getPolicy(globals: JsValue): AppSpec = {
+    val dbConfig = GlobalDBConfig(globals)
+    val secConfig = (globals \ "security")
+    AppSpec(
+      name = "policy",
+      args = Some(Seq("-J-Xmx512m")),
+      env = Map(
+        "LAMBDA_HOST" -> VIP,
+        "LAMBDA_PORT" -> ports("lambda"),
+        "LAMBDA_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+        "LAMBDA_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        //
+        "META_PROTOCOL" -> "http",
+        "META_HOST" -> VIP,
+        "META_PORT" -> ports("meta"),
+        "META_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        //
+        "BINDING_UPDATE_SECONDS" -> "20",
+        "CONNECTION_CHECK_TIME_SECONDS" -> "60",
+        "POLICY_MAX_WORKERS" -> "20",
+        "POLICY_MIN_WORKERS" -> "5",
+        //
+        "RABBIT_HOST" -> VIP,
+        "RABBIT_PORT" -> ports("rabbit"),
+        "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
+        "RABBIT_ROUTE" -> "policy"
+      ),
+      image = "galacticfog.artifactoryonline.com/gestalt-policy:0.0.2-SNAPSHOT-d7805889",
+      network = ContainerInfo.DockerInfo.Network.BRIDGE,
+      ports = Some(Seq(
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("policy")))
+      )),
+      cpus = 0.25,
+      mem = 768,
+      healthChecks = Seq(HealthCheck(
+        path = "/health",
+        protocol = "HTTP",
+        portIndex = 0
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        protocol = "HTTP",
+        path = "/health",
+        portName = "http-api",
+        intervalSeconds = 5
+      ))
+    )
+  }
 
   private[this] def getLambda(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
@@ -236,14 +311,14 @@ class GestaltTaskFactory {
         "LAMBDA_FLYWAY_MIGRATE" -> "true",
         //
         "GESTALT_SECURITY_PROTOCOL" -> "http",
-        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
-        "GESTALT_SECURITY_PORT" -> "80",
+        "GESTALT_SECURITY_HOSTNAME" -> VIP,
+        "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         //
         "META_PROTOCOL" -> "http",
-        "META_HOSTNAME" -> "10.99.99.23",
-        "META_PORT" -> "80",
+        "META_HOSTNAME" -> VIP,
+        "META_PORT" -> ports("meta"),
         "META_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         //
@@ -261,7 +336,7 @@ class GestaltTaskFactory {
       image = "galacticfog.artifactoryonline.com/gestalt-lambda:1.0.3-SNAPSHOT-2de5aaf0",
       network = ContainerInfo.DockerInfo.Network.HOST,
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.22:80"))
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("lambda")))
       )),
       cpus = 0.5,
       cmd = Some("./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
@@ -302,8 +377,8 @@ class GestaltTaskFactory {
         "GATEWAY_DATABASE_PORT" -> s"${dbConfig.port}",
         "GATEWAY_DATABASE_USER" -> s"${dbConfig.username}",
         "GESTALT_SECURITY_PROTOCOL" -> "http",
-        "GESTALT_SECURITY_HOSTNAME" -> "10.99.99.20",
-        "GESTALT_SECURITY_PORT" -> "80",
+        "GESTALT_SECURITY_HOSTNAME" -> VIP,
+        "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         "OVERRIDE_UPSTREAM_PROTOCOL" -> "http"
@@ -311,7 +386,7 @@ class GestaltTaskFactory {
       image = "galacticfog.artifactoryonline.com/gestalt-api-gateway:1.0.3-SNAPSHOT-ebf0f14b",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> "10.99.99.21:80"))
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("api-gateway")))
       )),
       cpus = 0.25,
       mem = 768,
@@ -334,13 +409,13 @@ class GestaltTaskFactory {
     AppSpec(
       name = "api-proxy",
       env = Map(
-        "API_URL" -> "http://10.99.99.23:80",
-        "SEC_URL" -> "http://10.99.99.20:80"
+        "API_URL" -> s"http://${dest("meta")}",
+        "SEC_URL" -> s"http://${dest("security")}"
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.8-c03ffa57",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
-        PortSpec(number = 8888, name = "http", labels = Map("VIP_0" -> "10.99.99.24:80"))
+        PortSpec(number = 8888, name = "http", labels = Map("VIP_0" -> dest("api-proxy")))
       )),
       cpus = 0.25,
       mem = 128,
@@ -369,12 +444,12 @@ class GestaltTaskFactory {
     AppSpec(
       name = "ui",
       env = Map(
-        "API_URL" -> "http://10.99.99.24"
+        "API_URL" -> s"http://${dest("api-proxy")}"
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-ui:0.7.9-507bbf18",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
-        PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> "10.99.99.25:80"))
+        PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> dest("ui")))
       )),
       cpus = 0.25,
       mem = 128,
@@ -400,8 +475,8 @@ class GestaltTaskFactory {
       image = "rabbitmq:3-management",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
-        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> "10.99.99.11:5672")),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> "10.99.99.11:80"))
+        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> dest("rabbit"))),
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> dest("rabbit-http")))
       )),
       cpus = 0.50,
       mem = 256,
@@ -465,9 +540,9 @@ class GestaltTaskFactory {
         protocol = hc.protocol,
         portIndex = hc.portIndex,
         gracePeriodSeconds = 300,
-        intervalSeconds = 60,
-        timeoutSeconds = 20,
-        maxConsecutiveFailures = 3
+        intervalSeconds = 30,
+        timeoutSeconds = 15,
+        maxConsecutiveFailures = 4
       ) ),
       readinessCheck = app.readinessCheck,
       portDefinitions = if (!isBridged) app.ports.map {_.map(

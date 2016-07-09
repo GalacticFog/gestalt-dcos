@@ -30,9 +30,8 @@
             <tr>
                 <td>@s.name
                     @if(s.vhosts.nonEmpty) {
-                        <br>
                         @for(vhost <- s.vhosts) {
-                            <a href="https://@vhost">https://@vhost</a>
+                            <br><a href="https://@vhost">https://@vhost</a>
                         }
                     }
                 </td>

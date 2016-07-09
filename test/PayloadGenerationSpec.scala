@@ -2,13 +2,23 @@ import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import com.galacticfog.gestalt.dcos.marathon._
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
+import play.api.Configuration
+import play.api.inject.guice.{GuiceInjectorBuilder, GuiceApplicationBuilder}
+import play.api.inject.bind
 import play.api.libs.json.Json
+import play.test.WithApplication
 
 class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   "Payload generation" should {
 
     "work from global (BRIDGE)" in {
+
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure("service.vip" -> "10.11.12.13")
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
 
       val global = Json.parse(
         """{
@@ -63,7 +73,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
               containerPort = 9000,
               protocol = "tcp",
               name = Some("http-api"),
-              labels = Some(Map("VIP_0" -> "10.99.99.20:80"))
+              labels = Some(Map("VIP_0" -> "10.11.12.13:9455"))
             )))
           ))
         ),
@@ -73,9 +83,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           protocol = "HTTP",
           portIndex = 0,
           gracePeriodSeconds = 300,
-          intervalSeconds = 60,
-          timeoutSeconds = 20,
-          maxConsecutiveFailures = 3
+          intervalSeconds = 30,
+          timeoutSeconds = 15,
+          maxConsecutiveFailures = 4
         )),
         readinessCheck = Some(MarathonReadinessCheck(
           protocol = "HTTP",
@@ -85,14 +95,18 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         ))
       )
 
-      val gtf = new GestaltTaskFactory
-
       val security = gtf.getMarathonPayload("security", global)
       security must_== expected
 
     }
 
     "map HOST ports appropriately" in {
+
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure("service.vip" -> "10.11.12.13")
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
 
       val global = Json.parse(
         """{
@@ -120,7 +134,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      val gtf = new GestaltTaskFactory
 
       val lambda = gtf.getMarathonPayload("lambda", global)
       lambda.container.docker must beSome
