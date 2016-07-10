@@ -67,7 +67,7 @@
     <script>
             $('#shutdownButton').on('click', function () {
                 console.log('shutting down');
-                $('#shutdownButton').disabled = true;
+                $('#shutdownButton').addClass('disabled');
                 $.post( "shutdown", function(data) {
                     console.log('received response', data);
                 });
