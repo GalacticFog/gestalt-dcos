@@ -4,7 +4,7 @@ import javax.inject._
 import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
-import com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient
+import com.galacticfog.gestalt.dcos.marathon.{ShutdownRequest, MarathonSSEClient}
 import play.api._
 import play.api.libs.json.Json
 import play.api.mvc._
@@ -33,4 +33,9 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     }
   }
 
+  def shutdown() = Action {
+    Logger.info("received shutdown request")
+    schedulerFSM ! ShutdownRequest
+    Accepted(Json.obj("message" -> "shutting down"))
+  }
 }

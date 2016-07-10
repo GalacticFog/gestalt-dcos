@@ -14,6 +14,8 @@
         @if(refresh.isDefined) {
             <meta http-equiv="refresh" content="@refresh.get">
         }
+
+        <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("jquery.min.js")).toString.stripPrefix("/")'></script>
         <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.css")).toString.stripPrefix("/")">
         <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap-theme.min.css")).toString.stripPrefix("/")">
         <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css").toString.stripPrefix("/")">

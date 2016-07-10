@@ -21,10 +21,9 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-case class ServiceStatus(name: String, vhosts: Iterable[String], status: String)
+case class ServiceStatus(name: String, vhosts: Iterable[String], ips: Iterable[(String,String)], status: String)
 
 class MarathonSSEClient @Inject() (config: Configuration,
-                                   lifecycle: ApplicationLifecycle,
                                    @Named("scheduler-actor") schedulerActor: ActorRef,
                                    gtf: GestaltTaskFactory,
                                    wsclient: WSClient)
@@ -59,16 +58,6 @@ class MarathonSSEClient @Inject() (config: Configuration,
     }
   }
   ServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
-
-  lifecycle.addStopHook { () =>
-    schedulerActor ! ShutdownRequest
-    killApps.map {
-      case true =>
-        logger.info("shutdown was successful")
-      case false =>
-        logger.error("shutdown was not successful; manual cleanup may be necessary")
-    }
-  }
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
@@ -116,14 +105,21 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
             val vhosts = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values
 
-            ServiceStatus(name,vhosts,status)
+            val ips = for {
+              tasks <- app.tasks
+              task <- tasks.headOption
+              ips <- task.ipAddresses
+              ports <- task.ports
+            } yield (ips.map(_.ipAddress).zip(ports.map(_.toString)))
+
+            ServiceStatus(name,vhosts,ips getOrElse Iterable.empty,status)
           })
-        case 404 => Future.successful(ServiceStatus(name,Seq(),"NOT_STARTED"))
+        case 404 => Future.successful(ServiceStatus(name,Seq(),Iterable.empty,"NOT_STARTED"))
         case not200 =>
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => ServiceStatus(name, Seq(), s"error during fetch: ${e.getMessage}")
+      case e: Throwable => ServiceStatus(name, Seq(),Iterable.empty, s"error during fetch: ${e.getMessage}")
     }
   }
 

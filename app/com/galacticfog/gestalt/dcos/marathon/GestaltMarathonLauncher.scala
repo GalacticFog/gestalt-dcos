@@ -6,6 +6,7 @@ import akka.actor.{FSM, LoggingFSM}
 import com.galacticfog.gestalt.dcos.{marathon, GestaltTaskFactory}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import play.api.Configuration
+import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.Json
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import play.api.libs.ws.{WSAuthScheme, WSClient}
@@ -13,6 +14,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import com.galacticfog.gestalt.dcos.marathon._
+import akka.pattern.ask
 
 sealed trait LauncherState {
   def targetService: Option[String] = None
@@ -50,6 +52,7 @@ case object ServiceData {
 case object StatusRequest
 case object LaunchServicesRequest
 case object ShutdownRequest
+case object ShutdownAcceptedResponse
 case object RetryRequest
 final case class ErrorEvent(message: String, errorStage: Option[String])
 final case class SecurityInitializationComplete(key: GestaltAPIKey)
@@ -384,13 +387,20 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(Error)(FSM.NullFunction)
 
   when(ShuttingDown) {
-    case Event(e, _) =>
+    case Event(e, _) if e != StatusRequest =>
       log.info(s"ignoring event because of shutdown request: ${e.getClass.getName}")
       stay
   }
 
   whenUnhandled {
     case Event(ShutdownRequest,d) =>
+      sender() ! ShutdownAcceptedResponse
+      marClient.killApps.map {
+        case true =>
+          log.info("shutdown was successful")
+        case false =>
+          log.error("shutdown was not successful; manual cleanup may be necessary")
+      }
       goto(ShuttingDown) using ServiceData.empty
     case Event(ErrorEvent(message,errorStage),d) =>
       goto(Error) using d.copy(
