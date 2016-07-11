@@ -66,6 +66,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
     ).flatMap { resp =>
       resp.status match {
         case 201 => Future.successful(resp.json)
+        case 200 => Future.successful(resp.json)
         case not201 =>
           logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
           Future.failed(new RuntimeException(

@@ -4,19 +4,18 @@
  * two arguments, a `String` for the title of the page and an `Html`
  * object to insert into the body of the page.
  *@
-@(webJarAssets: WebJarAssets, title: String, refresh: Option[Int])(content: Html)
+@(webJarAssets: WebJarAssets, title: String)(content: Html)
 
 <!DOCTYPE html>
 <html lang="en">
     <head>
         @* Here's where we render the page title `String`. *@
         <title>@title</title>
-        @if(refresh.isDefined) {
-            <meta http-equiv="refresh" content="@refresh.get">
-        }
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
+
         <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("jquery.min.js")).toString.stripPrefix("/")'></script>
+        <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.js")).toString.stripPrefix("/")'></script>
         <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.css")).toString.stripPrefix("/")">
         <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap-theme.min.css")).toString.stripPrefix("/")">
         <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css").toString.stripPrefix("/")">
@@ -26,7 +25,7 @@
     <body>
 
         <!-- Begin page content -->
-        <div class="container">
+        <div class="container-fluid">
             @content
         </div>
 

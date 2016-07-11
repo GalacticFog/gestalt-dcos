@@ -8,7 +8,7 @@ import com.galacticfog.gestalt.dcos.marathon.{ShutdownRequest, MarathonSSEClient
 import play.api._
 import play.api.libs.json.Json
 import play.api.mvc._
-import views.html.index
+import views.html.{table, index}
 import scala.concurrent.duration._
 
 import scala.concurrent.{Future, ExecutionContext}
@@ -28,7 +28,15 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   def dashboard = Action.async {
     val fStates = marClient.getAllServices()
     fStates map {
-      case (globalStatus,states) => Ok(index.render(webJarAssets, globalStatus.launcherStage, states, globalStatus.error))
+      case (globalStatus,_) => Ok(index.render(webJarAssets, globalStatus.launcherStage, globalStatus.error))
+      case _ => InternalServerError("could not query states")
+    }
+  }
+
+  def data() = Action.async {
+    val fStates = marClient.getAllServices()
+    fStates map {
+      case (_,states) => Ok(table.render(webJarAssets, states))
       case _ => InternalServerError("could not query states")
     }
   }
@@ -38,4 +46,5 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     schedulerFSM ! ShutdownRequest
     Accepted(Json.obj("message" -> "shutting down"))
   }
+
 }

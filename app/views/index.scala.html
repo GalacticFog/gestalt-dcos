@@ -2,80 +2,82 @@
  * This template takes a single argument, a String containing a
  * message to display.
  *@
-@(webJarAssets: WebJarAssets, launcherStage: String, states: Seq[com.galacticfog.gestalt.dcos.marathon.ServiceStatus], error: Option[String])
+@(webJarAssets: WebJarAssets, launcherStage: String, error: Option[String])
 
 @*
  * Call the `main` template with two arguments. The first
  * argument is a `String` with the title of the page, the second
  * argument is an `Html` object containing the body of the page.
  *@
-@main(webJarAssets, "Gestalt Framework", Some(5)) {
-    <h3>gestalt-framework: @launcherStage</h3>
-
-    @if(error.isDefined) {
-        <div class="alert alert-danger">
-            <strong>Error!</strong> @error.get
+@main(webJarAssets, "Gestalt Framework") {
+    <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+            <h3>gestalt-framework: @launcherStage</h3>
+            @if(error.isDefined) {
+                <div class="alert alert-danger col-md-6 col-md-offset-3">
+                    <strong>Error!</strong> @error.get
+                </div>
+            }
         </div>
-    }
+    </div>
 
-    <table class="table table-bordered table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>URL</th>
-                <th>IP</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-        @for(s <- states) {
-            <tr>
-                <td>@s.name</td>
-                <td>
-                @if(s.vhosts.nonEmpty) {
-                    @for(vhost <- s.vhosts.headOption) {
-                        <a href="https://@vhost">https://@vhost</a>
-                    }
-                    @for(vhost <- s.vhosts.tail) {
-                        <br><a href="https://@vhost">https://@vhost</a>
-                    }
-                }
-                </td>
-                <td>
-                    @for(h <- s.hostname) {
-                        @if(s.ports.size > 1) {
-                            @h:[<a href="http://@h:@s.ports.head">@s.ports.head</a>@for(p <- s.ports.tail){,<a href="http://@h:@p">@p</a>}]
-                        } else {
-                            @for(p <- s.ports) {
-                                <a href="http://@h:@p">@h:@p</a>
-                            }
-                        }
-                    }
-                </td>
-                <td>
-                    <div class="@s.status.toLowerCase">
-                      @s.status
-                    </div>
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
+    <div class="row">
+        <div id="tableDiv" class="table-responsive col-md-8 col-md-offset-2"/>
+    </div>
+    <div class="row">
+        <div class="col-md-8 col-md-offset-2">
+            <button type="button" class="btn btn-danger" data-toggle="modal" data-target="#shutdownModal" @if(launcherStage == "ShuttingDown"){ disabled }>
+            Shutdown services
+            </button>
+        </div>
+    </div>
 
-    <button type="button" id="shutdownButton" class="btn btn-danger" @if(launcherStage == "ShuttingDown"){
-        disabled
-    }>
-      Shutdown services
-    </button>
+    <div class="modal fade" id="shutdownModal" tabindex="-1" role="dialog" aria-labelledby="shutdownModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                    <h4 class="modal-title" id="shutdownModalLabel">Shutdown confirmation</h4>
+                </div>
+                <div class="modal-body">
+                    This will shut down all Gestalt framework services. Shutting down the database means that all data will be lost. Are you sure?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                    <button type="button" id="shutdownSvcsOnly"  class="btn btn-warning">Shutdown framework only</button>
+                    <button type="button" id="shutdownSvcsAndDB" class="btn btn-danger">Shutdown framework + database</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script>
-            $('#shutdownButton').on('click', function () {
+            $('#shutdownSvcsAndDB').on('click', function () {
                 console.log('shutting down');
-                $('#shutdownButton').addClass('disabled');
-                $.post( "shutdown", function(data) {
+                $('#shutdownSvcsAndDB').addClass('disabled');
+                $.post( "shutdown?shutdownDB=true", function(data) {
                     console.log('received response', data);
+                    $('#shutdownModal').modal('hide')
                 });
             });
+            $('#shutdownSvcsOnly').on('click', function () {
+                console.log('shutting down');
+                $('#shutdownSvcsOnly').addClass('disabled');
+                $.post( "shutdown?shutdownDB=false", function(data) {
+                    console.log('received response', data);
+                    $('#shutdownModal').modal('hide')
+                });
+            });
+
+            function doPoll(){
+                $( "#tableDiv" ).load( "data", function() {
+                    console.log( "dashboard updated" );
+                    setTimeout(doPoll,5000);
+                });
+            }
+
+            doPoll();
     </script>
 
 }

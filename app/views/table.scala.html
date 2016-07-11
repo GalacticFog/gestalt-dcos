@@ -1,0 +1,57 @@
+@*
+ * This template takes a single argument, a String containing a
+ * message to display.
+ *@
+@(webJarAssets: WebJarAssets, states: Seq[com.galacticfog.gestalt.dcos.marathon.ServiceStatus])
+
+@*
+ * Call the `main` template with two arguments. The first
+ * argument is a `String` with the title of the page, the second
+ * argument is an `Html` object containing the body of the page.
+ *@
+
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>IP</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        @for(s <- states) {
+            <tr>
+                <td>@s.name</td>
+                <td>
+                @if(s.vhosts.nonEmpty) {
+                    @for(vhost <- s.vhosts.headOption) {
+                        <a href="https://@vhost">https://@vhost</a>
+                    }
+                    @for(vhost <- s.vhosts.tail) {
+                        <br><a href="https://@vhost">https://@vhost</a>
+                    }
+                }
+                </td>
+                <td>
+                    @for(h <- s.hostname) {
+                        @if(s.ports.size > 1) {
+                            @h:[<a href="http://@h:@s.ports.head">@s.ports.head</a>@for(p <- s.ports.tail){,<a href="http://@h:@p">@p</a>}]
+                        } else {
+                            @for(p <- s.ports) {
+                                <a href="http://@h:@p">@h:@p</a>
+                            }
+                        }
+                    }
+                </td>
+                <td>
+                    <div class="@s.status.toLowerCase">
+                      @s.status
+                    </div>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+
