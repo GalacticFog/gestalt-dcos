@@ -213,7 +213,6 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
       case Some(tld) => Map(
         "HAPROXY_0_VHOST" -> s"gateway-kong.${tld}",
-        "HAPROXY_1_VHOST" -> s"service-kong.${tld}",
         "HAPROXY_GROUP" -> "external"
       )
       case None => Map.empty[String,String]

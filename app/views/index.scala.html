@@ -22,6 +22,7 @@
         <thead>
             <tr>
                 <th>Name</th>
+                <th>URL</th>
                 <th>IP</th>
                 <th>Status</th>
             </tr>
@@ -29,22 +30,25 @@
         <tbody>
         @for(s <- states) {
             <tr>
-                <td>@s.name
-                    @if(s.vhosts.nonEmpty) {
-                        @for(vhost <- s.vhosts) {
-                            <br><a href="https://@vhost">https://@vhost</a>
-                        }
+                <td>@s.name</td>
+                <td>
+                @if(s.vhosts.nonEmpty) {
+                    @for(vhost <- s.vhosts.headOption) {
+                        <a href="https://@vhost">https://@vhost</a>
                     }
+                    @for(vhost <- s.vhosts.tail) {
+                        <br><a href="https://@vhost">https://@vhost</a>
+                    }
+                }
                 </td>
                 <td>
-                    @if(s.ips.size > 1) {
-                        @s.ips.head._1
-                        @for(addr <- s.ips) {
-                            <a href="@addr._1:@addr._2">@addr._2</a>
-                        }
-                    } else {
-                        @for(addr <- s.ips) {
-                            <a href="@addr._1:@addr._2">@addr._1:@addr._2</a>
+                    @for(h <- s.hostname) {
+                        @if(s.ports.size > 1) {
+                            @h:[<a href="http://@h:@s.ports.head">@s.ports.head</a>@for(p <- s.ports.tail){,<a href="http://@h:@p">@p</a>}]
+                        } else {
+                            @for(p <- s.ports) {
+                                <a href="http://@h:@p">@h:@p</a>
+                            }
                         }
                     }
                 </td>

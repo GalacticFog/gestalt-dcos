@@ -14,6 +14,7 @@
         @if(refresh.isDefined) {
             <meta http-equiv="refresh" content="@refresh.get">
         }
+        <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("jquery.min.js")).toString.stripPrefix("/")'></script>
         <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.css")).toString.stripPrefix("/")">

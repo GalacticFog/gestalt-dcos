@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-case class ServiceStatus(name: String, vhosts: Iterable[String], ips: Iterable[(String,String)], status: String)
+case class ServiceStatus(name: String, vhosts: Iterable[String], hostname: Option[String], ports: Iterable[String], status: String)
 
 class MarathonSSEClient @Inject() (config: Configuration,
                                    @Named("scheduler-actor") schedulerActor: ActorRef,
@@ -105,21 +105,17 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
             val vhosts = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values
 
-            val ips = for {
-              tasks <- app.tasks
-              task <- tasks.headOption
-              ips <- task.ipAddresses
-              ports <- task.ports
-            } yield (ips.map(_.ipAddress).zip(ports.map(_.toString)))
+            val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
+            val ips = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.toIterable).map(_.map(_.toString)) getOrElse Iterable.empty
 
-            ServiceStatus(name,vhosts,ips getOrElse Iterable.empty,status)
+            ServiceStatus(name,vhosts,hostname,ips,status)
           })
-        case 404 => Future.successful(ServiceStatus(name,Seq(),Iterable.empty,"NOT_STARTED"))
+        case 404 => Future.successful(ServiceStatus(name,Seq(),None,Iterable.empty,"NOT_STARTED"))
         case not200 =>
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => ServiceStatus(name, Seq(),Iterable.empty, s"error during fetch: ${e.getMessage}")
+      case e: Throwable => ServiceStatus(name, Seq(),None,Iterable.empty, s"error during fetch: ${e.getMessage}")
     }
   }
 
