@@ -46,7 +46,7 @@ class GestaltSchedulerDriver @Inject() (config: Configuration,
                                         @Named("scheduler-actor") schedulerActor: ActorRef) {
   import org.apache.mesos.Protos._
 
-  logger.info("creating LambdaScheduler")
+  logger.info("creating GestaltSchedulerDriver")
 
   val master = config.getString("mesos.master") getOrElse "master.mesos:5050"
   logger.info(s"registering with mesos-master: ${master}")
@@ -56,7 +56,7 @@ class GestaltSchedulerDriver @Inject() (config: Configuration,
 
   val frameworkInfoBuilder = FrameworkInfo.newBuilder()
     .setName("gestalt")
-    .setFailoverTimeout(60.seconds.toMillis)
+    .setFailoverTimeout(60 /* seconds */)
     .setUser("root")
     .setRole("*")
     .setCheckpoint(false)
