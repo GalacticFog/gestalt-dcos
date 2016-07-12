@@ -51,6 +51,18 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
 
+  val TLD = config.getString("marathon.tld")
+
+  def getVhostLabels(svcname: String): Map[String,String] = {
+    TLD match {
+      case Some(tld) => Map(
+        "HAPROXY_0_VHOST" -> s"${svcname}.${tld}",
+        "HAPROXY_GROUP" -> "external"
+      )
+      case None => Map.empty[String,String]
+    }
+  }
+
   def dest(svc: String) = s"${VIP}:${ports(svc)}"
 
   val ports = Map(
@@ -109,13 +121,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getSecurity(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
-    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"security.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = getVhostLabels("security")
     AppSpec(
       name = "security",
       env = Map(
@@ -150,14 +156,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getMeta(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
-    val tld = (globals \ "marathon" \ "tld").asOpt[String]
-    val labels = tld match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"meta.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = getVhostLabels("meta")
     AppSpec(
       name = "meta",
       env = Map(
@@ -172,7 +171,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         //
         "GESTALT_ENV" -> "appliance; DEV",
         "GESTALT_ID" -> "bd96d05a-7065-4fa2-bea2-98beebe8ebe4",
-        "GESTALT_META" -> s"https://meta.${tld}:443",
+        "GESTALT_META" -> s"https://meta.${TLD}:443",
         "GESTALT_NODE_ID" -> "0",
         "GESTALT_ORG" -> "com.galacticfog.test",
         "GESTALT_SECRET" -> "secret",
@@ -210,13 +209,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   private[this] def getKong(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
-    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"gateway-kong.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = getVhostLabels("kong")
     AppSpec(
       name = "kong",
       env = Map(
@@ -292,13 +285,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getLambda(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
-    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"lambda.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = getVhostLabels("lambda")
     AppSpec(
       name = "lambda",
       env = Map(
@@ -358,13 +345,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getApiGateway(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
-    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"apigateway.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = Map.empty[String,String]
     AppSpec(
       name = "api-gateway",
       args = Some(Seq("-J-Xmx512m")),
@@ -433,13 +414,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   }
 
   private[this] def getUI(globals: JsValue): AppSpec = {
-    val labels = (globals \ "marathon" \ "tld").asOpt[String] match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"ui.${tld}",
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map.empty[String,String]
-    }
+    val labels = getVhostLabels("demo")
     AppSpec(
       name = "ui",
       env = Map(

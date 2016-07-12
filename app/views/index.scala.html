@@ -2,7 +2,7 @@
  * This template takes a single argument, a String containing a
  * message to display.
  *@
-@(webJarAssets: WebJarAssets, launcherStage: String, error: Option[String])
+@(webJarAssets: WebJarAssets)
 
 @*
  * Call the `main` template with two arguments. The first
@@ -11,24 +11,34 @@
  *@
 @main(webJarAssets, "Gestalt Framework") {
     <div class="row">
-        <div class="col-md-8 col-md-offset-2">
-            <h3>gestalt-framework: @launcherStage</h3>
-            @if(error.isDefined) {
-                <div class="alert alert-danger col-md-6 col-md-offset-3">
-                    <strong>Error!</strong> @error.get
-                </div>
-            }
+        <div class="col-md-8 col-md-offset-2" id="launcher-stage">
+            <h3>gestalt-framework:</h3>
         </div>
     </div>
 
     <div class="row">
-        <div id="tableDiv" class="table-responsive col-md-8 col-md-offset-2"/>
+        <div id="launcher-error" class="alert alert-danger col-md-6 col-md-offset-3 hidden"/>
+    </div>
+
+    <div class="row">
+        <div class="table-responsive col-md-8 col-md-offset-2">
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Virtual Host</th>
+                        <th>Container Instance</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="dataBody">
+                </tbody>
+            </table>
+        </div>
     </div>
     <div class="row">
         <div class="col-md-8 col-md-offset-2">
-            <button type="button" class="btn btn-danger" data-toggle="modal" data-target="#shutdownModal" @if(launcherStage == "ShuttingDown"){ disabled }>
-            Shutdown services
-            </button>
+            <button id="shutdownButton" type="button" class="btn btn-danger" data-toggle="modal" data-target="#shutdownModal">Shutdown services</button>
         </div>
     </div>
 
@@ -53,28 +63,88 @@
 
 
     <script>
+            function disableShutdownButtons(state) {
+                $('#shutdownButton').prop('disabled', state);
+                $('#shutdownSvcsAndDB').prop('disabled', state);
+                $('#shutdownSvcsOnly').prop('disabled', state);
+            }
+
             $('#shutdownSvcsAndDB').on('click', function () {
                 console.log('shutting down');
-                $('#shutdownSvcsAndDB').addClass('disabled');
+                disableShutdownButtons(true);
+                $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=true", function(data) {
-                    console.log('received response', data);
-                    $('#shutdownModal').modal('hide')
+                    console.log('shutdown response: ' + data.message);
+                    doPoll();
                 });
             });
             $('#shutdownSvcsOnly').on('click', function () {
                 console.log('shutting down');
-                $('#shutdownSvcsOnly').addClass('disabled');
+                disableShutdownButtons(true);
+                $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=false", function(data) {
-                    console.log('received response', data);
-                    $('#shutdownModal').modal('hide')
+                    console.log('shutdown response: ' + data.message);
+                    doPoll();
                 });
             });
 
             function doPoll(){
-                $( "#tableDiv" ).load( "data", function() {
-                    console.log( "dashboard updated" );
+                $.getJSON("data", function(data) {
                     setTimeout(doPoll,5000);
+                    if (data.error) {
+                        $('#launcher-error').html(data.error).show();
+                    } else {
+                        $('#launcher-error').html("").show();
+                    }
+                    $('#launcher-stage').html("<h3>gestalt-framework: " + data.launcherStage + "</h3>");
+                    populateTable(data.services);
+                    if (data.launcherStage === "ShuttingDown") {
+                        disableShutdownButtons(true);
+                    } else {
+                        disableShutdownButtons(false);
+                    }
                 });
+            }
+
+            function build_vhost_string(svc) {
+                if (svc.vhosts === null) return '';
+                var vhosts = [];
+                $.each(svc.vhosts, function (i,vhost) {
+                    url = 'https://' + vhost;
+                    vhosts.push(
+                            '<a href="' + url + '">' + url + '</a>'
+                    );
+                });
+                return vhosts.join("<br>");
+            }
+
+            function build_url_string(svc) {
+                if (svc.hostname && svc.ports.length > 0) {
+                    if (svc.ports.length == 1) {
+                        u = 'http://' + svc.hostname + ':' + svc.ports[0];
+                        return '<a href="' + u + '">' + u + '</a>';
+                    } else {
+                        var url_list = [];
+                        $.each(svc.ports, function (i,p) {
+                            u = 'http://' + svc.hostname + ':' + p;
+                            url_list.push(
+                                    '<a href="' + u + '">' + p + '</a>'
+                            )
+                        });
+                        return 'http://' + svc.hostname + ':[' + url_list.join(",") + ']';
+                    }
+                }
+                return '';
+            }
+
+            function populateTable(services) {
+                var items = [];
+                $.each(services, function (i,svc) {
+                    vhosts = build_vhost_string(svc);
+                    urls = build_url_string(svc);
+                    items.push( '<tr><td>' + svc.name + '</td><td>' + vhosts + '</td><td>' + urls + '</td><td><div class="' + svc.status.toLowerCase() + '">' + svc.status + '</div></td></tr>' );
+                });
+                $('#dataBody').html( items.join("") );
             }
 
             doPoll();

@@ -2,16 +2,13 @@ package controllers
 
 import javax.inject._
 import akka.actor.ActorRef
-import akka.pattern.ask
-import akka.util.Timeout
 import com.galacticfog.gestalt.dcos.marathon.{ShutdownRequest, MarathonSSEClient}
 import play.api._
 import play.api.libs.json.Json
 import play.api.mvc._
-import views.html.{table, index}
-import scala.concurrent.duration._
+import views.html.index
 
-import scala.concurrent.{Future, ExecutionContext}
+import scala.concurrent.ExecutionContext
 
 @Singleton
 class ApplicationController @Inject()(webJarAssets: WebJarAssets,
@@ -25,26 +22,20 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     ))
   }
 
-  def dashboard = Action.async {
-    val fStates = marClient.getAllServices()
-    fStates map {
-      case (globalStatus,_) => Ok(index.render(webJarAssets, globalStatus.launcherStage, globalStatus.error))
-      case _ => InternalServerError("could not query states")
-    }
+  def dashboard = Action {
+    Ok(index.render(webJarAssets))
   }
 
   def data() = Action.async {
-    val fStates = marClient.getAllServices()
-    fStates map {
-      case (_,states) => Ok(table.render(webJarAssets, states))
-      case _ => InternalServerError("could not query states")
+    marClient.getAllServices() map { r =>
+      Ok(Json.toJson(r))
     }
   }
 
-  def shutdown() = Action {
+  def shutdown(shutdownDB: Boolean) = Action {
     Logger.info("received shutdown request")
     schedulerFSM ! ShutdownRequest
-    Accepted(Json.obj("message" -> "shutting down"))
+    Accepted(Json.obj("message" -> "Framework shutting down"))
   }
 
 }

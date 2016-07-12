@@ -23,6 +23,15 @@ import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
 case class ServiceStatus(name: String, vhosts: Iterable[String], hostname: Option[String], ports: Iterable[String], status: String)
 
+case object ServiceStatus {
+  implicit val serviceStatusFmt = Json.format[ServiceStatus]
+}
+
+case class DataResp(launcherStage: String, services: Seq[ServiceStatus], error: Option[String])
+case object DataResp {
+  implicit val dataRespFmt = Json.format[DataResp]
+}
+
 class MarathonSSEClient @Inject() (config: Configuration,
                                    @Named("scheduler-actor") schedulerActor: ActorRef,
                                    gtf: GestaltTaskFactory,
@@ -107,9 +116,9 @@ class MarathonSSEClient @Inject() (config: Configuration,
             val vhosts = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values
 
             val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
-            val ips = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.toIterable).map(_.map(_.toString)) getOrElse Iterable.empty
+            val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.toIterable).map(_.map(_.toString)) getOrElse Iterable.empty
 
-            ServiceStatus(name,vhosts,hostname,ips,status)
+            ServiceStatus(name,vhosts,hostname,ports,status)
           })
         case 404 => Future.successful(ServiceStatus(name,Seq(),None,Iterable.empty,"NOT_STARTED"))
         case not200 =>
@@ -120,14 +129,14 @@ class MarathonSSEClient @Inject() (config: Configuration,
     }
   }
 
-  def getAllServices(): Future[(StatusResponse,Seq[ServiceStatus])] = {
+  def getAllServices(): Future[DataResp] = {
     implicit val timeout: Timeout = STATUS_UPDATE_TIMEOUT
     val fResults = Future.sequence(allServices.map(name => getServiceStatus(name)))
     val fStatus = (schedulerActor ? StatusRequest).map(_.asInstanceOf[StatusResponse])
     for {
       results <- fResults
       status <- fStatus
-    } yield (status,results)
+    } yield DataResp(launcherStage = status.launcherStage, error = status.error, services = results)
   }
 
 }
