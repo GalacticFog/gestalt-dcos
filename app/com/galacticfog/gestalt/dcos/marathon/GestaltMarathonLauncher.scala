@@ -104,7 +104,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
-  val provisionDB = config.getBoolean("database.provisionDatabase") getOrElse true
+  val provisionDB = config.getBoolean("database.provision") getOrElse true
 
   val tld = config.getString("marathon.tld")
 
@@ -187,7 +187,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   when(Uninitialized) {
     case Event(LaunchServicesRequest,d) =>
-      goto(LAUNCH_ORDER.headOption getOrElse AllServicesLaunched)
+      if (provisionDB) {
+        goto(LAUNCH_ORDER.head)
+      } else {
+        goto(nextState(LaunchingDB))
+      }
   }
 
   LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
