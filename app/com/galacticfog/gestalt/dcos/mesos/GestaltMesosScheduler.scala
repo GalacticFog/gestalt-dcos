@@ -33,7 +33,7 @@ class DummyScheduler @Inject() extends Scheduler {
   override def resourceOffers(schedulerDriver: SchedulerDriver, list: util.List[Offer]): Unit = {
     val filter = Filters.newBuilder().setRefuseSeconds(60).build
     list.foreach {o =>
-      logger.debug(s"declining offer ${o.getId}")
+      logger.trace(s"declining offer ${o.getId.getValue}")
       schedulerDriver.declineOffer(o.getId, filter)
     }
   }

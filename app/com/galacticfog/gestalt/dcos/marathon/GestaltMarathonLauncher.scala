@@ -7,7 +7,7 @@ import com.galacticfog.gestalt.dcos.{marathon, GestaltTaskFactory}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, Json}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import play.api.libs.ws.{WSAuthScheme, WSClient}
 import scala.concurrent.Future
@@ -118,15 +118,29 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       tld.map(tld => Json.obj("tld" -> tld)).getOrElse(Json.obj())
     )
   )
-  val databaseConfig = Json.obj(
-    "database" -> Json.obj(
-      "hostname" -> getString("database.hostname", VIP),
-      "port" -> getInt("database.port", 5432),
-      "username" -> getString("database.username", "gestaltdev"),
-      "password" -> getString("database.password", "letmein"),
-      "prefix" -> getString("database.prefix", "gestalt-")
-    )
+
+  def provisionedDB: JsObject = Json.obj(
+    "hostname" -> VIP,
+    "port" -> 5432,
+    "username" -> getString("database.username", "gestaltdev"),
+    "password" -> getString("database.password", "letmein"),
+    "prefix" -> "gestalt-"
   )
+
+  def configuredDB: JsObject = Json.obj(
+    "hostname" -> getString("database.hostname", "data.gestalt.marathon.mesos"),
+    "port" -> getInt("database.port", 5432),
+    "username" -> getString("database.username", "gestaltdev"),
+    "password" -> getString("database.password", "letmein"),
+    "prefix" -> getString("database.prefix", "gestalt-")
+  )
+
+  val databaseConfig = if (provisionDB) Json.obj(
+    "database" -> provisionedDB
+  ) else Json.obj(
+    "database" -> configuredDB
+  )
+
   val globals = marathonConfig ++ databaseConfig
 
   val securityCredentials = Json.obj(

@@ -87,11 +87,14 @@ class MarathonSSEClient @Inject() (config: Configuration,
   }
 
   def killApp(svcName: String): Future[Boolean] = {
-    logger.info(s"shutting down ${svcName}")
+    logger.info(s"asking marathon to shut down ${svcName}")
     wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
       .withQueryString("force" -> "true")
       .delete()
-      .map { _.status == 200 }
+      .map { resp =>
+        logger.info(s"marathon.delete(${svcName}) => ${resp.statusText}")
+        resp.status == 200
+      }
   }
 
   def getServiceStatus(name: String): Future[ServiceStatus] = {
