@@ -86,13 +86,6 @@ class MarathonSSEClient @Inject() (config: Configuration,
     }
   }
 
-  def killApps(): Future[Boolean] = {
-    wsclient.url(s"${marathon}/v2/groups/${appGroup}")
-      .withQueryString("force" -> "true")
-      .delete()
-      .map { _.status == 200 }
-  }
-
   def killApp(svcName: String): Future[Boolean] = {
     logger.info(s"shutting down ${svcName}")
     wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
@@ -100,7 +93,6 @@ class MarathonSSEClient @Inject() (config: Configuration,
       .delete()
       .map { _.status == 200 }
   }
-
 
   def getServiceStatus(name: String): Future[ServiceStatus] = {
     val url = marathonBaseUrl.stripSuffix("/")

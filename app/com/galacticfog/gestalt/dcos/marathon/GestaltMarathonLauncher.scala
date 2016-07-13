@@ -111,12 +111,14 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
 
   // setup a-priori/static globals
-  val globals = Json.obj(
+  val marathonConfig = Json.obj(
     "marathon" -> Json.obj(
       "appGroup" -> appGroup
     ).++(
       tld.map(tld => Json.obj("tld" -> tld)).getOrElse(Json.obj())
-    ),
+    )
+  )
+  val databaseConfig = Json.obj(
     "database" -> Json.obj(
       "hostname" -> getString("database.hostname", VIP),
       "port" -> getInt("database.port", 5432),
@@ -125,6 +127,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       "prefix" -> getString("database.prefix", "gestalt-")
     )
   )
+  val globals = marathonConfig ++ databaseConfig
 
   val securityCredentials = Json.obj(
     "username" -> getString("security.username","gestalt-admin")
