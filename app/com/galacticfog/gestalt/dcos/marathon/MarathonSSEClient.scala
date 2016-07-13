@@ -66,6 +66,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
       }
     }
   }
+
   ServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
@@ -91,6 +92,15 @@ class MarathonSSEClient @Inject() (config: Configuration,
       .delete()
       .map { _.status == 200 }
   }
+
+  def killApp(svcName: String): Future[Boolean] = {
+    logger.info(s"shutting down ${svcName}")
+    wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
+      .withQueryString("force" -> "true")
+      .delete()
+      .map { _.status == 200 }
+  }
+
 
   def getServiceStatus(name: String): Future[ServiceStatus] = {
     val url = marathonBaseUrl.stripSuffix("/")
@@ -139,8 +149,4 @@ class MarathonSSEClient @Inject() (config: Configuration,
     } yield DataResp(launcherStage = status.launcherStage, error = status.error, services = results)
   }
 
-}
-
-object MarathonSSEClient {
-  case object STREAM_CLOSED
 }

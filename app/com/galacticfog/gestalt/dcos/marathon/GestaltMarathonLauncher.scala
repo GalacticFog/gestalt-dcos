@@ -51,7 +51,7 @@ case object ServiceData {
 
 case object StatusRequest
 case object LaunchServicesRequest
-case object ShutdownRequest
+case class ShutdownRequest(shutdownDB: Boolean)
 case object ShutdownAcceptedResponse
 case object RetryRequest
 final case class ErrorEvent(message: String, errorStage: Option[String])
@@ -103,6 +103,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
   val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
+
+  val provisionDB = config.getBoolean("database.provisionDatabase") getOrElse true
 
   val tld = config.getString("marathon.tld")
 
@@ -170,6 +172,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(LaunchServicesRequest,d) =>
       goto(LAUNCH_ORDER.headOption getOrElse AllServicesLaunched)
   }
+
+  LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
 
   // service launch stages
   onTransition {
@@ -347,8 +351,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
   }
 
-  LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
-
   onTransition {
     case _ -> RetrievingAPIKeys => sendMessageToSelf(5.minutes, APIKeyTimeout)
     case _ -> BootstrappingMeta => sendMessageToSelf(5.minutes, MetaBootstrapTimeout)
@@ -415,19 +417,25 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(Error)(FSM.NullFunction)
 
   when(ShuttingDown) {
-    case Event(e, _) if e != StatusRequest =>
-      log.info(s"ignoring event because of shutdown request: ${e.getClass.getName}")
+    case Event(e, _) if e != StatusRequest && !e.isInstanceOf[ShutdownRequest] =>
+      log.info(s"ignoring event because shutting down: ${e.getClass.getName}")
       stay
   }
 
   whenUnhandled {
-    case Event(ShutdownRequest,d) =>
+    case Event(ShutdownRequest(shutdownDB),d) =>
       sender() ! ShutdownAcceptedResponse
-      marClient.killApps.map {
-        case true =>
+      val shutdownApps = LAUNCH_ORDER
+        .flatMap {_.targetService}
+        .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
+        .reverse
+      val fKills = Future.sequence(shutdownApps.map(marClient.killApp))
+      fKills map { allKills =>
+        if (allKills.contains(false)) {
           log.info("shutdown was successful")
-        case false =>
+        } else {
           log.error("shutdown was not successful; manual cleanup may be necessary")
+        }
       }
       goto(ShuttingDown) using ServiceData.empty
     case Event(ErrorEvent(message,errorStage),d) =>

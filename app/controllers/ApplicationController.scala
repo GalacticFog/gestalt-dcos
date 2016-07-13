@@ -33,8 +33,8 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def shutdown(shutdownDB: Boolean) = Action {
-    Logger.info("received shutdown request")
-    schedulerFSM ! ShutdownRequest
+    Logger.info(s"received shutdown request: shutdownDB == ${shutdownDB}")
+    schedulerFSM ! ShutdownRequest(shutdownDB = shutdownDB)
     Accepted(Json.obj("message" -> "Framework shutting down"))
   }
 

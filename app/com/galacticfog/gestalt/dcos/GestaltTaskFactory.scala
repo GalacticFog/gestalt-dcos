@@ -414,7 +414,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   }
 
   private[this] def getUI(globals: JsValue): AppSpec = {
-    val labels = getVhostLabels("demo")
+    val labels = getVhostLabels("ui")
     AppSpec(
       name = "ui",
       env = Map(
@@ -496,7 +496,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       disk = 0,
       requirePorts = true,
       container = MarathonContainerInfo(
-        containerType = "DOCKER",
+        `type` = "DOCKER",
         docker = Some(MarathonDockerContainer(
           image = app.image,
           network = app.network.getValueDescriptor.getName,

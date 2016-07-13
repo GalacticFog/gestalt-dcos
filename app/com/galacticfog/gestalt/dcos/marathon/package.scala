@@ -17,16 +17,7 @@ package object marathon {
   implicit val ipPerTaskInfoFmt = Json.format[IPPerTaskInfo]
   implicit val ipAddressFmt = Json.format[IPAddress]
   implicit val marTaskFmt = Json.format[MarathonTask]
-
-  implicit val marContainerInfoReads: Reads[MarathonContainerInfo] = (
-    (__ \ "type").read[String] and
-      (__ \ "docker").readNullable[MarathonDockerContainer]
-  )(MarathonContainerInfo.apply _)
-  implicit val marContainerInfoWrites: Writes[MarathonContainerInfo] = (
-    (__ \ "type").write[String] and
-      (__ \ "docker").writeNullable[MarathonDockerContainer]
-  )(unlift(MarathonContainerInfo.unapply))
-
+  implicit val marContainerInfoFmt = Json.format[MarathonContainerInfo]
   implicit val marAppPayloadFmt = Json.format[MarathonAppPayload]
 
 }

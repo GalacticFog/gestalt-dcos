@@ -12,7 +12,7 @@
 @main(webJarAssets, "Gestalt Framework") {
     <div class="row">
         <div class="col-md-8 col-md-offset-2" id="launcher-stage">
-            <h3>gestalt-framework:</h3>
+            <h3>gestalt-framework is initializing</h3>
         </div>
     </div>
 
@@ -70,8 +70,8 @@
             }
 
             $('#shutdownSvcsAndDB').on('click', function () {
-                console.log('shutting down');
-                disableShutdownButtons(true);
+                console.log('shutting down all services');
+                // disableShutdownButtons(true);
                 $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=true", function(data) {
                     console.log('shutdown response: ' + data.message);
@@ -79,8 +79,8 @@
                 });
             });
             $('#shutdownSvcsOnly').on('click', function () {
-                console.log('shutting down');
-                disableShutdownButtons(true);
+                console.log('shutting down all services except DB');
+                // disableShutdownButtons(true);
                 $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=false", function(data) {
                     console.log('shutdown response: ' + data.message);
@@ -90,18 +90,18 @@
 
             function doPoll(){
                 $.getJSON("data", function(data) {
-                    setTimeout(doPoll,5000);
+                    setTimeout(doPoll,10000);
                     if (data.error) {
                         $('#launcher-error').html(data.error).show();
                     } else {
                         $('#launcher-error').html("").show();
                     }
-                    $('#launcher-stage').html("<h3>gestalt-framework: " + data.launcherStage + "</h3>");
+                    $('#launcher-stage').html("<h3>gestalt-framework is " + data.launcherStage + "</h3>");
                     populateTable(data.services);
                     if (data.launcherStage === "ShuttingDown") {
-                        disableShutdownButtons(true);
+                        // disableShutdownButtons(true);
                     } else {
-                        disableShutdownButtons(false);
+                        // disableShutdownButtons(false);
                     }
                 });
             }

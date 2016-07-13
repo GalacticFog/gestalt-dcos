@@ -1,7 +1,5 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import org.joda.time.DateTime
-
 case class KeyValuePair(key: String, value: String)
 
 case class PortDefinition(port: Int,
@@ -9,7 +7,7 @@ case class PortDefinition(port: Int,
                           protocol: String,
                           labels: Option[Map[String,String]])
 
-case class MarathonContainerInfo(containerType: String,
+case class MarathonContainerInfo(`type`: String,
                                  docker: Option[MarathonDockerContainer])
 
 case class DockerPortMapping(containerPort: Int,
