@@ -39,7 +39,7 @@ class DummyScheduler @Inject() extends Scheduler {
   }
 
   override def registered(schedulerDriver: SchedulerDriver, frameworkId: FrameworkID, masterInfo: MasterInfo): Unit = {
-    logger.info(s"DummyScheduler registered as framework ${frameworkId} with Mesos master: ${masterInfo.getId} @ ${masterInfo.getAddress}:${masterInfo.getPort}")
+    logger.info(s"DummyScheduler registered as framework ${frameworkId.getValue} with Mesos master: ${masterInfo.getId} @ ${masterInfo.getAddress.getIp}:${masterInfo.getPort}")
   }
 
   override def executorLost(schedulerDriver: SchedulerDriver, executorID: ExecutorID, slaveID: SlaveID, i: Int): Unit = {}

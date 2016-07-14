@@ -16,7 +16,17 @@ case class MarathonStatusUpdateEvent(slaveId: String,
                                      version: String,
                                      timestamp: String)
 
+case class MarathonDeploymentSuccess(eventType: String,
+                                     timestamp: String,
+                                     id: String)
+
+case class MarathonDeploymentFailure(eventType: String,
+                                     timestamp: String,
+                                     id: String)
+
 object JSONImports {
   implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
+  implicit val deploymentSuccess = Json.reads[MarathonDeploymentSuccess]
+  implicit val deploymentFailure = Json.reads[MarathonDeploymentFailure]
 }
 

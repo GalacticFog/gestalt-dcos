@@ -2,7 +2,7 @@ package controllers
 
 import javax.inject._
 import akka.actor.ActorRef
-import com.galacticfog.gestalt.dcos.marathon.{ShutdownRequest, MarathonSSEClient}
+import com.galacticfog.gestalt.dcos.marathon.{LaunchServicesRequest, ShutdownRequest, MarathonSSEClient}
 import play.api._
 import play.api.libs.json.Json
 import play.api.mvc._
@@ -36,6 +36,12 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     Logger.info(s"received shutdown request: shutdownDB == ${shutdownDB}")
     schedulerFSM ! ShutdownRequest(shutdownDB = shutdownDB)
     Accepted(Json.obj("message" -> "Framework shutting down"))
+  }
+
+  def restart() = Action {
+    Logger.info(s"received restart request")
+    schedulerFSM ! LaunchServicesRequest
+    Accepted(Json.obj("message" -> "Starting framework services"))
   }
 
 }

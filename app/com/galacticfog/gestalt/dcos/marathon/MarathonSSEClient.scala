@@ -54,16 +54,34 @@ class MarathonSSEClient @Inject() (config: Configuration,
   val marathon = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
   logger.info(s"connecting to marathon event bus: ${marathon}")
 
-  val handler = Sink.foreach[ServerSentEvent]{ event =>
+  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[Any] = {
+    Try{Json.parse(event.data)} match {
+      case Failure(e) =>
+        logger.warn(s"error parsing event data as JSON:\n${event.data}", e)
+        None
+      case Success(js) =>
+        js.validate[T] match {
+          case JsError(_) =>
+            logger.warn(s"error unmarshalling ${event.eventType} JSON")
+            None
+          case JsSuccess(obj, _) => Some(obj)
+        }
+    }
+  }
+
+  val handler = Sink.foreach[ServerSentEvent] { event =>
     logger.info(s"marathon event: ${event.eventType}")
-    if (event.eventType.exists(_ == "status_update_event")) Try{Json.parse(event.data)} match {
-      case Failure(e) => logger.warn(s"error parsing status_update_event data:\n${event.data}", e)
-      case Success(js) => js.validate[MarathonStatusUpdateEvent] match {
-        case JsError(e) => logger.warn(s"error unmarshalling status_update_event JSON to MarathonStatusUpdateEvent:\n${e.toString}")
-        case JsSuccess(statusUpdateEvent, _) =>
-          logger.info("sending MarathonStatusUpdateEvent to scheduler-actor")
-          schedulerActor ! statusUpdateEvent
-      }
+    val mesg = event.eventType match {
+      case Some("status_update_event") => parseEvent[MarathonStatusUpdateEvent](event)
+      case Some("deployment_success") => parseEvent[MarathonDeploymentSuccess](event)
+      case Some("deployment_failure") => parseEvent[MarathonDeploymentFailure](event)
+      case e =>
+        logger.info(s"ignoring marathon event: ${e}")
+        None
+    }
+    mesg foreach { m =>
+      logger.info(s"sending ${event.eventType} to scheduler-actor")
+      schedulerActor ! m
     }
   }
 
@@ -71,9 +89,11 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
-    wsclient.url(s"${marathon}/v2/apps/${appId}").put(
-      Json.toJson(appPayload)
-    ).flatMap { resp =>
+    wsclient.url(s"${marathon}/v2/apps/${appId}")
+      .withQueryString("force" -> "true")
+      .put(
+        Json.toJson(appPayload)
+      ).flatMap { resp =>
       resp.status match {
         case 201 => Future.successful(resp.json)
         case 200 => Future.successful(resp.json)

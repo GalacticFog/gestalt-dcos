@@ -199,6 +199,18 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
   }
 
+  when(ShuttingDown) {
+    case Event(LaunchServicesRequest,d) =>
+      if (provisionDB) {
+        goto(LAUNCH_ORDER.head)
+      } else {
+        goto(nextState(LaunchingDB))
+      }
+    case Event(e, _) if e != StatusRequest && !e.isInstanceOf[ShutdownRequest] =>
+      log.info(s"ignoring event because shutting down: ${e.getClass.getName}")
+      stay
+  }
+
   LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
 
   // service launch stages
@@ -443,13 +455,10 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(AllServicesLaunched)(FSM.NullFunction)
   when(Error)(FSM.NullFunction)
 
-  when(ShuttingDown) {
-    case Event(e, _) if e != StatusRequest && !e.isInstanceOf[ShutdownRequest] =>
-      log.info(s"ignoring event because shutting down: ${e.getClass.getName}")
-      stay
-  }
-
   whenUnhandled {
+    case Event(LaunchServicesRequest,d) =>
+      log.info("ignoring LauncherServicesRequest in stage " + stateName)
+      stay()
     case Event(ShutdownRequest(shutdownDB),d) =>
       sender() ! ShutdownAcceptedResponse
       val deleteApps = LAUNCH_ORDER

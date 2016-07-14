@@ -38,7 +38,8 @@
     </div>
     <div class="row">
         <div class="col-md-8 col-md-offset-2">
-            <button id="shutdownButton" type="button" class="btn btn-danger" data-toggle="modal" data-target="#shutdownModal">Shutdown services</button>
+            <button id="shutdownButton" type="button" class="btn btn-danger"  data-toggle="modal" data-target="#shutdownModal">Shutdown services</button>
+            <button id="restartButton"  type="button" class="btn btn-primary">Restart services</button>
         </div>
     </div>
 
@@ -68,6 +69,15 @@
                 $('#shutdownSvcsAndDB').prop('disabled', state);
                 $('#shutdownSvcsOnly').prop('disabled', state);
             }
+
+            $('#restartButton').on('click', function() {
+                this.blur();
+                console.log('restarting all services');
+                $.post( "restart", function(data) {
+                    console.log('restart response: ' + data.message);
+                    doPoll();
+                });
+            });
 
             $('#shutdownSvcsAndDB').on('click', function () {
                 console.log('shutting down all services');
