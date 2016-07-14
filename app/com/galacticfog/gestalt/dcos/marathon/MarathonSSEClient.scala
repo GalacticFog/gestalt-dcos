@@ -5,15 +5,16 @@ import javax.inject.{Named, Inject}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Sink
-import akka.util.Timeout
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import de.heikoseeberger.akkasse.ServerSentEvent
 import de.heikoseeberger.akkasse.pattern.ServerSentEventClient
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
-import play.api.libs.json.{JsValue, JsSuccess, JsError, Json}
 import play.api.libs.ws.WSClient
 import play.api.{Logger => logger}
+import play.api.libs.json._
+import play.api.libs.json.Reads._
+import play.api.libs.functional.syntax._
 
 import akka.pattern.ask
 import scala.concurrent.Future
@@ -21,15 +22,26 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 
-case class ServiceStatus(name: String, vhosts: Iterable[String], hostname: Option[String], ports: Iterable[String], status: String)
-
-case object ServiceStatus {
-  implicit val serviceStatusFmt = Json.format[ServiceStatus]
+sealed trait ServiceStatus
+final case object LAUNCHING extends ServiceStatus
+final case object STAGING   extends ServiceStatus
+final case object WAITING   extends ServiceStatus
+final case object STOPPED   extends ServiceStatus
+final case object UNHEALTHY extends ServiceStatus
+final case object HEALTHY   extends ServiceStatus
+final case object RUNNING   extends ServiceStatus
+final case object NOT_LAUNCHED extends ServiceStatus {
+  override def toString: String = ""
 }
+final case object NOT_FOUND extends ServiceStatus
 
-case class DataResp(launcherStage: String, services: Seq[ServiceStatus], error: Option[String])
-case object DataResp {
-  implicit val dataRespFmt = Json.format[DataResp]
+case class ServiceInfo(serviceName: String, vhosts: Seq[String], hostname: Option[String], ports: Seq[String], status: ServiceStatus)
+
+case object ServiceInfo {
+  implicit val statusFmt = new Writes[ServiceStatus] {
+    override def writes(o: ServiceStatus): JsValue = JsString(o.toString)
+  }
+  implicit val serviceInfoWrites = Json.writes[ServiceInfo]
 }
 
 class MarathonSSEClient @Inject() (config: Configuration,
@@ -37,6 +49,8 @@ class MarathonSSEClient @Inject() (config: Configuration,
                                    gtf: GestaltTaskFactory,
                                    wsclient: WSClient)
                                   (implicit system: ActorSystem) {
+
+  import MarathonSSEClient._
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
@@ -72,6 +86,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
   val handler = Sink.foreach[ServerSentEvent] { event =>
     logger.info(s"marathon event: ${event.eventType}")
     val mesg = event.eventType match {
+      case Some("health_status_changed_event") => parseEvent[MarathonHealthStatusChange](event)
       case Some("status_update_event") => parseEvent[MarathonStatusUpdateEvent](event)
       case Some("deployment_success") => parseEvent[MarathonDeploymentSuccess](event)
       case Some("deployment_failure") => parseEvent[MarathonDeploymentFailure](event)
@@ -128,7 +143,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
       }
   }
 
-  def getServiceStatus(name: String): Future[ServiceStatus] = {
+  def getServiceStatus(name: String): Future[ServiceInfo] = {
     val url = marathonBaseUrl.stripSuffix("/")
     wsclient.url(s"${url}/v2/apps/${appGroup}/${name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
@@ -142,37 +157,31 @@ class MarathonSSEClient @Inject() (config: Configuration,
             val sickly  = app.tasksUnhealthy.get
             val target  = app.instances
 
-            val status = if (staged != 0) "STAGING"
-            else if (target != running) "WAITING"
-            else if (target == 0) "STOPPED"
-            else if (sickly > 0) "UNHEALTHY"
-            else if (target == healthy) "HEALTHY"
-            else "RUNNING"
+            val status = if (staged != 0) STAGING
+            else if (target != running) WAITING
+            else if (target == 0) STOPPED
+            else if (sickly > 0) UNHEALTHY
+            else if (target == healthy) HEALTHY
+            else RUNNING
 
-            val vhosts = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values
+            val vhosts = getVHosts(app)
 
             val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
-            val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.toIterable).map(_.map(_.toString)) getOrElse Iterable.empty
+            val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.map(_.toString)) getOrElse Seq.empty
 
-            ServiceStatus(name,vhosts,hostname,ports,status)
+            ServiceInfo(name,vhosts,hostname,ports,status)
           })
-        case 404 => Future.successful(ServiceStatus(name,Seq(),None,Iterable.empty,"NOT_STARTED"))
+        case 404 => Future.successful(ServiceInfo(name,Seq(),None,Seq.empty,NOT_FOUND))
         case not200 =>
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => ServiceStatus(name, Seq(),None,Iterable.empty, s"error during fetch: ${e.getMessage}")
+      case e: Throwable => ServiceInfo(name, Seq(),None,Seq.empty, NOT_FOUND)
     }
   }
 
-  def getAllServices(): Future[DataResp] = {
-    implicit val timeout: Timeout = STATUS_UPDATE_TIMEOUT
-    val fResults = Future.sequence(allServices.map(name => getServiceStatus(name)))
-    val fStatus = (schedulerActor ? StatusRequest).map(_.asInstanceOf[StatusResponse])
-    for {
-      results <- fResults
-      status <- fStatus
-    } yield DataResp(launcherStage = status.launcherStage, error = status.error, services = results)
-  }
+}
 
+object MarathonSSEClient {
+  def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq
 }

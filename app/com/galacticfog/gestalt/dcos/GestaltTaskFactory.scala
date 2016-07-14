@@ -54,6 +54,8 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   val TLD = config.getString("marathon.tld")
 
+  val provisionDB = config.getBoolean("database.provision") getOrElse true
+
   def getVhostLabels(svcname: String): Map[String,String] = {
     TLD match {
       case Some(tld) => Map(
@@ -67,7 +69,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   def dest(svc: String) = s"${VIP}:${ports(svc)}"
 
   val ports = Map(
-    "db"           ->   "5432",
+    "data"         ->   "5432",
     "rabbit"       ->   "5672",
     "rabbit-http" ->   "15672",
     "kong-gateway" ->   "8000",
@@ -83,7 +85,10 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   import GestaltTaskFactory._
 
-  def allServices = GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
+  def allServices = {
+    if (provisionDB) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
+    else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
+  }
 
   def getAppSpec(name: String, globals: JsValue): AppSpec = {
     name match {
@@ -118,7 +123,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> dest("db"))))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> dest("data"))))),
       cpus = 0.50,
       mem = 256,
       healthChecks = Seq(HealthCheck(

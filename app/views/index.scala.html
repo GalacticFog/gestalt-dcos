@@ -2,7 +2,7 @@
  * This template takes a single argument, a String containing a
  * message to display.
  *@
-@(webJarAssets: WebJarAssets)
+@(webJarAssets: WebJarAssets, hasDB: Boolean)
 
 @*
  * Call the `main` template with two arguments. The first
@@ -17,7 +17,7 @@
     </div>
 
     <div class="row">
-        <div id="launcher-error" class="alert alert-danger col-md-6 col-md-offset-3 hidden"/>
+        <div id="launcher-error" class="alert alert-danger col-md-6 col-md-offset-3"/>
     </div>
 
     <div class="row">
@@ -56,7 +56,7 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
                     <button type="button" id="shutdownSvcsOnly"  class="btn btn-warning">Kill services only</button>
-                    <button type="button" id="shutdownSvcsAndDB" class="btn btn-danger">Kill services and database</button>
+                    <button type="button" id="shutdownSvcsAndDB" class="btn btn-danger" @if(hasDB==false){disabled}>Kill services and database</button>
                 </div>
             </div>
         </div>
@@ -100,11 +100,11 @@
 
             function doPoll(){
                 $.getJSON("data", function(data) {
-                    setTimeout(doPoll,10000);
+                    setTimeout(doPoll,3000);
                     if (data.error) {
                         $('#launcher-error').html(data.error).show();
                     } else {
-                        $('#launcher-error').html("").show();
+                        $('#launcher-error').html("").hide();
                     }
                     $('#launcher-stage').html("<h3>gestalt-framework is " + data.launcherStage + "</h3>");
                     populateTable(data.services);
@@ -152,7 +152,7 @@
                 $.each(services, function (i,svc) {
                     vhosts = build_vhost_string(svc);
                     urls = build_url_string(svc);
-                    items.push( '<tr><td>' + svc.name + '</td><td>' + vhosts + '</td><td>' + urls + '</td><td><div class="' + svc.status.toLowerCase() + '">' + svc.status + '</div></td></tr>' );
+                    items.push( '<tr><td>' + svc.serviceName + '</td><td>' + vhosts + '</td><td>' + urls + '</td><td><div class="' + svc.status.toLowerCase() + '">' + svc.status + '</div></td></tr>' );
                 });
                 $('#dataBody').html( items.join("") );
             }

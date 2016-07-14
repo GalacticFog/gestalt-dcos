@@ -21,27 +21,27 @@ sealed trait LauncherState {
 }
 // in order...
 
-case object Uninitialized       extends LauncherState
-case object LaunchingDB         extends LauncherState {override def targetService = Some("data")}
-case object LaunchingRabbit     extends LauncherState {override def targetService = Some("rabbit")}
-case object LaunchingSecurity   extends LauncherState {override def targetService = Some("security")}
-case object RetrievingAPIKeys   extends LauncherState
-case object LaunchingKong       extends LauncherState {override def targetService = Some("kong")}
-case object LaunchingApiGateway extends LauncherState {override def targetService = Some("api-gateway")}
-case object LaunchingLambda     extends LauncherState {override def targetService = Some("lambda")}
-case object LaunchingMeta       extends LauncherState {override def targetService = Some("meta")}
-case object BootstrappingMeta   extends LauncherState
-case object SyncingMeta         extends LauncherState
-case object ProvisioningMetaProviders  extends LauncherState
-case object LaunchingApiProxy   extends LauncherState {override def targetService = Some("api-proxy")}
-case object LaunchingUI         extends LauncherState {override def targetService = Some("ui")}
-case object LaunchingPolicy     extends LauncherState {override def targetService = Some("policy")}
-case object AllServicesLaunched extends LauncherState
+case object Uninitialized             extends LauncherState
+case object LaunchingDB               extends LauncherState {override def targetService = Some("data")}
+case object LaunchingRabbit           extends LauncherState {override def targetService = Some("rabbit")}
+case object LaunchingSecurity         extends LauncherState {override def targetService = Some("security")}
+case object RetrievingAPIKeys         extends LauncherState
+case object LaunchingKong             extends LauncherState {override def targetService = Some("kong")}
+case object LaunchingApiGateway       extends LauncherState {override def targetService = Some("api-gateway")}
+case object LaunchingLambda           extends LauncherState {override def targetService = Some("lambda")}
+case object LaunchingMeta             extends LauncherState {override def targetService = Some("meta")}
+case object BootstrappingMeta         extends LauncherState
+case object SyncingMeta               extends LauncherState
+case object ProvisioningMetaProviders extends LauncherState
+case object LaunchingApiProxy         extends LauncherState {override def targetService = Some("api-proxy")}
+case object LaunchingUI               extends LauncherState {override def targetService = Some("ui")}
+case object LaunchingPolicy           extends LauncherState {override def targetService = Some("policy")}
+case object AllServicesLaunched       extends LauncherState
 // failure
-case object ShuttingDown        extends LauncherState
-case object Error               extends LauncherState
+case object ShuttingDown              extends LauncherState
+case object Error                     extends LauncherState
 
-final case class ServiceData(urls: Map[String,Seq[String]],
+final case class ServiceData(statuses: Map[String,ServiceInfo],
                              adminKey: Option[GestaltAPIKey],
                              error: Option[String],
                              errorStage: Option[String])
@@ -55,7 +55,9 @@ case class ShutdownRequest(shutdownDB: Boolean)
 case object ShutdownAcceptedResponse
 case object RetryRequest
 final case class ErrorEvent(message: String, errorStage: Option[String])
-final case class SecurityInitializationComplete(key: GestaltAPIKey)
+final case class SecurityInitializationComplete(key: Option[GestaltAPIKey])
+final case class UpdateServiceInfo(info: ServiceInfo)
+final case class ServiceDeployed(serviceName: String)
 case object APIKeyTimeout
 case object MetaBootstrapFinished
 case object MetaBootstrapTimeout
@@ -64,7 +66,11 @@ case object MetaSyncTimeout
 case object MetaProvidersProvisioned
 case object MetaProviderTimeout
 
-final case class StatusResponse(launcherStage: String, error: Option[String])
+final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo])
+
+case object StatusResponse {
+  implicit val statusResponseWrites = Json.writes[StatusResponse]
+}
 
 object GestaltMarathonLauncher {
   val LAUNCH_ORDER: Seq[LauncherState] = Seq(
@@ -91,7 +97,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   def getInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
 
   def getUrl(state: LauncherState): Seq[String] = {
-    state.targetService flatMap nextStateData.urls.get getOrElse Seq.empty
+    state.targetService
+      .flatMap(nextStateData.statuses.get)
+      .filter(_.hostname.isDefined)
+      .map({case ServiceInfo(_,_,hostname,ports,_) => ports.map(p => hostname.get + ":" + p.toString)})
+      .getOrElse(Seq.empty)
   }
 
   def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
@@ -103,8 +113,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
   val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
-
-  val provisionDB = config.getBoolean("database.provision") getOrElse true
 
   val tld = config.getString("marathon.tld")
 
@@ -135,7 +143,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     "prefix" -> getString("database.prefix", "gestalt-")
   )
 
-  val databaseConfig = if (provisionDB) Json.obj(
+  val databaseConfig = if (gtf.provisionDB) Json.obj(
     "database" -> provisionedDB
   ) else Json.obj(
     "database" -> configuredDB
@@ -147,7 +155,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     "username" -> getString("security.username","gestalt-admin")
   ) ++ config.getString("security.password").map(p => Json.obj("password" -> p)).getOrElse(Json.obj())
 
-  private def launchApp(name: String, apiKey: Option[GestaltAPIKey] = None): Unit = {
+  private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None): Unit = {
     val currentState = nextStateData.toString
     val allConfig = apiKey.map(apiKey => Json.obj(
       "security" -> Json.obj(
@@ -155,15 +163,17 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         "apiSecret" -> apiKey.apiSecret.get
       )
     )).fold(globals)(sec => sec ++ globals)
-    val payload = gtf.getMarathonPayload(name, allConfig)
-    log.debug("'{}' launch payload:\n{}", name, Json.prettyPrint(Json.toJson(payload)))
+    val payload = gtf.getMarathonPayload(serviceName, allConfig)
+    log.debug("'{}' launch payload:\n{}", serviceName, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
-      r => log.debug("'{}' launch response: {}", name, r.toString)
+      r =>
+        log.debug("'{}' launch response: {}", serviceName, r.toString)
+        sendMessageToSelf(0.seconds, ServiceDeployed(serviceName))
     }
     // launch failed, so we'll never get a task update
     fLaunch.onFailure {
       case e: Throwable =>
-        log.warning("error launching {}: {}",name,e.getMessage)
+        log.warning("error launching {}: {}",serviceName,e.getMessage)
         sendMessageToSelf(0.seconds, ErrorEvent(e.getMessage,errorStage = Some(currentState)))
     }
   }
@@ -179,20 +189,23 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   private def standardWhen(state: LauncherState) = when(state) {
-    case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/${state.targetService.get}" =>
-      val srvName = state.targetService.get
-      log.info(s"${srvName} running")
+    case Event(e @  UpdateServiceInfo(status), d) if status.serviceName == state.targetService.get =>
+      val svcName = state.targetService.get
+      log.info(s"while launching, ${svcName} updated to ${status.status}")
       val newData = d.copy(
-        urls = d.urls + (srvName -> ports.map(p => s"${host}:${p}"))
+        statuses = d.statuses + (svcName -> status)
       )
-      goto(nextState(state)) using newData
+      if (status.status == RUNNING || status.status == HEALTHY)
+        goto(nextState(state)) using newData
+      else
+        stay() using newData
   }
 
   startWith(Uninitialized, ServiceData.empty)
 
   when(Uninitialized) {
     case Event(LaunchServicesRequest,d) =>
-      if (provisionDB) {
+      if (gtf.provisionDB) {
         goto(LAUNCH_ORDER.head)
       } else {
         goto(nextState(LaunchingDB))
@@ -201,14 +214,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   when(ShuttingDown) {
     case Event(LaunchServicesRequest,d) =>
-      if (provisionDB) {
+      if (gtf.provisionDB) {
         goto(LAUNCH_ORDER.head)
       } else {
         goto(nextState(LaunchingDB))
       }
-    case Event(e, _) if e != StatusRequest && !e.isInstanceOf[ShutdownRequest] =>
-      log.info(s"ignoring event because shutting down: ${e.getClass.getName}")
-      stay
   }
 
   LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
@@ -232,11 +242,14 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               case 200 =>
                 Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
                   case Success(key) =>
-                    Future.successful(SecurityInitializationComplete(key))
+                    Future.successful(SecurityInitializationComplete(Some(key)))
                   case Failure(e) =>
                     Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
                 }
-              case not200 =>
+              case 400 =>
+                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
+                Future.successful(SecurityInitializationComplete(None))
+              case _ =>
                 val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
                 Future.failed(new RuntimeException(mesg))
             }
@@ -403,7 +416,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(SecurityInitializationComplete(apiKey), d) =>
       log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(nextState(stateName)) using d.copy(
-        adminKey = Some(apiKey)
+        adminKey = apiKey
       )
     case Event(APIKeyTimeout, d) =>
       val mesg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"
@@ -455,7 +468,47 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(AllServicesLaunched)(FSM.NullFunction)
   when(Error)(FSM.NullFunction)
 
+  val appIdWithGroup = s"/${appGroup}/(.*)".r
+
+  def requestUpdateAndStay(svcName: String) = {
+    marClient.getServiceStatus(svcName).onComplete {
+      case Success(status) =>
+        self ! UpdateServiceInfo(status)
+      case Failure(ex) =>
+        log.warning("error retrieving app status from Marathon: {}",ex.getMessage)
+    }
+    stay()
+  }
+
   whenUnhandled {
+    case Event(UpdateServiceInfo(status), d) =>
+      stay() using d.copy(
+        statuses = d.statuses + (status.serviceName -> status)
+      )
+    case Event(ServiceDeployed(serviceName), d) =>
+      requestUpdateAndStay(serviceName) using d.copy(
+        statuses = d.statuses + (serviceName -> ServiceInfo(
+          serviceName = serviceName,
+          vhosts = Seq.empty,
+          hostname = None,
+          ports = Seq.empty,
+          status = LAUNCHING
+        ))
+      )
+    case Event(e @ MarathonDeploymentFailure(_, _, appIdWithGroup(svcName)), d) =>
+      goto(Error) using d.copy(
+        error = Some(s"Deployment failed for service ${svcName}"),
+        errorStage = Some(stateName.toString)
+      )
+    case Event(e @ MarathonHealthStatusChange(_, _, appIdWithGroup(svcName), taskId, _, alive), d) =>
+      log.info(s"received MarathonHealthStatusChange(${taskId}.alive == ${alive}) for task belonging to ${svcName}")
+      requestUpdateAndStay(svcName)
+    case Event(e @ MarathonDeploymentSuccess(_, _, appIdWithGroup(svcName)) , d) =>
+      log.info(s"received MarathonDeploymentSuccess for task belonging to ${svcName}")
+      requestUpdateAndStay(svcName)
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, appIdWithGroup(svcName), _, _, _, _, _, _) , d) =>
+      log.info(s"received StatusUpdateEvent(${taskStatus}) for task belonging to ${svcName}")
+      requestUpdateAndStay(svcName)
     case Event(LaunchServicesRequest,d) =>
       log.info("ignoring LauncherServicesRequest in stage " + stateName)
       stay()
@@ -473,17 +526,31 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           log.error("shutdown was not successful; manual cleanup may be necessary")
         }
       }
-      goto(ShuttingDown) using ServiceData.empty
+      goto(ShuttingDown)
     case Event(ErrorEvent(message,errorStage),d) =>
       goto(Error) using d.copy(
         error = Some(message),
         errorStage = errorStage
       )
     case Event(StatusRequest,d) =>
-      stay replying StatusResponse(launcherStage = stateName match {
+      val stage = stateName match {
         case Error => d.errorStage.map(s => s"Error during ${s}").getOrElse("Error")
         case _ => stateName.toString
-      }, error = d.error)
+      }
+      val services = gtf.allServices.map(svcName =>
+        d.statuses.get(svcName) getOrElse ServiceInfo(
+          serviceName = svcName,
+          vhosts = Seq.empty,
+          hostname = None,
+          ports = Seq.empty,
+          status = NOT_LAUNCHED
+        )
+      )
+      stay replying StatusResponse(
+        launcherStage = stage,
+        error = d.error,
+        services = services
+      )
     case Event(APIKeyTimeout,d) =>
       stay
     case Event(MetaBootstrapTimeout,d) =>

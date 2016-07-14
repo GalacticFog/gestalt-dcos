@@ -6,10 +6,27 @@
     color: limegreen;
 }
 
-.not_started {
+.not_launched {
     color: gray;
+}
+
+.not_found {
+    color: gray;
+}
+
+.stopped {
+    color: black;
+}
+
+.waiting {
+    color: cornflowerblue;
+}
+
+.staging {
+    color: lightskyblue;
 }
 
 .unhealthy {
     color: red;
 }
+

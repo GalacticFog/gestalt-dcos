@@ -24,9 +24,17 @@ case class MarathonDeploymentFailure(eventType: String,
                                      timestamp: String,
                                      id: String)
 
+case class MarathonHealthStatusChange(eventType: String,
+                                      timestamp: String,
+                                      appId: String,
+                                      taskId: String,
+                                      version: String,
+                                      alive: Boolean)
+
 object JSONImports {
   implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
   implicit val deploymentSuccess = Json.reads[MarathonDeploymentSuccess]
   implicit val deploymentFailure = Json.reads[MarathonDeploymentFailure]
+  implicit val healthStatusChanged = Json.reads[MarathonHealthStatusChange]
 }
 
