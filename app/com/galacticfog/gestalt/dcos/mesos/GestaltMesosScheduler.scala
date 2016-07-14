@@ -64,8 +64,10 @@ class GestaltSchedulerDriver @Inject() (config: Configuration,
   val schedulerHostname = config.getString("hostname") getOrElse java.net.InetAddress.getLocalHost.getHostName
   logger.info(s"scheduler running @ ${schedulerHostname}")
 
+  val schedulerName = config.getString("scheduler.name") getOrElse "gestalt-framework-scheduler"
+
   val frameworkInfoBuilder = FrameworkInfo.newBuilder()
-    .setName("gestalt")
+    .setName(schedulerName)
     .setFailoverTimeout(60 /* seconds */)
     .setUser("root")
     .setRole("*")

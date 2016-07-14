@@ -2,12 +2,19 @@ package com.galacticfog.gestalt.dcos.marathon
 
 case class KeyValuePair(key: String, value: String)
 
+case class VolumePersistence(size: Int)
+
+case class Volume(containerPath: String,
+                  mode: String,
+                  persistent: VolumePersistence)
+
 case class PortDefinition(port: Int,
                           name: Option[String],
                           protocol: String,
                           labels: Option[Map[String,String]])
 
 case class MarathonContainerInfo(`type`: String,
+                                 volumes: Option[Seq[Volume]],
                                  docker: Option[MarathonDockerContainer])
 
 case class DockerPortMapping(containerPort: Int,

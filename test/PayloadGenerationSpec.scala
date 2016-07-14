@@ -16,7 +16,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure("service.vip" -> "10.11.12.13")
+        .configure("service.vip" -> "10.11.12.13", "marathon.tld" -> "galacticfog.com")
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
@@ -24,8 +24,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """{
           |  "marathon": {
           |     "appGroup": "gestalt",
-          |     "url": "http://marathon.mesos:8080",
-          |     "tld": "galacticfog.com"
+          |     "url": "http://marathon.mesos:8080"
           |  },
           |  "database": {
           |     "hostname": "test-db.marathon.mesos",
@@ -62,12 +61,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         disk = 0,
         requirePorts = true,
         container = MarathonContainerInfo(
-          containerType = "DOCKER",
+          `type` = "DOCKER",
+          volumes = None,
           docker = Some(MarathonDockerContainer(
             image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
             network = "BRIDGE",
             privileged = false,
-            parameters = Seq(),
+            parameters = Seq.empty,
             forcePullImage = true,
             portMappings = Some(Seq(DockerPortMapping(
               containerPort = 9000,

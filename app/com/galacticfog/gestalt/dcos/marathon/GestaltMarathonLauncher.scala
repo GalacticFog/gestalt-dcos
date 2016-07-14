@@ -173,6 +173,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     if (LAUNCH_ORDER.isDefinedAt(cur+1)) LAUNCH_ORDER(cur+1) else Error
   }
 
+  private def prevState(state: LauncherState): LauncherState = {
+    val cur = LAUNCH_ORDER.indexOf(state)
+    if (LAUNCH_ORDER.isDefinedAt(cur-1)) LAUNCH_ORDER(cur-1) else Error
+  }
+
   private def standardWhen(state: LauncherState) = when(state) {
     case Event(e @ MarathonStatusUpdateEvent(_, _, "TASK_RUNNING", _, appId, host, ports, _, _, _, _) , d) if appId == s"/${appGroup}/${state.targetService.get}" =>
       val srvName = state.targetService.get
@@ -372,11 +377,12 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
   }
 
+  // only setup these timeouts on the first transition
   onTransition {
-    case _ -> RetrievingAPIKeys => sendMessageToSelf(5.minutes, APIKeyTimeout)
-    case _ -> BootstrappingMeta => sendMessageToSelf(5.minutes, MetaBootstrapTimeout)
-    case _ -> SyncingMeta       => sendMessageToSelf(5.minutes, MetaSyncTimeout)
-    case _ -> ProvisioningMetaProviders => sendMessageToSelf(5.minutes, MetaProviderTimeout)
+    case prev -> RetrievingAPIKeys         if prev != RetrievingAPIKeys         => sendMessageToSelf(5.minutes, APIKeyTimeout)
+    case prev -> BootstrappingMeta         if prev != BootstrappingMeta         => sendMessageToSelf(5.minutes, MetaBootstrapTimeout)
+    case prev -> SyncingMeta               if prev != SyncingMeta               => sendMessageToSelf(5.minutes, MetaSyncTimeout)
+    case prev -> ProvisioningMetaProviders if prev != ProvisioningMetaProviders => sendMessageToSelf(5.minutes, MetaProviderTimeout)
   }
 
   when(RetrievingAPIKeys) {
@@ -446,11 +452,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   whenUnhandled {
     case Event(ShutdownRequest(shutdownDB),d) =>
       sender() ! ShutdownAcceptedResponse
-      val shutdownApps = LAUNCH_ORDER
+      val deleteApps = LAUNCH_ORDER
         .flatMap {_.targetService}
         .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
         .reverse
-      val fKills = Future.sequence(shutdownApps.map(marClient.killApp))
+      val fKills = Future.sequence( deleteApps.map(marClient.killApp) )
       fKills map { allKills =>
         if (allKills.contains(false)) {
           log.info("shutdown was successful")

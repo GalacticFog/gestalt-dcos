@@ -25,6 +25,7 @@ case class AppSpec(name: String,
                    labels: Map[String,String ] = Map.empty,
                    args: Option[Seq[String]] = None,
                    cmd: Option[String] = None,
+                   volumes: Option[Seq[marathon.Volume]] = None,
                    healthChecks: Seq[HealthCheck] = Seq.empty,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
 
@@ -103,9 +104,17 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     val dbConfig = GlobalDBConfig(globals)
     AppSpec(
       name = "data",
+      volumes = Some(Seq(marathon.Volume(
+        containerPath = "pgdata",
+        mode = "RW",
+        persistent = VolumePersistence(
+          size = 100
+        )
+      ))),
       env = Map(
-        "DB_USER" -> dbConfig.username,
-        "DB_PASS" -> dbConfig.password
+        "POSTGRES_USER" -> dbConfig.username,
+        "POSTGRES_PASSWORD" -> dbConfig.password,
+        "PGDATA" -> "/mnt/mesos/sandbox/pgdata"
       ),
       image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
@@ -497,6 +506,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       requirePorts = true,
       container = MarathonContainerInfo(
         `type` = "DOCKER",
+        volumes = app.volumes,
         docker = Some(MarathonDockerContainer(
           image = app.image,
           network = app.network.getValueDescriptor.getName,

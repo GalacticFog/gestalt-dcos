@@ -97,6 +97,17 @@ class MarathonSSEClient @Inject() (config: Configuration,
       }
   }
 
+  def stopApp(svcName: String): Future[Boolean] = {
+    logger.info(s"asking marathon to shut down ${svcName}")
+    wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
+      .withQueryString("force" -> "true")
+      .put(Json.obj("instances" -> 0))
+      .map { resp =>
+        logger.info(s"marathon.stop(${svcName}) => ${resp.statusText}")
+        resp.status == 200
+      }
+  }
+
   def getServiceStatus(name: String): Future[ServiceStatus] = {
     val url = marathonBaseUrl.stripSuffix("/")
     wsclient.url(s"${url}/v2/apps/${appGroup}/${name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>

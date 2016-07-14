@@ -101,7 +101,8 @@ class ParsingSpec extends Specification with JsonMatchers {
         disk = 0,
         requirePorts = true,
         container = MarathonContainerInfo(
-          containerType = "DOCKER",
+          `type` = "DOCKER",
+          volumes = None,
           docker = Some(MarathonDockerContainer(
             image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
             network = "BRIDGE",
