@@ -4,8 +4,12 @@ import javax.inject.{Named, Inject}
 
 import akka.Done
 import akka.actor.{ActorSystem, ActorRef}
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.Sink
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.headers.Accept
+import akka.http.scaladsl.model.{HttpHeader, HttpMethods}
+import akka.http.scaladsl.unmarshalling.Unmarshal
+import akka.stream.{DelayOverflowStrategy, ActorMaterializer}
+import akka.stream.scaladsl.{Source, Sink}
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import de.heikoseeberger.akkasse.pattern.ServerSentEventClient
@@ -21,6 +25,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import akka.http.scaladsl.client.RequestBuilding.Get
+import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
 
 sealed trait ServiceStatus
 final case object LAUNCHING extends ServiceStatus
@@ -64,8 +70,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
   logger.info(s"connecting to marathon event bus: ${marathon}")
 
   val handler = Sink.actorRef(schedulerActor, Done)
-
-  MyServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
+  ServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
@@ -88,11 +93,13 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   def killApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
-    wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
+    val appId = s"/${appGroup}/${svcName}"
+    wsclient.url(s"${marathon}/v2/apps${appId}")
       .withQueryString("force" -> "true")
       .delete()
       .map { resp =>
         logger.info(s"marathon.delete(${svcName}) => ${resp.statusText}")
+        if (resp.status == 200 || resp.status == 404) schedulerActor ! MarathonAppTerminatedEvent(appId, "app_terminated_event", "")
         resp.status == 200
       }
   }

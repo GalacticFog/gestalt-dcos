@@ -507,6 +507,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         ))
       )
     case Event(e @ MarathonAppTerminatedEvent(appIdWithGroup(svcName),_,_), d) =>
+      log.info(s"received app terminated event for ${svcName}")
       stay() using d.copy(
         statuses = d.statuses + (svcName -> ServiceInfo(
           serviceName = svcName,
