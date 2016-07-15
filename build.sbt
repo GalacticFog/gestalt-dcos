@@ -7,7 +7,7 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 scalaVersion := "2.11.7"
 
 import com.typesafe.sbt.packager.docker._
-dockerUpdateLatest := true
+dockerUpdateLatest := false
 dockerRepository := Some("galacticfog.artifactoryonline.com")
 dockerBaseImage := "galacticfog.artifactoryonline.com/gestalt-mesos-base:v1"
 
