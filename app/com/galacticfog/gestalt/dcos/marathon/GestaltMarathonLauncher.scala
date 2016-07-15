@@ -117,7 +117,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
 
-  val TLD    = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld))
+  val TLD    = config.getString("marathon.tld")
   val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
 
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
