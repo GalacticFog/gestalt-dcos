@@ -5,6 +5,7 @@ import javax.inject.Inject
 import akka.actor.{FSM, LoggingFSM}
 import com.galacticfog.gestalt.dcos.{marathon, GestaltTaskFactory}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
 import play.api.libs.json.{JsObject, Json}
@@ -15,6 +16,8 @@ import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
 import com.galacticfog.gestalt.dcos.marathon._
 import akka.pattern.ask
+import MarathonSSEClient.parseEvent
+import com.galacticfog.gestalt.dcos.marathon._
 
 sealed trait LauncherState {
   def targetService: Option[String] = None
@@ -54,6 +57,7 @@ case object LaunchServicesRequest
 case class ShutdownRequest(shutdownDB: Boolean)
 case object ShutdownAcceptedResponse
 case object RetryRequest
+final case class KillRequest(serviceName: String)
 final case class ErrorEvent(message: String, errorStage: Option[String])
 final case class SecurityInitializationComplete(key: Option[GestaltAPIKey])
 final case class UpdateServiceInfo(info: ServiceInfo)
@@ -114,17 +118,16 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
-  val tld = config.getString("marathon.tld")
+  val tld = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld))
 
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
 
   // setup a-priori/static globals
+
   val marathonConfig = Json.obj(
-    "marathon" -> Json.obj(
+    "marathon" -> tld.foldLeft(Json.obj(
       "appGroup" -> appGroup
-    ).++(
-      tld.map(tld => Json.obj("tld" -> tld)).getOrElse(Json.obj())
-    )
+    ))( _ ++ _ )
   )
 
   def provisionedDB: JsObject = Json.obj(
@@ -168,13 +171,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     val fLaunch = marClient.launchApp(payload) map {
       r =>
         log.debug("'{}' launch response: {}", serviceName, r.toString)
-        sendMessageToSelf(0.seconds, ServiceDeployed(serviceName))
+        self ! ServiceDeployed(serviceName)
     }
     // launch failed, so we'll never get a task update
     fLaunch.onFailure {
       case e: Throwable =>
         log.warning("error launching {}: {}",serviceName,e.getMessage)
-        sendMessageToSelf(0.seconds, ErrorEvent(e.getMessage,errorStage = Some(currentState)))
+        self ! ErrorEvent(e.getMessage,errorStage = Some(currentState))
     }
   }
 
@@ -232,7 +235,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   onTransition {
     case _ -> RetrievingAPIKeys =>
       getUrl(LaunchingSecurity) match {
-        case Seq() => sendMessageToSelf(0.seconds, ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString)))
+        case Seq() => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
         case Seq(secUrl) =>
           val initUrl = s"http://${secUrl}/init"
           log.info(s"initializing security at {}",initUrl)
@@ -256,7 +259,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           }
           attempt.onComplete {
             case Success(msg) =>
-              sendMessageToSelf(0.seconds, msg)
+              self ! msg
             case Failure(ex) =>
               log.warning("error initializing security service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
@@ -265,8 +268,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
     case _ -> BootstrappingMeta =>
       (getUrl(LaunchingMeta),nextStateData.adminKey) match {
-        case (Seq(),_) => sendMessageToSelf(0.seconds, ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString)))
-        case (_,None) => sendMessageToSelf(0.seconds, ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString)))
+        case (Seq(),_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
+        case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
           val initUrl = s"http://${metaUrl}/bootstrap"
           log.info(s"bootstrapping meta at {}",initUrl)
@@ -281,8 +284,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
             }
           }
           attempt.onComplete {
-            case Success(msg) =>
-              sendMessageToSelf(0.seconds, msg)
+            case Success(msg) => self ! msg
             case Failure(ex) =>
               log.warning("error bootstrapping meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
@@ -291,8 +293,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       }
     case _ -> SyncingMeta =>
       (getUrl(LaunchingMeta),nextStateData.adminKey) match {
-        case (Seq(),_) => sendMessageToSelf(0.seconds, ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString)))
-        case (_,None) => sendMessageToSelf(0.seconds, ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString)))
+        case (Seq(),_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (_,None) => self ! ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
           val initUrl = s"http://${metaUrl}/sync"
           log.info(s"syncing meta at {}",initUrl)
@@ -307,8 +309,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
             }
           }
           attempt.onComplete {
-            case Success(msg) =>
-              sendMessageToSelf(0.seconds, msg)
+            case Success(msg) => self ! msg
             case Failure(ex) =>
               log.warning("error syncing meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
@@ -389,16 +390,15 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           }
           val fProviders = Future.sequence(Seq(marathonAttempt,kongAttempt))
           fProviders.onComplete {
-            case Success(msg) =>
-              sendMessageToSelf(0.seconds, msg.head) // both are MetaProvidersProvisioned
+            case Success(msg) => self ! msg.head // both are MetaProvidersProvisioned
             case Failure(ex) =>
               log.warning("error provisioning providers in meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
               sendMessageToSelf(5.seconds, RetryRequest)
           }
-        case (Seq(),_,_) => sendMessageToSelf(0.seconds, ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString)))
-        case (_,Seq(_),_) => sendMessageToSelf(0.seconds, ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString)))
-        case (_,_,None) => sendMessageToSelf(0.seconds, ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString)))
+        case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (_,Seq(_),_) => self ! ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString))
+        case (_,_,None)   => self ! ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
   }
 
@@ -481,6 +481,17 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   whenUnhandled {
+    case Event(sse @ ServerSentEvent(data, Some(eventType), _, _), d) =>
+      val mesg = eventType match {
+        case "app_terminated_event"        => parseEvent[MarathonAppTerminatedEvent](sse)
+        case "health_status_changed_event" => parseEvent[MarathonHealthStatusChange](sse)
+        case "status_update_event"         => parseEvent[MarathonStatusUpdateEvent](sse)
+        case "deployment_success"          => parseEvent[MarathonDeploymentSuccess](sse)
+        case "deployment_failure"          => parseEvent[MarathonDeploymentFailure](sse)
+        case _ => None
+      }
+      mesg.foreach(sse => self ! sse)
+      stay()
     case Event(UpdateServiceInfo(status), d) =>
       stay() using d.copy(
         statuses = d.statuses + (status.serviceName -> status)
@@ -493,6 +504,16 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           hostname = None,
           ports = Seq.empty,
           status = LAUNCHING
+        ))
+      )
+    case Event(e @ MarathonAppTerminatedEvent(appIdWithGroup(svcName),_,_), d) =>
+      stay() using d.copy(
+        statuses = d.statuses + (svcName -> ServiceInfo(
+          serviceName = svcName,
+          vhosts = Seq.empty,
+          hostname = None,
+          ports = Seq.empty,
+          status = NOT_FOUND
         ))
       )
     case Event(e @ MarathonDeploymentFailure(_, _, appIdWithGroup(svcName)), d) =>
@@ -518,15 +539,22 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         .flatMap {_.targetService}
         .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
         .reverse
-      val fKills = Future.sequence( deleteApps.map(marClient.killApp) )
-      fKills map { allKills =>
-        if (allKills.contains(false)) {
-          log.info("shutdown was successful")
-        } else {
-          log.error("shutdown was not successful; manual cleanup may be necessary")
-        }
+      // shut down slowly
+      deleteApps.foldLeft(1.seconds){
+        (delay,serviceName) =>
+          sendMessageToSelf(delay, KillRequest(serviceName))
+          delay + 2.seconds
       }
       goto(ShuttingDown)
+    case Event(KillRequest(serviceName), d) =>
+      log.info(s"received request to kill '${serviceName}'")
+      marClient.killApp(serviceName) onComplete {
+        case Success(killed) =>
+          log.warning(s"marathon.kill(${serviceName}) returned ${killed}")
+        case Failure(ex) =>
+          log.warning(s"failure killing '${serviceName}': ${ex.getMessage}")
+      }
+      stay()
     case Event(ErrorEvent(message,errorStage),d) =>
       goto(Error) using d.copy(
         error = Some(message),
@@ -543,7 +571,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           vhosts = Seq.empty,
           hostname = None,
           ports = Seq.empty,
-          status = NOT_LAUNCHED
+          status = NOT_FOUND
         )
       )
       stay replying StatusResponse(

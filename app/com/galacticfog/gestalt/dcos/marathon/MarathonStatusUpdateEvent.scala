@@ -31,10 +31,7 @@ case class MarathonHealthStatusChange(eventType: String,
                                       version: String,
                                       alive: Boolean)
 
-object JSONImports {
-  implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
-  implicit val deploymentSuccess = Json.reads[MarathonDeploymentSuccess]
-  implicit val deploymentFailure = Json.reads[MarathonDeploymentFailure]
-  implicit val healthStatusChanged = Json.reads[MarathonHealthStatusChange]
-}
+case class MarathonAppTerminatedEvent(appId: String,
+                                      eventType: String,
+                                      timestamp: String)
 

@@ -22,4 +22,9 @@ package object marathon {
   implicit val marContainerInfoFmt = Json.format[MarathonContainerInfo]
   implicit val marAppPayloadFmt = Json.format[MarathonAppPayload]
 
+  implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
+  implicit val deploymentSuccessRead = Json.reads[MarathonDeploymentSuccess]
+  implicit val deploymentFailureRead = Json.reads[MarathonDeploymentFailure]
+  implicit val healthStatusChangedRead = Json.reads[MarathonHealthStatusChange]
+  implicit val appTerminatedEventRead = Json.reads[MarathonAppTerminatedEvent]
 }

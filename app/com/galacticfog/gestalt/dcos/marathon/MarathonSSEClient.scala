@@ -2,11 +2,12 @@ package com.galacticfog.gestalt.dcos.marathon
 
 import javax.inject.{Named, Inject}
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.Done
+import akka.actor.{ActorSystem, ActorRef}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Sink
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
-import de.heikoseeberger.akkasse.ServerSentEvent
+import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import de.heikoseeberger.akkasse.pattern.ServerSentEventClient
 import play.api.Configuration
 import play.api.inject.ApplicationLifecycle
@@ -16,7 +17,6 @@ import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
 
-import akka.pattern.ask
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Success, Failure, Try}
@@ -30,9 +30,6 @@ final case object STOPPED   extends ServiceStatus
 final case object UNHEALTHY extends ServiceStatus
 final case object HEALTHY   extends ServiceStatus
 final case object RUNNING   extends ServiceStatus
-final case object NOT_LAUNCHED extends ServiceStatus {
-  override def toString: String = ""
-}
 final case object NOT_FOUND extends ServiceStatus
 
 case class ServiceInfo(serviceName: String, vhosts: Seq[String], hostname: Option[String], ports: Seq[String], status: ServiceStatus)
@@ -51,6 +48,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
                                   (implicit system: ActorSystem) {
 
   import MarathonSSEClient._
+  import system.dispatcher
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
@@ -60,47 +58,14 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   val STATUS_UPDATE_TIMEOUT = 15.seconds
 
-  import JSONImports._
-
   implicit val mat = ActorMaterializer()
-  import system.dispatcher
 
   val marathon = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
   logger.info(s"connecting to marathon event bus: ${marathon}")
 
-  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[Any] = {
-    Try{Json.parse(event.data)} match {
-      case Failure(e) =>
-        logger.warn(s"error parsing event data as JSON:\n${event.data}", e)
-        None
-      case Success(js) =>
-        js.validate[T] match {
-          case JsError(_) =>
-            logger.warn(s"error unmarshalling ${event.eventType} JSON")
-            None
-          case JsSuccess(obj, _) => Some(obj)
-        }
-    }
-  }
+  val handler = Sink.actorRef(schedulerActor, Done)
 
-  val handler = Sink.foreach[ServerSentEvent] { event =>
-    logger.info(s"marathon event: ${event.eventType}")
-    val mesg = event.eventType match {
-      case Some("health_status_changed_event") => parseEvent[MarathonHealthStatusChange](event)
-      case Some("status_update_event") => parseEvent[MarathonStatusUpdateEvent](event)
-      case Some("deployment_success") => parseEvent[MarathonDeploymentSuccess](event)
-      case Some("deployment_failure") => parseEvent[MarathonDeploymentFailure](event)
-      case e =>
-        logger.info(s"ignoring marathon event: ${e}")
-        None
-    }
-    mesg foreach { m =>
-      logger.info(s"sending ${event.eventType} to scheduler-actor")
-      schedulerActor ! m
-    }
-  }
-
-  ServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
+  MyServerSentEventClient(s"${marathon}/v2/events", handler).runWith(Sink.ignore)
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
@@ -184,4 +149,22 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
 object MarathonSSEClient {
   def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq
+
+  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[Any] = {
+    Try{Json.parse(event.data)} match {
+      case Failure(e) =>
+        logger.warn(s"error parsing event data as JSON:\n${event.data}", e)
+        None
+      case Success(js) =>
+        js.validate[T] match {
+          case JsError(_) =>
+            logger.warn(s"error unmarshalling ${event.eventType} JSON")
+            None
+          case JsSuccess(obj, _) => Some(obj)
+        }
+    }
+  }
+
 }
+
+
