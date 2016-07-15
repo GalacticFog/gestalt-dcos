@@ -11,17 +11,17 @@
  *@
 @main(webJarAssets, "Gestalt Framework") {
     <div class="row">
-        <div class="col-md-8 col-md-offset-2" id="launcher-stage">
+        <div class="col-md-10 col-md-offset-1" id="launcher-stage">
             <h3>gestalt-framework is initializing</h3>
         </div>
     </div>
 
     <div class="row">
-        <div id="launcher-error" class="alert alert-danger col-md-6 col-md-offset-3"/>
+        <div id="launcher-error" class="alert alert-danger col-md-10 col-md-offset-1"/>
     </div>
 
     <div class="row">
-        <div class="table-responsive col-md-8 col-md-offset-2">
+        <div class="table-responsive col-md-10 col-md-offset-1">
             <table class="table table-bordered table-striped">
                 <thead>
                     <tr>
@@ -37,7 +37,7 @@
         </div>
     </div>
     <div class="row">
-        <div class="col-md-8 col-md-offset-2">
+        <div class="col-md-10 col-md-offset-1">
             <button id="shutdownButton" type="button" class="btn btn-danger"  data-toggle="modal" data-target="#shutdownModal">Shutdown services</button>
             <button id="restartButton"  type="button" class="btn btn-primary">Restart services</button>
         </div>
@@ -81,7 +81,6 @@
 
             $('#shutdownSvcsAndDB').on('click', function () {
                 console.log('shutting down all services');
-                // disableShutdownButtons(true);
                 $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=true", function(data) {
                     console.log('shutdown response: ' + data.message);
@@ -90,7 +89,6 @@
             });
             $('#shutdownSvcsOnly').on('click', function () {
                 console.log('shutting down all services except DB');
-                // disableShutdownButtons(true);
                 $('#shutdownModal').modal('hide')
                 $.post( "shutdown?shutdownDB=false", function(data) {
                     console.log('shutdown response: ' + data.message);
@@ -108,10 +106,10 @@
                     }
                     $('#launcher-stage').html("<h3>gestalt-framework is " + data.launcherStage + "</h3>");
                     populateTable(data.services);
-                    if (data.launcherStage === "ShuttingDown") {
-                        // disableShutdownButtons(true);
+                    if (data.launcherStage === "ShuttingDown" || data.launcherStage == "Uninitialized") {
+                        $('#restartButton').prop('disabled',false);
                     } else {
-                        // disableShutdownButtons(false);
+                        $('#restartButton').prop('disabled',true);
                     }
                 });
             }

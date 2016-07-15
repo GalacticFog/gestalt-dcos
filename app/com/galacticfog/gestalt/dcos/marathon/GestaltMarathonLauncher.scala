@@ -541,10 +541,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
         .reverse
       // shut down slowly
-      deleteApps.foldLeft(1.seconds){
-        (delay,serviceName) =>
-          sendMessageToSelf(delay, KillRequest(serviceName))
-          delay + 2.seconds
+//      deleteApps.foldLeft(1.seconds){
+//        (delay,serviceName) =>
+//          sendMessageToSelf(delay, KillRequest(serviceName))
+//          delay + 2.seconds
+//      }
+      deleteApps.foreach {
+        svcName => marClient.killApp(svcName)
       }
       goto(ShuttingDown)
     case Event(KillRequest(serviceName), d) =>

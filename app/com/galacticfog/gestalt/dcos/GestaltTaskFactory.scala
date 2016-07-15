@@ -55,6 +55,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   val TLD = config.getString("marathon.tld")
 
   val provisionDB = config.getBoolean("database.provision") getOrElse true
+  val provisionedDBSize = config.getInt("database.provisioned-size") getOrElse 100
 
   def getVhostLabels(svcname: String): Map[String,String] = {
     TLD match {
@@ -113,7 +114,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         containerPath = "pgdata",
         mode = "RW",
         persistent = VolumePersistence(
-          size = 100
+          size = provisionedDBSize
         )
       ))),
       env = Map(
