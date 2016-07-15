@@ -116,16 +116,17 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
-  val appGroup = getString("marathon.appGroup", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
+  val appGroup = getString("service.name", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
-  val tld = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld))
+  val TLD    = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld))
+  val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
 
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
 
   // setup a-priori/static globals
 
   val marathonConfig = Json.obj(
-    "marathon" -> tld.foldLeft(Json.obj(
+    "marathon" -> tldObj.foldLeft(Json.obj(
       "appGroup" -> appGroup
     ))( _ ++ _ )
   )
@@ -343,7 +344,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               |  "name": "base-marathon"
               |}
             """.stripMargin)
-          val kongExternalAccess = tld match {
+          val kongExternalAccess = TLD match {
             case Some(tld) => s"https://gateway-kong.${tld}"
             case None => s"http://${kongGatewayUrl}"
           }
