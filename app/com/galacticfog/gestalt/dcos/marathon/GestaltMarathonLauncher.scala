@@ -116,7 +116,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
-  val appGroup = getString("service.name", GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
   val TLD    = config.getString("marathon.tld").map(tld => Json.obj("tld" -> tld))
   val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
@@ -127,7 +126,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val marathonConfig = Json.obj(
     "marathon" -> tldObj.foldLeft(Json.obj(
-      "appGroup" -> appGroup
     ))( _ ++ _ )
   )
 
@@ -469,7 +467,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(AllServicesLaunched)(FSM.NullFunction)
   when(Error)(FSM.NullFunction)
 
-  val appIdWithGroup = s"/${appGroup}/(.*)".r
+  val appIdWithGroup = s"/${gtf.appGroup}/(.*)".r
 
   def requestUpdateAndStay(svcName: String) = {
     marClient.getServiceStatus(svcName).onComplete {

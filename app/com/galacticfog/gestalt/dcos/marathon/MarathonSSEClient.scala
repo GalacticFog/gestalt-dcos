@@ -58,7 +58,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
-  val appGroup = config.getString("marathon.appGroup").getOrElse("gestalt").stripPrefix("/").stripSuffix("/")
+  val appGroup = gtf.appGroup.stripPrefix("/").stripSuffix("/")
 
   val allServices = gtf.allServices
 

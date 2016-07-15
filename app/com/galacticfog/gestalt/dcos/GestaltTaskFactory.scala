@@ -54,6 +54,8 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   val TLD = config.getString("marathon.tld")
 
+  val appGroup = config.getString("marathon.app-group").getOrElse(GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
+
   val provisionDB = config.getBoolean("database.provision") getOrElse true
   val provisionedDBSize = config.getInt("database.provisioned-size") getOrElse 100
 
@@ -497,8 +499,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   def getMarathonPayload(name: String, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(name, globals), globals)
 
   def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
-    val prefix = (globals \ "marathon" \ "appGroup").asOpt[String] getOrElse DEFAULT_APP_GROUP
-    val cleanPrefix = "/" + prefix.stripPrefix("/").stripSuffix("/") + "/"
+    val cleanPrefix = "/" + appGroup.stripPrefix("/").stripSuffix("/") + "/"
     val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
       id = cleanPrefix + app.name,
@@ -581,5 +582,5 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 }
 
 case object GestaltTaskFactory {
-  val DEFAULT_APP_GROUP = "gestalt-framework"
+  val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
 }
