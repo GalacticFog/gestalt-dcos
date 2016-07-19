@@ -281,18 +281,29 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
           val initUrl = s"http://${metaUrl}/bootstrap"
-          log.info(s"bootstrapping meta at {}",initUrl)
-          val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post("") flatMap { resp =>
-            log.info("meta.bootstrap response: {}",resp.toString)
-            resp.status match {
-              case 204 =>
-                Future.successful(MetaBootstrapFinished)
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
+          val rootUrl = s"http://${metaUrl}/root"
+          val bootstrap = for {
+            check <- wsclient.url(rootUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).get()
+            done <- if (check.status == 500) {
+              log.info("attempting to bootstrap meta")
+              wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey, apiKey.apiSecret.get, WSAuthScheme.BASIC).post("") flatMap { resp =>
+                log.info("meta.bootstrap response: {}", resp.toString)
+                resp.status match {
+                  case 204 =>
+                    Future.successful(MetaBootstrapFinished)
+                  case not204 =>
+                    val mesg = Try {
+                      (resp.json \ "message").as[String]
+                    }.getOrElse(resp.body)
+                    Future.failed(new RuntimeException(mesg))
+                }
+              }
+            } else {
+              log.info("meta appears to already have been bootstrapped; will proceed with next stage")
+              Future.successful(MetaBootstrapFinished)
             }
-          }
-          attempt.onComplete {
+          } yield done
+          bootstrap.onComplete {
             case Success(msg) => self ! msg
             case Failure(ex) =>
               log.warning("error bootstrapping meta service: {}",ex.getMessage)
