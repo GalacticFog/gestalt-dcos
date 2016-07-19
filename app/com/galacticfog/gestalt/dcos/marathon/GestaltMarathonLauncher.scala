@@ -364,7 +364,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               |}
             """.stripMargin)
           val kongExternalAccess = TLD match {
-            case Some(tld) => s"https://gateway-kong.${tld}"
+            case Some(tld) => s"https://kong.${tld}:443"
             case None => s"http://${kongGatewayUrl}"
           }
           val kongProviderJson = Json.parse(
