@@ -1,5 +1,6 @@
 package com.galacticfog.gestalt.dcos.marathon
 
+import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM}
@@ -119,7 +120,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
-
   val TLD    = config.getString("marathon.tld")
   val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
 
@@ -160,6 +160,11 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     Seq("username" -> JsString(getString("security.username","gestalt-admin"))) ++
       config.getString("security.password").map("password" -> JsString(_))
   )
+
+  val securityProvidedApiKey = for {
+    key <- config.getString("security.key")
+    secret <- config.getString("security.secret")
+  } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
   private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
     val currentState = nextStateData.toString
@@ -254,8 +259,8 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                     Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
                 }
               case 400 =>
-                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
-                Future.successful(SecurityInitializationComplete(None))
+                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services; will used provided key if present")
+                Future.successful(SecurityInitializationComplete(securityProvidedApiKey))
               case _ =>
                 val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
                 Future.failed(new RuntimeException(mesg))

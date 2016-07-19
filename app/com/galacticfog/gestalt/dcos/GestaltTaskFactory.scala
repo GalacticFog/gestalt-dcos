@@ -48,6 +48,10 @@ case object GlobalDBConfig {
 
 class GestaltTaskFactory @Inject() (config: Configuration) {
 
+  def env(name: String, default: String): String = {
+    scala.util.Properties.envOrElse(name, default)
+  }
+
   val RABBIT_EXCHANGE = "policy-exchange"
 
   val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
@@ -58,6 +62,19 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   val provisionDB = config.getBoolean("database.provision") getOrElse true
   val provisionedDBSize = config.getInt("database.provisioned-size") getOrElse 100
+
+  val dockerImages: Map[String,String] = Map(
+    "data" -> env("GESTALT_DATA_IMG","galacticfog.artifactoryonline.com/gestalt-data:latest"),
+    "rabbit" -> env("GESTALT_RABBIT_IMG","rabbitmq:3-management"),
+    "kong" -> env("GESTALT_KONG_IMG","galacticfog/kong:0.8.0"),
+    "security" -> env("GESTALT_SECURITY_IMG","galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a"),
+    "meta" -> env("GESTALT_META_IMG","galacticfog.artifactoryonline.com/gestalt-meta:0.3.3-SNAPSHOT-440a7727"),
+    "policy" -> env("GESTALT_POLICY_IMG","galacticfog.artifactoryonline.com/gestalt-policy:0.0.2-SNAPSHOT-d7805889"),
+    "lambda" -> env("GESTALT_LAMBDA_IMG","galacticfog.artifactoryonline.com/gestalt-lambda:1.0.3-SNAPSHOT-2de5aaf0"),
+    "api-gateway" -> env("GESTALT_API_GATEWAY_IMG","galacticfog.artifactoryonline.com/gestalt-api-gateway:1.0.3-SNAPSHOT-ebf0f14b"),
+    "api-proxy" -> env("GESTALT_API_PROXY_IMG","galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.9-d21d36cd"),
+    "ui" -> env("GESTALT_UI_IMG","galacticfog.artifactoryonline.com/gestalt-ui:0.8.1-22d6bf3f")
+  )
 
   def getVhostLabels(svcname: String): Map[String,String] = {
     TLD match {
@@ -124,7 +141,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "POSTGRES_PASSWORD" -> dbConfig.password,
         "PGDATA" -> "/mnt/mesos/sandbox/pgdata"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-data:latest",
+      image = dockerImages("data"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> dest("data"))))),
       cpus = 0.50,
@@ -151,7 +168,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "OAUTH_RATE_LIMITING_PERIOD" -> (secConfig \ "oauth" \ "rateLimitingPeriod").asOpt[Int].map(_.toString).getOrElse("1")
       ),
       args = Some(Seq("-J-Xmx512m")),
-      image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
+      image = dockerImages("security"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("security"))))),
       cpus = 0.5,
@@ -203,7 +220,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "RABBIT_ROUTE" -> "policy"
       ),
       args = Some(Seq("-J-Xmx512m")),
-      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.3-SNAPSHOT-440a7727",
+      image = dockerImages("meta"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("meta"))))),
       cpus = 0.5,
@@ -232,7 +249,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password
       ),
-      image = "galacticfog/kong:0.8.0",
+      image = dockerImages("kong"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> dest("kong-gateway"))),
@@ -274,7 +291,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
         "RABBIT_ROUTE" -> "policy"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-policy:0.0.2-SNAPSHOT-d7805889",
+      image = dockerImages("policy"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("policy")))
@@ -332,7 +349,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "MAX_LAMBDAS_PER_OFFER" -> "6",
         "OFFER_TTL" -> "5"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-lambda:1.0.3-SNAPSHOT-2de5aaf0",
+      image = dockerImages("lambda"),
       network = ContainerInfo.DockerInfo.Network.HOST,
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("lambda")))
@@ -376,7 +393,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         "OVERRIDE_UPSTREAM_PROTOCOL" -> "http"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-api-gateway:1.0.3-SNAPSHOT-ebf0f14b",
+      image = dockerImages("api-gateway"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("api-gateway")))
@@ -405,7 +422,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "API_URL" -> s"http://${dest("meta")}",
         "SEC_URL" -> s"http://${dest("security")}"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.9-d21d36cd",
+      image = dockerImages("api-proxy"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 8888, name = "http", labels = Map("VIP_0" -> dest("api-proxy")))
@@ -433,7 +450,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       env = Map(
         "API_URL" -> s"http://${dest("api-proxy")}"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-ui:0.8.1-21f5d907",
+      image = dockerImages("ui"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> dest("ui")))
@@ -459,7 +476,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     AppSpec(
       name = "rabbit",
       env = Map.empty,
-      image = "rabbitmq:3-management",
+      image = dockerImages("rabbit"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> dest("rabbit"))),
