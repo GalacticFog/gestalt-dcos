@@ -203,7 +203,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "RABBIT_ROUTE" -> "policy"
       ),
       args = Some(Seq("-J-Xmx512m")),
-      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.3-SNAPSHOT-1f4bc5c0",
+      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.3-SNAPSHOT-440a7727",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("meta"))))),
       cpus = 0.5,
