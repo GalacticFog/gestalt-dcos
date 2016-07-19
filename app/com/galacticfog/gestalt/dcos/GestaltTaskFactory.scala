@@ -186,19 +186,15 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GESTALT_APIGATEWAY" -> s"http://${dest("api-gateway")}",
         "GESTALT_LAMBDA" -> s"http://${dest("lambda")}",
         //
-        "GESTALT_ENV" -> "appliance; DEV",
-        "GESTALT_ID" -> "bd96d05a-7065-4fa2-bea2-98beebe8ebe4",
-        "GESTALT_META" -> s"https://meta.${TLD}:443",
-        "GESTALT_NODE_ID" -> "0",
-        "GESTALT_ORG" -> "com.galacticfog.test",
-        "GESTALT_SECRET" -> "secret",
-        "GESTALT_VERSION" -> "1.0",
-        //
         "GESTALT_SECURITY_PROTOCOL" -> "http",
         "GESTALT_SECURITY_HOSTNAME" -> VIP,
         "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        "GESTALT_SECURITY_REALM" ->
+          TLD.map("https://security." + _ + "/root/oauth/issue")
+              .orElse((secConfig \ "realm").asOpt[String])
+              .getOrElse(s"http://${dest("security")}"),
         //
         "RABBIT_HOST" -> VIP,
         "RABBIT_PORT" -> ports("rabbit"),
@@ -207,7 +203,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "RABBIT_ROUTE" -> "policy"
       ),
       args = Some(Seq("-J-Xmx512m")),
-      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.1-SNAPSHOT-c274f0cc",
+      image = "galacticfog.artifactoryonline.com/gestalt-meta:0.3.3-SNAPSHOT-1f4bc5c0",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("meta"))))),
       cpus = 0.5,
@@ -409,7 +405,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "API_URL" -> s"http://${dest("meta")}",
         "SEC_URL" -> s"http://${dest("security")}"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.8-c03ffa57",
+      image = "galacticfog.artifactoryonline.com/gestalt-api-proxy:0.5.9-d21d36cd",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 8888, name = "http", labels = Map("VIP_0" -> dest("api-proxy")))
@@ -437,7 +433,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       env = Map(
         "API_URL" -> s"http://${dest("api-proxy")}"
       ),
-      image = "galacticfog.artifactoryonline.com/gestalt-ui:0.7.9-507bbf18",
+      image = "galacticfog.artifactoryonline.com/gestalt-ui:0.8.1-21f5d907",
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(
         PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> dest("ui")))

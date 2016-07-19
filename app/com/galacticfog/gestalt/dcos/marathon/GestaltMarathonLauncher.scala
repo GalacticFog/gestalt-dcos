@@ -18,6 +18,9 @@ import com.galacticfog.gestalt.dcos.marathon._
 import akka.pattern.ask
 import MarathonSSEClient.parseEvent
 import com.galacticfog.gestalt.dcos.marathon._
+import play.api.libs.json._
+import play.api.libs.json.Reads._
+import play.api.libs.functional.syntax._
 
 sealed trait LauncherState {
   def targetService: Option[String] = None
@@ -153,18 +156,20 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   val globals = marathonConfig ++ databaseConfig
 
-  val securityCredentials = Json.obj(
-    "username" -> getString("security.username","gestalt-admin")
-  ) ++ config.getString("security.password").map(p => Json.obj("password" -> p)).getOrElse(Json.obj())
+  val securityInitCredentials = JsObject(
+    Seq("username" -> JsString(getString("security.username","gestalt-admin"))) ++
+      config.getString("security.password").map("password" -> JsString(_))
+  )
 
-  private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None): Unit = {
+  private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
     val currentState = nextStateData.toString
     val allConfig = apiKey.map(apiKey => Json.obj(
-      "security" -> Json.obj(
-        "apiKey" -> apiKey.apiKey,
-        "apiSecret" -> apiKey.apiSecret.get
-      )
-    )).fold(globals)(sec => sec ++ globals)
+      "security" -> JsObject(Seq(
+        "apiKey" -> JsString(apiKey.apiKey),
+        "apiSecret" -> JsString(apiKey.apiSecret.get)) ++ secUrl.map(
+        "realm" -> JsString(_)
+      ))
+    )).fold(globals)(_ ++ globals)
     val payload = gtf.getMarathonPayload(serviceName, allConfig)
     log.debug("'{}' launch payload:\n{}", serviceName, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
@@ -227,7 +232,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   // service launch stages
   onTransition {
-    case _ -> stage if stage.targetService.isDefined => launchApp(stage.targetService.get, nextStateData.adminKey)
+    case _ -> stage if stage.targetService.isDefined => launchApp(stage.targetService.get, nextStateData.adminKey, getUrl(LaunchingSecurity).headOption)
   }
 
   // post-launch stages
@@ -238,7 +243,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         case Seq(secUrl) =>
           val initUrl = s"http://${secUrl}/init"
           log.info(s"initializing security at {}",initUrl)
-          val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).post(securityCredentials) flatMap { resp =>
+          val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).post(securityInitCredentials) flatMap { resp =>
             log.info("security.init response: {}",resp.toString)
             resp.status match {
               case 200 =>
