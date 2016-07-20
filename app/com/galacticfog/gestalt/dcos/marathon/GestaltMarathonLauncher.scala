@@ -635,7 +635,7 @@ case class SecurityInitReset(dbConfig: JsObject) {
     val db = GlobalDBConfig(dbConfig)
 
     val driver = "org.postgresql.Driver"
-    val url = "jdbc:postgresql://%s:%d/%s-security".format(db.hostname, db.port, db.prefix)
+    val url = "jdbc:postgresql://%s:%d/%s".format(db.hostname, db.port, db.prefix + "security")
 
     Class.forName(driver)
 
@@ -652,7 +652,7 @@ case class SecurityInitReset(dbConfig: JsObject) {
       ConnectionPool.closeAll()
     } recover {
       case e: Throwable =>
-        log.warning(s"error clearing init flag on ${db.prefix}-security database: {}", e.getMessage)
+        log.warning(s"error clearing init flag on ${db.prefix}security database: {}", e.getMessage)
         false
     }
 
