@@ -26,27 +26,13 @@ libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "1.8.1"
 
 scalacOptions in Test ++= Seq("-Yrangepos")
 
-scalikejdbcSettings
-
+resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
 libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
   "org.webjars" %% "webjars-play" % "2.5.0",
-  "org.webjars" % "bootstrap" % "3.1.1-2"
+  "org.webjars" % "bootstrap" % "3.1.1-2",
+  "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
+  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 )
-
-// ----------------------------------------------------------------------------
-// ScalikeJDBC
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.scalikejdbc" %% "scalikejdbc" % "2.4.2"
-
-resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
-
-// ----------------------------------------------------------------------------
-// PostgreSQL
-// ----------------------------------------------------------------------------
-
-libraryDependencies += "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
-
