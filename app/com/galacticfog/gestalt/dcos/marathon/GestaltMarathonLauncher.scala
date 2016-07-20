@@ -40,6 +40,7 @@ case object LaunchingMeta             extends LauncherState {override def target
 case object BootstrappingMeta         extends LauncherState
 case object SyncingMeta               extends LauncherState
 case object ProvisioningMetaProviders extends LauncherState
+case object ProvisioningMetaLicense   extends LauncherState
 case object LaunchingApiProxy         extends LauncherState {override def targetService = Some("api-proxy")}
 case object LaunchingUI               extends LauncherState {override def targetService = Some("ui")}
 case object LaunchingPolicy           extends LauncherState {override def targetService = Some("policy")}
@@ -73,6 +74,8 @@ case object MetaSyncFinished
 case object MetaSyncTimeout
 case object MetaProvidersProvisioned
 case object MetaProviderTimeout
+case object MetaLicensingComplete
+case object MetaLicenseTimeout
 
 final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo])
 
@@ -86,7 +89,7 @@ object GestaltMarathonLauncher {
     LaunchingSecurity, RetrievingAPIKeys,
     LaunchingKong, LaunchingApiGateway,
     LaunchingLambda,
-    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders,
+    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders, ProvisioningMetaLicense,
     LaunchingPolicy,
     LaunchingApiProxy, LaunchingUI,
     AllServicesLaunched
@@ -420,6 +423,37 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         case (_,Seq(_),_) => self ! ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString))
         case (_,_,None)   => self ! ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
+    case _ -> ProvisioningMetaLicense =>
+      (getUrl(LaunchingMeta),nextStateData.adminKey) match {
+        case (Seq(),_) => self ! ErrorEvent("while provisioning meta license, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
+        case (_,None) => self ! ErrorEvent("while provisioning meta license, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
+        case (Seq(metaUrl),Some(apiKey)) =>
+          val licenseBody = Json.obj(
+            "name" -> "Default-License-1",
+            "description" -> "Default GF license",
+            "properties" -> Json.obj(
+              "data" -> "ABwwGgQUdGVXUNbMrwIM4/Ex/Hcp0/qfcN8CAgQAvuXJIXAa41yD102Z3s1ssysfAd4HYWq6rBbs0C4r6PLtCDSgixM9uFpwcd0dqXxPEJDyYMU16+UupnS7EFh/a6Krdg9PazNeO0oMPxx5jzrSJ3mCX8FbB4mXCe8jZ8L7vuLUrZclOYWtIVVhNfOtEAE/A0SyiSu2dVbvhA0qXyz4sfjSPJa67Ckkp4uKHycWjQ+GdDD8inTaZkvneCrXcfqq4yPXfprZej9izVSOsMF/3R4lIip9rZXAGrGX3oUSvs6sW+DNrxl18/b24/2SMCoRUDKhf5CtTD5sX6Q2jQu82/C0LcGw6evdLp97zTBjtV5BNmiHyIkiohaxr+/F9kyPO+brUjnyJBwP0mt87q2EdZIBKqBggdY24DEG92g6b3fjcuCyUkjPPSEuSBW6fjs4/+a6Ac3h"
+            )
+          )
+          val licenseUrl = s"http://${metaUrl}/root/licenses"
+          val licenseAttempt = wsclient.url(licenseUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(licenseBody) flatMap { resp =>
+            log.info("meta.license response: {}",resp.toString)
+            resp.status match {
+              case 201 =>
+                Future.successful(MetaLicensingComplete)
+              case not200 =>
+                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+                Future.failed(new RuntimeException(mesg))
+            }
+          }
+          licenseAttempt.onComplete {
+            case Success(msg) => self ! msg
+            case Failure(ex) =>
+              log.warning("error licensing meta service: {}",ex.getMessage)
+              // keep retrying until our time runs out and we leave this state
+              sendMessageToSelf(5.seconds, RetryRequest)
+          }
+      }
   }
 
   // only setup these timeouts on the first transition
@@ -428,6 +462,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case prev -> BootstrappingMeta         if prev != BootstrappingMeta         => sendMessageToSelf(5.minutes, MetaBootstrapTimeout)
     case prev -> SyncingMeta               if prev != SyncingMeta               => sendMessageToSelf(5.minutes, MetaSyncTimeout)
     case prev -> ProvisioningMetaProviders if prev != ProvisioningMetaProviders => sendMessageToSelf(5.minutes, MetaProviderTimeout)
+    case prev -> ProvisioningMetaLicense   if prev != ProvisioningMetaLicense   => sendMessageToSelf(5.minutes, MetaLicenseTimeout)
   }
 
   when(RetrievingAPIKeys) {
@@ -479,6 +514,19 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       goto(nextState(stateName))
     case Event(MetaProviderTimeout, d) =>
       val mesg = "timed out provisioning providers in gestalt-meta"
+      log.error(mesg)
+      goto(Error) using d.copy(
+        error = Some(mesg)
+      )
+  }
+
+  when(ProvisioningMetaLicense) {
+    case Event(RetryRequest, d) =>
+      goto(ProvisioningMetaLicense)
+    case Event(MetaLicensingComplete, d) =>
+      goto(nextState(stateName))
+    case Event(MetaLicenseTimeout, d) =>
+      val mesg = "timed out licensing gestalt-meta"
       log.error(mesg)
       goto(Error) using d.copy(
         error = Some(mesg)
