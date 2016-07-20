@@ -31,7 +31,10 @@ libraryDependencies ++= Seq(
   cache,
   ws,
   "org.webjars" %% "webjars-play" % "2.5.0",
-  "org.webjars" % "bootstrap" % "3.1.1-2"
+  "org.webjars" % "bootstrap" % "3.1.1-2",
+  "org.scalikejdbc" %% "scalikejdbc"       % "2.4.2",
+  "com.h2database"  %  "h2"                % "1.4.192",
+  "ch.qos.logback"  %  "logback-classic"   % "1.1.7"
 )
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"

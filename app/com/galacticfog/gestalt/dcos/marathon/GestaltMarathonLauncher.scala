@@ -4,7 +4,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM}
-import com.galacticfog.gestalt.dcos.{marathon, GestaltTaskFactory}
+import akka.event.LoggingAdapter
+import com.galacticfog.gestalt.dcos.{GlobalDBConfig, marathon, GestaltTaskFactory}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.Configuration
@@ -22,6 +23,7 @@ import com.galacticfog.gestalt.dcos.marathon._
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
+import play.api.db._
 
 sealed trait LauncherState {
   def targetService: Option[String] = None
@@ -259,8 +261,15 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                     Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
                 }
               case 400 =>
-                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services; will used provided key if present")
-                Future.successful(SecurityInitializationComplete(securityProvidedApiKey))
+                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
+                if (securityProvidedApiKey.isDefined) {
+                  log.info("continuing with API keys from configuration")
+                  Future.successful(SecurityInitializationComplete(securityProvidedApiKey))
+                } else {
+                  log.warning("attempting to clear init flag from security database")
+                  SecurityInitReset(databaseConfig).clearInit()(log)
+                  Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
+                }
               case _ =>
                 val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
                 Future.failed(new RuntimeException(mesg))
@@ -617,4 +626,22 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   initialize()
+}
+
+case class SecurityInitReset(dbConfig: JsObject) {
+  import scalikejdbc._
+  def clearInit()(implicit log: LoggingAdapter): Unit = {
+    val db = GlobalDBConfig(dbConfig)
+    Class.forName("org.postgresql.Driver")
+    ConnectionPool.singleton(s"jdbc:postgresql://${db.hostname}:${db.port}/${db.prefix}-security", db.username, db.password)
+    implicit val session = AutoSession
+    Try {
+      sql"update initialization_settings set initialized = false where id = 0".execute.apply()
+      ConnectionPool.closeAll()
+    } recover {
+      case e: Throwable =>
+        log.warning(s"error clearning init flag on ${db.prefix}-security database: {}", e.getMessage)
+        false
+    }
+  }
 }
