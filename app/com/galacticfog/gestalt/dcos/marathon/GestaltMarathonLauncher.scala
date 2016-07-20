@@ -65,7 +65,7 @@ case object ShutdownAcceptedResponse
 case object RetryRequest
 final case class KillRequest(serviceName: String)
 final case class ErrorEvent(message: String, errorStage: Option[String])
-final case class SecurityInitializationComplete(key: Option[GestaltAPIKey])
+final case class SecurityInitializationComplete(key: GestaltAPIKey)
 final case class UpdateServiceInfo(info: ServiceInfo)
 final case class ServiceDeployed(serviceName: String)
 case object APIKeyTimeout
@@ -256,19 +256,20 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               case 200 =>
                 Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
                   case Success(key) =>
-                    Future.successful(SecurityInitializationComplete(Some(key)))
+                    Future.successful(SecurityInitializationComplete(key))
                   case Failure(e) =>
                     Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
                 }
               case 400 =>
                 log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
-                if (securityProvidedApiKey.isDefined) {
-                  log.info("continuing with API keys from configuration")
-                  Future.successful(SecurityInitializationComplete(securityProvidedApiKey))
-                } else {
-                  log.warning("attempting to clear init flag from security database")
-                  SecurityInitReset(databaseConfig).clearInit()(log)
-                  Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
+                securityProvidedApiKey match {
+                  case Some(key) =>
+                    log.info("continuing with API keys from configuration")
+                    Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
+                  case None =>
+                    log.warning("attempting to clear init flag from security database")
+                    SecurityInitReset(databaseConfig).clearInit()(log)
+                    Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
                 }
               case _ =>
                 val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
@@ -445,7 +446,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(SecurityInitializationComplete(apiKey), d) =>
       log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(nextState(stateName)) using d.copy(
-        adminKey = apiKey
+        adminKey = Some(apiKey)
       )
     case Event(APIKeyTimeout, d) =>
       val mesg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"
