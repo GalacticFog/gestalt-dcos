@@ -633,16 +633,29 @@ case class SecurityInitReset(dbConfig: JsObject) {
   import scalikejdbc._
   def clearInit()(implicit log: LoggingAdapter): Unit = {
     val db = GlobalDBConfig(dbConfig)
-    Class.forName("org.postgresql.Driver")
-    ConnectionPool.singleton(s"jdbc:postgresql://${db.hostname}:${db.port}/${db.prefix}-security", db.username, db.password)
+
+    val driver = "org.postgresql.Driver"
+    val url = "jdbc:postgresql://%s:%d/%s-security".format(db.hostname, db.port, db.prefix)
+
+    Class.forName(driver)
+
+    val settings = ConnectionPoolSettings(
+      connectionTimeoutMillis = 5000
+    )
+
+    ConnectionPool.singleton(url, db.username, db.password, settings)
+    println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
+
     implicit val session = AutoSession
     Try {
       sql"update initialization_settings set initialized = false where id = 0".execute.apply()
       ConnectionPool.closeAll()
     } recover {
       case e: Throwable =>
-        log.warning(s"error clearning init flag on ${db.prefix}-security database: {}", e.getMessage)
+        log.warning(s"error clearing init flag on ${db.prefix}-security database: {}", e.getMessage)
         false
     }
+
+    ConnectionPool.closeAll()
   }
 }
