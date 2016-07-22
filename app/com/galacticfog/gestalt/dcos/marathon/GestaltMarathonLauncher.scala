@@ -4,7 +4,8 @@ import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM}
-import com.galacticfog.gestalt.dcos.{marathon, GestaltTaskFactory}
+import akka.event.LoggingAdapter
+import com.galacticfog.gestalt.dcos.{GlobalDBConfig, marathon, GestaltTaskFactory}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.Configuration
@@ -22,6 +23,7 @@ import com.galacticfog.gestalt.dcos.marathon._
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
+import play.api.db._
 
 sealed trait LauncherState {
   def targetService: Option[String] = None
@@ -64,7 +66,7 @@ case object ShutdownAcceptedResponse
 case object RetryRequest
 final case class KillRequest(serviceName: String)
 final case class ErrorEvent(message: String, errorStage: Option[String])
-final case class SecurityInitializationComplete(key: Option[GestaltAPIKey])
+final case class SecurityInitializationComplete(key: GestaltAPIKey)
 final case class UpdateServiceInfo(info: ServiceInfo)
 final case class ServiceDeployed(serviceName: String)
 case object APIKeyTimeout
@@ -257,13 +259,21 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               case 200 =>
                 Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
                   case Success(key) =>
-                    Future.successful(SecurityInitializationComplete(Some(key)))
+                    Future.successful(SecurityInitializationComplete(key))
                   case Failure(e) =>
                     Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
                 }
               case 400 =>
-                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services; will used provided key if present")
-                Future.successful(SecurityInitializationComplete(securityProvidedApiKey))
+                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
+                securityProvidedApiKey match {
+                  case Some(key) =>
+                    log.info("continuing with API keys from configuration")
+                    Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
+                  case None =>
+                    log.warning("attempting to clear init flag from security database")
+                    SecurityInitReset(databaseConfig).clearInit()(log)
+                    Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
+                }
               case _ =>
                 val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
                 Future.failed(new RuntimeException(mesg))
@@ -471,7 +481,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(SecurityInitializationComplete(apiKey), d) =>
       log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(nextState(stateName)) using d.copy(
-        adminKey = apiKey
+        adminKey = Some(apiKey)
       )
     case Event(APIKeyTimeout, d) =>
       val mesg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"
@@ -665,4 +675,35 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   }
 
   initialize()
+}
+
+case class SecurityInitReset(dbConfig: JsObject) {
+  import scalikejdbc._
+  def clearInit()(implicit log: LoggingAdapter): Unit = {
+    val db = GlobalDBConfig(dbConfig)
+
+    val driver = "org.postgresql.Driver"
+    val url = "jdbc:postgresql://%s:%d/%s".format(db.hostname, db.port, db.prefix + "security")
+
+    Class.forName(driver)
+
+    val settings = ConnectionPoolSettings(
+      connectionTimeoutMillis = 5000
+    )
+
+    ConnectionPool.singleton(url, db.username, db.password, settings)
+    println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
+
+    implicit val session = AutoSession
+    Try {
+      sql"update initialization_settings set initialized = false where id = 0".execute.apply()
+      ConnectionPool.closeAll()
+    } recover {
+      case e: Throwable =>
+        log.warning(s"error clearing init flag on ${db.prefix}security database: {}", e.getMessage)
+        false
+    }
+
+    ConnectionPool.closeAll()
+  }
 }
