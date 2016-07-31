@@ -1,0 +1,62 @@
+stages:
+- test
+- publish
+- deploy
+
+cache:
+  key: "$CI_PIPELINE_ID"
+  untracked: true
+
+variables:
+  DOCKER_IMG: "galacticfog.artifactoryonline.com/gestalt-dcos"
+
+test:
+  stage: test
+  script:
+    - ./activator clean update test docker:stage
+
+publish-branch:
+  stage: publish
+  script: 
+    - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
+    - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
+    - cd target/docker/stage
+    - docker build -t $DOCKER_IMG:$DOCKER_TAG .
+    - docker push     $DOCKER_IMG:$DOCKER_TAG
+  only:
+    - master
+    - /^release-.*$/
+  except:
+    - tags
+
+publish-tag: 
+  stage: publish
+  script:
+    - cd target/docker/stage
+    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
+    - docker push     $DOCKER_IMG:$CI_BUILD_TAG
+  only:
+    - tags
+
+github-publish:
+  stage: publish
+  script: 
+    - git remote remove github || true
+    - git remote add github https://$GITHUB_CREDENTIALS@github.com/GalacticFog/gestalt-dcos.git
+    - |
+      if [ -z ${CI_BUILD_TAG} ]; then 
+         git push github HEAD:$CI_BUILD_REF_NAME
+      else 
+         git push github $CI_BUILD_TAG
+      fi
+  only:
+    - master
+    - /^release-.*$/
+    - tags
+
+deploy-to-test:
+  stage: deploy
+  environment: test
+  script: 
+    - echo checking for access to marathon
+    - curl http://marathon.mesos:8080/v2/apps/gestalt-test || true
