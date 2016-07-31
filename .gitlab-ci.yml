@@ -24,7 +24,7 @@ publish-branch:
     - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
   only:
-    - master
+    - develop
     - /^release-.*$/
   except:
     - tags
@@ -50,7 +50,7 @@ github-publish:
          git push github $CI_BUILD_TAG
       fi
   only:
-    - master
+    - develop
     - /^release-.*$/
     - tags
 
