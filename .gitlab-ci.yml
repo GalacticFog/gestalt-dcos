@@ -8,7 +8,7 @@ cache:
   untracked: true
 
 variables:
-  DOCKER_IMG: "galacticfog.artifactoryonline.com/gestalt-dcos"
+  DOCKER_IMG: "galacticfog/gestalt-dcos"
 
 test:
   stage: test
