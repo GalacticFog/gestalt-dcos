@@ -13,7 +13,7 @@ variables:
 test:
   stage: test
   script:
-    - ./activator clean update test docker:stage
+    - sbt clean update test docker:stage
 
 publish-branch:
   stage: publish
