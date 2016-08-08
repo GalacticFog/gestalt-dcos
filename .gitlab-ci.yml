@@ -23,6 +23,7 @@ publish-branch:
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
+    - docker rmi      $DOCKER_IMG:$DOCKER_TAG
   only:
     - develop
     - /^release-.*$/
@@ -35,6 +36,7 @@ publish-tag:
     - cd target/docker/stage
     - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
     - docker push     $DOCKER_IMG:$CI_BUILD_TAG
+    - docker rmi      $DOCKER_IMG:$CI_BUILD_TAG
   only:
     - tags
 
