@@ -13,7 +13,8 @@ variables:
 test:
   stage: test
   script:
-    - sbt clean update test docker:stage
+    - sbt clean update docker:stage
+    - ./env-var-test.sh
 
 publish-branch:
   stage: publish
