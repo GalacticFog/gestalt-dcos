@@ -43,7 +43,7 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec("ui", globals) must haveImage("test-ui:tag")
     }
 
-    "support ensemble versioning" in {
+    "support ensemble versioning via config" in {
 
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

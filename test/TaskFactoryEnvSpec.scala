@@ -11,7 +11,7 @@ class TaskFactoryEnvSpec extends Specification {
 
     // this test will be run multiple times by the harness, with and without environment variables
     // it needs to pass independent of the existence of the env vars by falling back on defaults
-    "support environment variables for ensemble versioning" in {
+    "support environment variables for ensemble versioning or override" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -44,29 +44,6 @@ class TaskFactoryEnvSpec extends Specification {
       else                                          gtf.getAppSpec("api-proxy", globals)   must haveImage(s"galacticfog/gestalt-api-proxy:dcos-${ensver}")
       if (env("GESTALT_UI_IMG").isDefined)          gtf.getAppSpec("ui", globals)          must haveImage(env("GESTALT_UI_IMG").get)
       else                                          gtf.getAppSpec("ui", globals)          must haveImage(s"galacticfog/gestalt-ui:dcos-${ensver}")
-    }
-
-    "allow environment variables override docker images for service containers" in {
-
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-
-      val globals = Json.obj()
-
-      if (env("GESTALT_DATA_IMG").isDefined)        gtf.getAppSpec("data", globals)        must haveImage(env("GESTALT_DATA_IMG").get)
-      if (env("GESTALT_RABBIT_IMG").isDefined)      gtf.getAppSpec("rabbit", globals)      must haveImage(env("GESTALT_RABBIT_IMG").get)
-      if (env("GESTALT_KONG_IMG").isDefined)        gtf.getAppSpec("kong", globals)        must haveImage(env("GESTALT_KONG_IMG").get)
-      if (env("GESTALT_SECURITY_IMG").isDefined)    gtf.getAppSpec("security", globals)    must haveImage(env("GESTALT_SECURITY_IMG").get)
-      if (env("GESTALT_META_IMG").isDefined)        gtf.getAppSpec("meta", globals)        must haveImage(env("GESTALT_META_IMG").get)
-      if (env("GESTALT_POLICY_IMG").isDefined)      gtf.getAppSpec("policy", globals)      must haveImage(env("GESTALT_POLICY_IMG").get)
-      if (env("GESTALT_LAMBDA_IMG").isDefined)      gtf.getAppSpec("lambda", globals)      must haveImage(env("GESTALT_LAMBDA_IMG").get)
-      if (env("GESTALT_API_GATEWAY_IMG").isDefined) gtf.getAppSpec("api-gateway", globals) must haveImage(env("GESTALT_API_GATEWAY_IMG").get)
-      if (env("GESTALT_API_PROXY_IMG").isDefined)   gtf.getAppSpec("api-proxy", globals)   must haveImage(env("GESTALT_API_PROXY_IMG").get)
-      if (env("GESTALT_UI_IMG").isDefined)          gtf.getAppSpec("ui", globals)          must haveImage(env("GESTALT_UI_IMG").get)
-      ok("fallthrough")
     }
 
   }
