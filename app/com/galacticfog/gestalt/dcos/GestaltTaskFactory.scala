@@ -334,6 +334,10 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "MESOS_NATIVE_LIBRARY" -> "/usr/lib/libmesos.so",
         "MESOS_MASTER_CONNECTION" -> "zk://master.mesos:2181/mesos",
         //
+        "JS_EXECUTOR" -> dockerImage("lambda-javascript-executor"),
+        "JAVA_EXECUTOR" -> dockerImage("lambda-java-executor"),
+        "DOTNET_EXECUTOR" -> dockerImage("lambda-dotnet-executor"),
+        //
         "NEW_RELIC_LICENSE_KEY" -> "64300aae4a006efc6fa13ab9f88386f186707003",
         "CACHE_EXPIRE_SECONDS" -> "900",
         "SCHEDULER_NAME" -> "gestalt-lambda-scheduler",
@@ -598,6 +602,9 @@ case object GestaltTaskFactory {
     "gestalt-lambda"      -> "galacticfog/gestalt-lambda:dcos-latest",
     "gestalt-api-gateway" -> "galacticfog/gestalt-api-gateway:dcos-latest",
     "gestalt-api-proxy"   -> "galacticfog/gestalt-api-proxy:dcos-latest",
-    "gestalt-ui"          -> "galacticfog/gestalt-ui:dcos-latest"
+    "gestalt-ui"          -> "galacticfog/gestalt-ui:dcos-latest",
+    "lambda-javascript-executor" -> "galacticfog/lambda-javascript-executor:dcos-latest",
+    "lambda-java-executor"       -> "galacticfog/lambda-java-executor:dcos-latest",
+    "lambda-dotnet-executor"     -> "galacticfog/lambda-dotnet-executor:dcos-latest"
   )
 }

@@ -4,7 +4,7 @@
  * two arguments, a `String` for the title of the page and an `Html`
  * object to insert into the body of the page.
  *@
-@(webJarAssets: WebJarAssets, title: String)(content: Html)
+@(webJarAssets: WebJarAssets, title: String, version: String)(content: Html)
 
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +31,7 @@
 
         <footer class="footer">
             <div class="container">
-                <p class="text-muted">gestalt-dcos: <a href="https://github.com/GalacticFog/gestalt-dcos">https://github.com/GalacticFog/gestalt-dcos</a></p>
+                <p class="text-muted">gestalt-dcos @version: <a href="https://github.com/GalacticFog/gestalt-dcos">https://github.com/GalacticFog/gestalt-dcos</a></p>
             </div>
         </footer>
 
