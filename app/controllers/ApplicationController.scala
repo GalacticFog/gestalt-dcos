@@ -28,7 +28,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def dashboard = Action {
-    Ok(index.render(webJarAssets,gtf.provisionDB))
+    Ok(index.render(webJarAssets,gtf.provisionDB, gtf.gestaltFrameworkEnsembleVersion getOrElse "latest"))
   }
 
   def data() = Action.async {

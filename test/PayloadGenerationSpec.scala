@@ -1,5 +1,6 @@
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import com.galacticfog.gestalt.dcos.marathon._
+import modules.Module
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import play.api.Configuration
@@ -16,7 +17,11 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure("service.vip" -> "10.11.12.13", "marathon.tld" -> "galacticfog.com")
+        .configure(
+          "service.vip" -> "10.11.12.13",
+          "marathon.tld" -> "galacticfog.com",
+          "containers.gestalt-security" -> "test-security:tag"
+        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
@@ -64,7 +69,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           `type` = "DOCKER",
           volumes = None,
           docker = Some(MarathonDockerContainer(
-            image = "galacticfog.artifactoryonline.com/gestalt-security:2.2.5-SNAPSHOT-ec05ef5a",
+            image = "test-security:tag",
             network = "BRIDGE",
             privileged = false,
             parameters = Seq.empty,
@@ -104,7 +109,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure("service.vip" -> "10.11.12.13")
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
