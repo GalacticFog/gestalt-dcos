@@ -7,7 +7,7 @@ import com.galacticfog.gestalt.dcos.marathon._
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
-import play.api.Configuration
+import play.api.{Logger, Configuration}
 import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String])
@@ -57,6 +57,8 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   val appGroup = config.getString("marathon.app-group").getOrElse(GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
 
   val gestaltFrameworkEnsembleVersion = config.getString("gestalt-framework-version")
+
+  Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
 
   val provisionDB = config.getBoolean("database.provision") getOrElse true
   val provisionedDBSize = config.getInt("database.provisioned-size") getOrElse 100
@@ -590,18 +592,17 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
 case object GestaltTaskFactory {
   val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
-  val DEFAULT_FRAMEWORK_VERSION = "latest"
   val DEFAULT_DOCKER_IMAGES = Map(
-    "rabbit"              -> "galacticfog/rabbit:dcos-latest",
-    "kong"                -> "galacticfog/kong:dcos-latest",
-    "gestalt-data"        -> "galacticfog/gestalt-data:dcos-latest",
-    "gestalt-security"    -> "galacticfog/gestalt-security:dcos-latest",
-    "gestalt-meta"        -> "galacticfog/gestalt-meta:dcos-latest",
-    "gestalt-policy"      -> "galacticfog/gestalt-policy:dcos-latest",
-    "gestalt-lambda"      -> "galacticfog/gestalt-lambda:dcos-latest",
-    "gestalt-api-gateway" -> "galacticfog/gestalt-api-gateway:dcos-latest",
-    "gestalt-api-proxy"   -> "galacticfog/gestalt-api-proxy:dcos-latest",
-    "gestalt-ui"          -> "galacticfog/gestalt-ui:dcos-latest",
+    "rabbit"                     -> "galacticfog/rabbit:dcos-latest",
+    "kong"                       -> "galacticfog/kong:dcos-latest",
+    "gestalt-data"               -> "galacticfog/gestalt-data:dcos-latest",
+    "gestalt-security"           -> "galacticfog/gestalt-security:dcos-latest",
+    "gestalt-meta"               -> "galacticfog/gestalt-meta:dcos-latest",
+    "gestalt-policy"             -> "galacticfog/gestalt-policy:dcos-latest",
+    "gestalt-lambda"             -> "galacticfog/gestalt-lambda:dcos-latest",
+    "gestalt-api-gateway"        -> "galacticfog/gestalt-api-gateway:dcos-latest",
+    "gestalt-api-proxy"          -> "galacticfog/gestalt-api-proxy:dcos-latest",
+    "gestalt-ui"                 -> "galacticfog/gestalt-ui:dcos-latest",
     "lambda-javascript-executor" -> "galacticfog/lambda-javascript-executor:dcos-latest",
     "lambda-java-executor"       -> "galacticfog/lambda-java-executor:dcos-latest",
     "lambda-dotnet-executor"     -> "galacticfog/lambda-dotnet-executor:dcos-latest"
