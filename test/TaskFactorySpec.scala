@@ -26,7 +26,7 @@ class TaskFactorySpec extends Specification {
           "containers.gestalt-ui" -> "test-ui:tag",
           "containers.lambda-javascript-executor" -> "test-js-executor:tag",
           "containers.lambda-java-executor"       -> "test-java-executor:tag",
-          "containers.lambda-dotnet-executor" -> "test-dotnet-executor:tag"
+          "containers.lambda-dotnet-executor"     -> "test-dotnet-executor:tag"
         )
         .injector
 
