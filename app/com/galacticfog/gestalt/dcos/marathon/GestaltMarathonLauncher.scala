@@ -201,7 +201,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     log.debug("'{}' launch payload:\n{}", serviceName, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
       r =>
-        log.debug("'{}' launch response: {}", serviceName, r.toString)
+        log.info("'{}' launch response: {}", serviceName, r.toString)
         self ! ServiceDeployed(serviceName)
     }
     // launch failed, so we'll never get a task update
@@ -293,7 +293,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                     ) else Json.obj(
                       "database" -> configuredDB
                     )
-                    log.debug(Json.prettyPrint(databaseConfig))
                     SecurityInitReset(databaseConfig).clearInit()(log)
                     Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
                 }
@@ -502,7 +501,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     case Event(RetryRequest, d) =>
       goto(RetrievingAPIKeys)
     case Event(SecurityInitializationComplete(apiKey), d) =>
-      log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
+      log.info("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(nextState(stateName)) using d.copy(
         adminKey = Some(apiKey)
       )
