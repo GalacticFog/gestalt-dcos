@@ -347,7 +347,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       image = dockerImage("gestalt-lambda"),
       network = ContainerInfo.DockerInfo.Network.HOST,
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> dest("lambda")))
+        PortSpec(number = 0, name = "http-api", labels = Map("VIP_0" -> dest("lambda")))
       )),
       cpus = 0.5,
       cmd = Some("./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
