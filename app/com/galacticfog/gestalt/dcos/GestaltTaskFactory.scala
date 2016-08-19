@@ -385,8 +385,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GESTALT_SECURITY_HOSTNAME" -> VIP,
         "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-        "OVERRIDE_UPSTREAM_PROTOCOL" -> "http"
+        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing")
       ),
       image = dockerImage("gestalt-api-gateway"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,

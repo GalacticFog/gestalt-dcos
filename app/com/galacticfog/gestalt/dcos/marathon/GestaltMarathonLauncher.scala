@@ -54,7 +54,15 @@ case object Error                     extends LauncherState
 final case class ServiceData(statuses: Map[String,ServiceInfo],
                              adminKey: Option[GestaltAPIKey],
                              error: Option[String],
-                             errorStage: Option[String])
+                             errorStage: Option[String]) {
+  def getUrl(state: LauncherState): Seq[String] = {
+    state.targetService
+      .flatMap(statuses.get)
+      .filter(_.hostname.isDefined)
+      .map({case ServiceInfo(_,_,hostname,ports,_) => ports.map(p => hostname.get + ":" + p.toString)})
+      .getOrElse(Seq.empty)
+  }
+}
 case object ServiceData {
   def empty: ServiceData = ServiceData(Map.empty,None,None,None)
 }
@@ -109,14 +117,6 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   def getInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
 
-  def getUrl(state: LauncherState): Seq[String] = {
-    state.targetService
-      .flatMap(nextStateData.statuses.get)
-      .filter(_.hostname.isDefined)
-      .map({case ServiceInfo(_,_,hostname,ports,_) => ports.map(p => hostname.get + ":" + p.toString)})
-      .getOrElse(Seq.empty)
-  }
-
   def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
     this.context.system.scheduler.scheduleOnce(delay, self, message)
   }
@@ -144,6 +144,23 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     "password" -> getString("database.password", "letmein"),
     "prefix" -> "gestalt-"
   )
+
+  def provisionedDBhostIP: JsObject = {
+    val js = for {
+      url <- stateData.getUrl(LaunchingDB).headOption
+      parts = url.split(":")
+      if parts.length == 2
+      host = parts(0)
+      port <- Try{parts(1).toInt}.toOption
+    } yield Json.obj(
+      "hostname" -> host,
+      "port" -> port,
+      "username" -> getString("database.username", "gestaltdev"),
+      "password" -> getString("database.password", "letmein"),
+      "prefix" -> "gestalt-"
+    )
+    js getOrElse provisionedDB
+  }
 
   def configuredDB: JsObject = Json.obj(
     "hostname" -> getString("database.hostname", "data.gestalt.marathon.mesos"),
@@ -242,13 +259,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
 
   // service launch stages
   onTransition {
-    case _ -> stage if stage.targetService.isDefined => launchApp(stage.targetService.get, nextStateData.adminKey, getUrl(LaunchingSecurity).headOption)
+    case _ -> stage if stage.targetService.isDefined => launchApp(stage.targetService.get, nextStateData.adminKey, nextStateData.getUrl(LaunchingSecurity).headOption)
   }
 
   // post-launch stages
   onTransition {
     case _ -> RetrievingAPIKeys =>
-      getUrl(LaunchingSecurity) match {
+      nextStateData.getUrl(LaunchingSecurity) match {
         case Seq() => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
         case Seq(secUrl) =>
           val initUrl = s"http://${secUrl}/init"
@@ -271,6 +288,12 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                     Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
                   case None =>
                     log.warning("attempting to clear init flag from security database")
+                    val databaseConfig = if (gtf.provisionDB) Json.obj(
+                      "database" -> provisionedDBhostIP
+                    ) else Json.obj(
+                      "database" -> configuredDB
+                    )
+                    log.debug(Json.prettyPrint(databaseConfig))
                     SecurityInitReset(databaseConfig).clearInit()(log)
                     Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
                 }
@@ -289,7 +312,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           }
       }
     case _ -> BootstrappingMeta =>
-      (getUrl(LaunchingMeta),nextStateData.adminKey) match {
+      (nextStateData.getUrl(LaunchingMeta), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
@@ -325,7 +348,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           }
       }
     case _ -> SyncingMeta =>
-      (getUrl(LaunchingMeta),nextStateData.adminKey) match {
+      (nextStateData.getUrl(LaunchingMeta), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
         case (_,None) => self ! ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
@@ -350,7 +373,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           }
       }
     case _ -> ProvisioningMetaProviders =>
-      (getUrl(LaunchingMeta),getUrl(LaunchingKong),nextStateData.adminKey) match {
+      (nextStateData.getUrl(LaunchingMeta), nextStateData.getUrl(LaunchingKong), nextStateData.adminKey) match {
         case (Seq(metaUrl),Seq(kongGatewayUrl,kongServiceUrl),Some(apiKey)) =>
           val initUrl = s"http://${metaUrl}/root/providers"
           val marathonProviderJson = Json.parse(
@@ -389,7 +412,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
                |    "environments": [],
                |    "config": {
                |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
-               |      "url": "${kongServiceUrl}",
+               |      "url": "${gtf.dest("kong-service")}",
                |      "extra": "${kongExternalAccess}"
                |    },
                |    "locations": [
@@ -434,7 +457,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         case (_,_,None)   => self ! ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
     case _ -> ProvisioningMetaLicense =>
-      (getUrl(LaunchingMeta),nextStateData.adminKey) match {
+      (nextStateData.getUrl(LaunchingMeta), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while provisioning meta license, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while provisioning meta license, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
         case (Seq(metaUrl),Some(apiKey)) =>
@@ -684,6 +707,7 @@ case class SecurityInitReset(dbConfig: JsObject) {
 
     val driver = "org.postgresql.Driver"
     val url = "jdbc:postgresql://%s:%d/%s".format(db.hostname, db.port, db.prefix + "security")
+    log.info("initializing connection pool against " + url)
 
     Class.forName(driver)
 
