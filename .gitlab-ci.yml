@@ -5,7 +5,9 @@ stages:
 
 cache:
   key: "$CI_PIPELINE_ID"
-  untracked: true
+  untracked: false
+  paths: 
+    - target/docker/stage/
 
 variables:
   DOCKER_IMG: "galacticfog/gestalt-dcos"
@@ -50,7 +52,7 @@ github-publish:
       if [ -z ${CI_BUILD_TAG} ]; then 
          git push github HEAD:$CI_BUILD_REF_NAME
       else 
-         git push github $CI_BUILD_TAG
+         git push -f github $CI_BUILD_TAG
       fi
   only:
     - develop
