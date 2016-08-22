@@ -59,6 +59,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
   val appGroup = gtf.appGroup.stripPrefix("/").stripSuffix("/")
+  val appIdWithGroup = s"/${gtf.appGroup}/(.*)".r
 
   val allServices = gtf.allServices
 
@@ -113,6 +114,45 @@ class MarathonSSEClient @Inject() (config: Configuration,
         logger.info(s"marathon.stop(${svcName}) => ${resp.statusText}")
         resp.status == 200
       }
+  }
+
+  def getServices(): Future[Map[String,ServiceInfo]] = {
+    val url = marathonBaseUrl.stripSuffix("/")
+    wsclient.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+      response.status match {
+        case 200 =>
+          Future.fromTry(Try {
+            (response.json \ "apps").as[Seq[MarathonAppPayload]].flatMap {
+              app => appIdWithGroup.findFirstMatchIn(app.id) map (m => (m.group(1),app))
+            } map { case (name,app) =>
+
+              val staged  = app.tasksStaged.get
+              val running = app.tasksRunning.get
+              val healthy = app.tasksHealthy.get
+              val sickly  = app.tasksUnhealthy.get
+              val target  = app.instances
+
+              val status = if (staged != 0) STAGING
+              else if (target != running) WAITING
+              else if (target == 0) STOPPED
+              else if (sickly > 0) UNHEALTHY
+              else if (target == healthy) HEALTHY
+              else RUNNING
+
+              val vhosts = getVHosts(app)
+
+              val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
+              val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.map(_.toString)) getOrElse Seq.empty
+
+              logger.debug(s"processed app from marathon: ${name}")
+              name -> ServiceInfo(name,vhosts,hostname,ports,status)
+            } toMap
+          })
+        case 404 => Future.successful(Map.empty)
+        case not200 =>
+          Future.failed(new RuntimeException(response.statusText))
+      }
+    }
   }
 
   def getServiceStatus(name: String): Future[ServiceInfo] = {

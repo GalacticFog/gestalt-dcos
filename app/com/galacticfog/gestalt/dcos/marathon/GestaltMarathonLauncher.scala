@@ -249,7 +249,10 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   when(ShuttingDown) {
     case Event(LaunchServicesRequest,d) =>
       if (gtf.provisionDB) {
-        goto(LAUNCH_ORDER.head)
+        goto(LAUNCH_ORDER.head) using d.copy(
+          error = None,
+          errorStage = None
+        )
       } else {
         goto(nextState(LaunchingDB))
       }
@@ -640,16 +643,13 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
         .flatMap {_.targetService}
         .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
         .reverse
-      // shut down slowly
-//      deleteApps.foldLeft(1.seconds){
-//        (delay,serviceName) =>
-//          sendMessageToSelf(delay, KillRequest(serviceName))
-//          delay + 2.seconds
-//      }
       deleteApps.foreach {
         svcName => marClient.killApp(svcName)
       }
-      goto(ShuttingDown)
+      goto(ShuttingDown) using d.copy(
+        error = None,
+        errorStage = None
+      )
     case Event(KillRequest(serviceName), d) =>
       log.info(s"received request to kill '${serviceName}'")
       marClient.killApp(serviceName) onComplete {
@@ -666,23 +666,40 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       )
     case Event(StatusRequest,d) =>
       val stage = stateName match {
-        case Error => d.errorStage.map(s => s"Error during ${s}").getOrElse("Error")
+        case Error => d.errorStage.map("Error during ".+).getOrElse("Error")
         case _ => stateName.toString
       }
-      val services = gtf.allServices.map(svcName =>
-        d.statuses.get(svcName) getOrElse ServiceInfo(
-          serviceName = svcName,
-          vhosts = Seq.empty,
-          hostname = None,
-          ports = Seq.empty,
-          status = NOT_FOUND
+      val s = sender()
+      val error = d.error
+      marClient.getServices() map { svcs =>
+        log.info(s"client responded with ${svcs.size} services")
+        // take advantage to update the service status
+        svcs.values foreach {svc => self ! UpdateServiceInfo(svc)}
+        // the group returned by the server could theoretically include stuff we don't care about; and not include stuff that we want the UI to render
+        val services = gtf.allServices.map(svcName =>
+          svcs.get(svcName) getOrElse ServiceInfo(
+            serviceName = svcName,
+            vhosts = Seq.empty,
+            hostname = None,
+            ports = Seq.empty,
+            status = NOT_FOUND
+          )
         )
-      )
-      stay replying StatusResponse(
-        launcherStage = stage,
-        error = d.error,
-        services = services
-      )
+        s ! StatusResponse(
+          launcherStage = stage,
+          error = d.error,
+          services = services
+        )
+      } onFailure {
+        case e: Throwable =>
+          log.error(e,"error while querying app status from marathon")
+          s ! StatusResponse(
+            launcherStage = stage,
+            error = error,
+            services = Seq.empty
+          )
+      }
+      stay
     case Event(APIKeyTimeout,d) =>
       stay
     case Event(MetaBootstrapTimeout,d) =>
