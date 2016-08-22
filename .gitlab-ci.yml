@@ -3,12 +3,6 @@ stages:
 - publish
 - deploy
 
-cache:
-  key: "$CI_PIPELINE_ID"
-  untracked: false
-  paths: 
-    - target/docker/stage/
-
 variables:
   DOCKER_IMG: "galacticfog/gestalt-dcos"
 
@@ -17,31 +11,21 @@ test:
   script:
     - sbt clean update docker:stage
     - ./env-var-test.sh
+  artifacts:
+    expire_in: 30 minutes
+    paths:
+    - target/docker/stage/
 
-publish-branch:
+docker-publish:
   stage: publish
   script: 
     - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
-    - DOCKER_TAG=$VERSION-${CI_BUILD_REF:0:8}
+    - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
     - cd target/docker/stage
+    - echo building $DOCKER_IMG:$DOCKER_TAG
     - docker build -t $DOCKER_IMG:$DOCKER_TAG .
     - docker push     $DOCKER_IMG:$DOCKER_TAG
     - docker rmi      $DOCKER_IMG:$DOCKER_TAG
-  only:
-    - develop
-    - /^release-.*$/
-  except:
-    - tags
-
-publish-tag: 
-  stage: publish
-  script:
-    - cd target/docker/stage
-    - docker build -t $DOCKER_IMG:$CI_BUILD_TAG .
-    - docker push     $DOCKER_IMG:$CI_BUILD_TAG
-    - docker rmi      $DOCKER_IMG:$CI_BUILD_TAG
-  only:
-    - tags
 
 github-publish:
   stage: publish
@@ -58,6 +42,7 @@ github-publish:
     - develop
     - /^release-.*$/
     - tags
+  artifacts:
 
 deploy-to-test:
   stage: deploy
@@ -65,3 +50,4 @@ deploy-to-test:
   script: 
     - echo checking for access to marathon
     - curl http://marathon.mesos:8080/v2/apps/gestalt-test || true
+  artifacts:
