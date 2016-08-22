@@ -118,7 +118,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   def getServices(): Future[Map[String,ServiceInfo]] = {
     val url = marathonBaseUrl.stripSuffix("/")
-    wsclient.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+    wsclient.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
         case 200 =>
           Future.fromTry(Try {
@@ -144,7 +144,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
               val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
               val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.map(_.toString)) getOrElse Seq.empty
 
-              logger.info(s"processed ${name}")
+              logger.debug(s"processed app from marathon: ${name}")
               name -> ServiceInfo(name,vhosts,hostname,ports,status)
             } toMap
           })

@@ -673,6 +673,9 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
       val error = d.error
       marClient.getServices() map { svcs =>
         log.info(s"client responded with ${svcs.size} services")
+        // take advantage to update the service status
+        svcs.values foreach {svc => self ! UpdateServiceInfo(svc)}
+        // the group returned by the server could theoretically include stuff we don't care about; and not include stuff that we want the UI to render
         val services = gtf.allServices.map(svcName =>
           svcs.get(svcName) getOrElse ServiceInfo(
             serviceName = svcName,
