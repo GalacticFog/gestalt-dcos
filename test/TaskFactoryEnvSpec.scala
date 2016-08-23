@@ -36,20 +36,12 @@ class TaskFactoryEnvSpec extends Specification {
       else                                          gtf.getAppSpec("meta", globals)        must haveImage(s"galacticfog/gestalt-meta:dcos-${ensver}")
       if (env("GESTALT_POLICY_IMG").isDefined)      gtf.getAppSpec("policy", globals)      must haveImage(env("GESTALT_POLICY_IMG").get)
       else                                          gtf.getAppSpec("policy", globals)      must haveImage(s"galacticfog/gestalt-policy:dcos-${ensver}")
-      if (env("GESTALT_LAMBDA_IMG").isDefined) {
-        val lambdaSpec = gtf.getAppSpec("lambda", globals)
-        lambdaSpec must haveImage(env("GESTALT_LAMBDA_IMG").get)
-        lambdaSpec must haveEnvVar("JS_EXECUTOR" -> s"galacticfog/lambda-javascript-executor:dcos-${ensver}")
-        lambdaSpec must haveEnvVar("JAVA_EXECUTOR" -> s"galacticfog/lambda-java-executor:dcos-${ensver}")
-        lambdaSpec must haveEnvVar("DOTNET_EXECUTOR" -> s"galacticfog/lambda-dotnet-executor:dcos-${ensver}")
-      }
-      else {
-        val lambdaSpec = gtf.getAppSpec("lambda", globals)
-        lambdaSpec must haveImage(s"galacticfog/gestalt-lambda:dcos-${ensver}")
-        lambdaSpec must haveEnvVar("JS_EXECUTOR" -> s"galacticfog/lambda-javascript-executor:dcos-${ensver}")
-        lambdaSpec must haveEnvVar("JAVA_EXECUTOR" -> s"galacticfog/lambda-java-executor:dcos-${ensver}")
-        lambdaSpec must haveEnvVar("DOTNET_EXECUTOR" -> s"galacticfog/lambda-dotnet-executor:dcos-${ensver}")
-      }
+      val lambdaSpec = gtf.getAppSpec("lambda", globals)
+      if (env("GESTALT_LAMBDA_IMG").isDefined)      lambdaSpec must haveImage(env("GESTALT_LAMBDA_IMG").get)
+      else                                          lambdaSpec must haveImage(s"galacticfog/gestalt-lambda:dcos-${ensver}")
+      lambdaSpec must haveEnvVar("JS_EXECUTOR"     -> env("LAMBDA_JAVASCRIPT_EXECUTOR_IMG").getOrElse(s"galacticfog/lambda-javascript-executor:dcos-${ensver}"))
+      lambdaSpec must haveEnvVar("JAVA_EXECUTOR"   -> env("LAMBDA_JAVA_EXECUTOR_IMG").getOrElse(s"galacticfog/lambda-java-executor:dcos-${ensver}"))
+      lambdaSpec must haveEnvVar("DOTNET_EXECUTOR" -> env("LAMBDA_DOTNET_EXECUTOR_IMG").getOrElse(s"galacticfog/lambda-dotnet-executor:dcos-${ensver}"))
       if (env("GESTALT_API_GATEWAY_IMG").isDefined) gtf.getAppSpec("api-gateway", globals) must haveImage(env("GESTALT_API_GATEWAY_IMG").get)
       else                                          gtf.getAppSpec("api-gateway", globals) must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ensver}")
       if (env("GESTALT_API_PROXY_IMG").isDefined)   gtf.getAppSpec("api-proxy", globals)   must haveImage(env("GESTALT_API_PROXY_IMG").get)
