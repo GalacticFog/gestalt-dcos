@@ -146,6 +146,102 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       lambda.portDefinitions must beSome
     }
 
+    "appropriately set realm override for security consumer services (TLD)" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "service.vip" -> "10.11.12.13",
+          "marathon.tld" -> "galacticfog.com"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.parse(
+        """{
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "realm" : "192.168.1.50:12345",
+          |     "apiSecret": "apisecret"
+          |  }
+          |}
+        """.stripMargin
+      )
+
+      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+    }
+
+    "appropriately set realm override for security consumer services (host IP)" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "service.vip" -> "10.11.12.13"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.parse(
+        """{
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "apiSecret": "apisecret"
+          |  }
+          |}
+        """.stripMargin
+      )
+
+      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+    }
+
+    "appropriately set realm override for security consumer services (globals)" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "service.vip" -> "10.11.12.13"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.parse(
+        """{
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "realm" : "192.168.1.50:12345",
+          |     "apiSecret": "apisecret"
+          |  }
+          |}
+        """.stripMargin
+      )
+
+      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
+      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
+      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
+    }
+
   }
 
 }
