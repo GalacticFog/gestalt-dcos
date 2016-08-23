@@ -202,9 +202,9 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_REALM" ->
-          TLD.map("https://security." + _ + "/root/oauth/issue")
-              .orElse((secConfig \ "realm").asOpt[String])
-              .getOrElse(s"http://${dest("security")}"),
+          TLD.map("https://security." + _)
+            .orElse((secConfig \ "realm").asOpt[String])
+            .getOrElse(s"http://${dest("security")}"),
         //
         "RABBIT_HOST" -> VIP,
         "RABBIT_PORT" -> ports("rabbit"),
@@ -324,6 +324,10 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
         "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        "GESTALT_SECURITY_REALM" ->
+          TLD.map("https://security." + _)
+            .orElse((secConfig \ "realm").asOpt[String])
+            .getOrElse(s"http://${dest("security")}"),
         //
         "META_PROTOCOL" -> "http",
         "META_HOSTNAME" -> VIP,
@@ -383,11 +387,16 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
         "GATEWAY_DATABASE_PASSWORD" -> s"${dbConfig.password}",
         "GATEWAY_DATABASE_PORT" -> s"${dbConfig.port}",
         "GATEWAY_DATABASE_USER" -> s"${dbConfig.username}",
+        //
         "GESTALT_SECURITY_PROTOCOL" -> "http",
         "GESTALT_SECURITY_HOSTNAME" -> VIP,
         "GESTALT_SECURITY_PORT" -> ports("security"),
         "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing")
+        "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+        "GESTALT_SECURITY_REALM" ->
+          TLD.map("https://security." + _)
+            .orElse((secConfig \ "realm").asOpt[String])
+            .getOrElse(s"http://${dest("security")}")
       ),
       image = dockerImage("gestalt-api-gateway"),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
