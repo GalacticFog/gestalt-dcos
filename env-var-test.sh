@@ -21,6 +21,9 @@ export GESTALT_LAMBDA_IMG="lambda:override"
 export GESTALT_API_GATEWAY_IMG="gateway:override"
 export GESTALT_API_PROXY_IMG="proxy:override"
 export GESTALT_UI_IMG="ui:override"
+export LAMBDA_JAVASCRIPT_EXECUTOR_IMG="lambda-js:override"
+export LAMBDA_JAVA_EXECUTOR_IMG="lambda-java:override"
+export LAMBDA_DOTNET_EXECUTOR_IMG="lambda-dotnet:override"
 
 sbt 'testOnly TaskFactoryEnvSpec'
 
