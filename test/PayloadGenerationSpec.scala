@@ -3,6 +3,7 @@ import com.galacticfog.gestalt.dcos.marathon._
 import modules.Module
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
+import org.specs2.specification.core.Fragment
 import play.api.Configuration
 import play.api.inject.guice.{GuiceInjectorBuilder, GuiceApplicationBuilder}
 import play.api.inject.bind
@@ -240,6 +241,45 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
       gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
       gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
+    }
+
+    "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.parse(
+        """{
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "apiSecret": "apisecret"
+          |  }
+          |}
+        """.stripMargin
+      )
+      Fragment.foreach(gtf.allServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, global)
+        svc ! {(payload.cmd must beSome) or (payload.args must beSome)}
+      }
+    }
+
+    "database sets residency along with persistent storage" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.obj()
+      val data = gtf.getMarathonPayload("data", global)
+      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
     }
 
   }

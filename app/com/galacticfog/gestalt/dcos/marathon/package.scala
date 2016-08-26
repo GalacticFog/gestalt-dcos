@@ -6,6 +6,7 @@ import play.api.libs.json.Json
 
 package object marathon {
 
+  implicit val marResidencyFmt = Json.format[Residency]
   implicit val readinessCheckFmt = Json.format[MarathonReadinessCheck]
   implicit val dockerPortMappingFmt = Json.format[DockerPortMapping]
   implicit val keyValuePairFmt = Json.format[KeyValuePair]
@@ -20,11 +21,13 @@ package object marathon {
   implicit val ipAddressFmt = Json.format[IPAddress]
   implicit val marTaskFmt = Json.format[MarathonTask]
   implicit val marContainerInfoFmt = Json.format[MarathonContainerInfo]
-  implicit val marAppPayloadFmt = Json.format[MarathonAppPayload]
+
+  implicit val marAppPayloadReads = Json.format[MarathonAppPayload]
 
   implicit val statusUpdateEventRead = Json.reads[MarathonStatusUpdateEvent]
   implicit val deploymentSuccessRead = Json.reads[MarathonDeploymentSuccess]
   implicit val deploymentFailureRead = Json.reads[MarathonDeploymentFailure]
   implicit val healthStatusChangedRead = Json.reads[MarathonHealthStatusChange]
   implicit val appTerminatedEventRead = Json.reads[MarathonAppTerminatedEvent]
+
 }

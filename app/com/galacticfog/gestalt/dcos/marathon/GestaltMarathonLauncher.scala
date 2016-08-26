@@ -189,7 +189,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
   private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
-    val currentState = nextStateData.toString
+    val currentState = stateName.toString
     val allConfig = apiKey.map(apiKey => Json.obj(
       "security" -> JsObject(Seq(
         "apiKey" -> JsString(apiKey.apiKey),
@@ -208,7 +208,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
     fLaunch.onFailure {
       case e: Throwable =>
         log.warning("error launching {}: {}",serviceName,e.getMessage)
-        self ! ErrorEvent(e.getMessage,errorStage = Some(currentState))
+        self ! ErrorEvent(e.getMessage, errorStage = Some(currentState))
     }
   }
 
@@ -254,7 +254,10 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
           errorStage = None
         )
       } else {
-        goto(nextState(LaunchingDB))
+        goto(nextState(LaunchingDB)) using d.copy(
+          error = None,
+          errorStage = None
+        )
       }
   }
 
@@ -402,7 +405,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
               |}
             """.stripMargin)
           val kongExternalAccess = TLD match {
-            case Some(tld) => s"https://kong.${tld}:443"
+            case Some(tld) => s"https://kong.${tld}"
             case None => s"http://${kongGatewayUrl}"
           }
           val kongProviderJson = Json.parse(

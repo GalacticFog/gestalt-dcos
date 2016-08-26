@@ -69,10 +69,15 @@ case class MarathonTask(id: Option[String],
                         ipAddresses: Option[Seq[IPAddress]],
                         appId: Option[String])
 
+case class Residency(taskLostBehavior: String, relaunchEscalationTimeoutSeconds: Int = 3600)
+
+case object Residency {
+  val WAIT_FOREVER: String = "WAIT_FOREVER"
+}
+
 case class MarathonAppPayload(id: String,
                               cmd: Option[String] = None,
                               args: Option[Seq[String]] = None,
-                              user: Option[String] = None,
                               env: Map[String,String],
                               instances: Int,
                               cpus: Double,
@@ -83,9 +88,8 @@ case class MarathonAppPayload(id: String,
                               requirePorts: Boolean,
                               healthChecks: Seq[MarathonHealthCheck],
                               labels: Map[String,String],
-                              acceptedResourceRoles: Option[String] = None,
                               readinessCheck: Option[MarathonReadinessCheck] = None,
-                              ipAddress: Option[IPPerTaskInfo] = None,
+                              residency: Option[Residency] = None,
                               tasksStaged: Option[Int] = None,
                               tasksRunning: Option[Int] = None,
                               tasksHealthy: Option[Int] = None,
