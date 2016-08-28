@@ -4,6 +4,8 @@ A Universe one-click installer for the [gestalt-framework](http://www.galacticfo
 
 ## Known issues
 
+* DC/OS beta 1.8.1 introduced a [breaking change](https://github.com/mesosphere/marathon/pull/4185) via Marathon 1.3.0-RC4 that affects the ability 
+  of the gestalt-dcos Universe launcher to launch. This should be resolved in the Marathon 1.3.0-RC5 and should be resolved in the next beta release, DC/OS 1.8.2.
 * There is a [problem](https://groups.google.com/a/dcos.io/forum/#!msg/users/bKv9mucQBi0/H5VUg17nAAAJ) in DC/OS 1.7 regarding iptables, causing connectivity problems between
   services using VIPs. Because the gestalt-framework services are deployed using VIPs, this issue can cause problems between services. It manifests in a number of different ways,
   but the most notable are timeouts and `An I/O error occurred while sending to the backend` errors. The solution is to apply the sysctl settings from [this DC/OS
