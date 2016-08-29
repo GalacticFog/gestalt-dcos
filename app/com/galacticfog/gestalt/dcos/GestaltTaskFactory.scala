@@ -26,6 +26,7 @@ case class AppSpec(name: String,
                    args: Option[Seq[String]] = None,
                    cmd: Option[String] = None,
                    volumes: Option[Seq[marathon.Volume]] = None,
+                   residency: Option[Residency] = None,
                    healthChecks: Seq[HealthCheck] = Seq.empty,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
 
@@ -121,6 +122,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getData(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     AppSpec(
+      args = Some(Seq()),
       name = "data",
       volumes = Some(Seq(marathon.Volume(
         containerPath = "pgdata",
@@ -129,6 +131,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
           size = provisionedDBSize
         )
       ))),
+      residency = Some(Residency(Residency.WAIT_FOREVER)),
       env = Map(
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password,
@@ -235,6 +238,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     val labels = getVhostLabels("kong")
     AppSpec(
       name = "kong",
+      args = Some(Seq()),
       env = Map(
         "POSTGRES_HOST" -> dbConfig.hostname,
         "POSTGRES_PORT" -> dbConfig.port.toString,
@@ -353,10 +357,11 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       image = dockerImage("gestalt-lambda"),
       network = ContainerInfo.DockerInfo.Network.HOST,
       ports = Some(Seq(
-        PortSpec(number = 0, name = "http-api", labels = Map("VIP_0" -> dest("lambda")))
+        PortSpec(number = 0, name = "http-api", labels = Map("VIP_0" -> dest("lambda"))),
+        PortSpec(number = 0, name = "libprocess", labels = Map())
       )),
       cpus = 0.5,
-      cmd = Some("./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
+      cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-lambda -Dhttp.port=$PORT0 -Dlogger.file=/opt/docker/conf/logback.xml -J-Xmx1024m"),
       mem = 1536,
       healthChecks = Seq(HealthCheck(
         path = "/health",
@@ -423,6 +428,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
   private[this] def getApiProxy(globals: JsValue): AppSpec = {
     AppSpec(
       name = "api-proxy",
+      args = Some(Seq()),
       env = Map(
         "API_URL" -> s"http://${dest("meta")}",
         "SEC_URL" -> s"http://${dest("security")}"
@@ -452,6 +458,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     val labels = getVhostLabels("ui")
     AppSpec(
       name = "ui",
+      args = Some(Seq()),
       env = Map(
         "API_URL" -> s"http://${dest("api-proxy")}"
       ),
@@ -479,6 +486,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
 
   private[this] def getRabbit(globals: JsValue): AppSpec = {
     AppSpec(
+      args = Some(Seq()),
       name = "rabbit",
       env = Map.empty,
       image = dockerImage("rabbit"),
@@ -529,6 +537,7 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       mem = app.mem,
       disk = 0,
       requirePorts = true,
+      residency = app.residency,
       container = MarathonContainerInfo(
         `type` = "DOCKER",
         volumes = app.volumes,
