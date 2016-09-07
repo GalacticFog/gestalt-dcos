@@ -1,3 +1,5 @@
+[![Slack Status](https://chat.galacticfog.com/badge.svg)](https://chat.galacticfog.com)
+
 # gestalt-dcos
 
 A Universe one-click installer for the [gestalt-framework](http://www.galacticfog.com) on [DC/OS](https://dcos.io/).
