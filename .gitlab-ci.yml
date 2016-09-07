@@ -1,7 +1,6 @@
 stages:
 - test
 - publish
-- deploy
 
 variables:
   DOCKER_IMG: "galacticfog/gestalt-dcos"
@@ -44,10 +43,3 @@ github-publish:
     - tags
   artifacts:
 
-deploy-to-test:
-  stage: deploy
-  environment: test
-  script: 
-    - echo checking for access to marathon
-    - curl http://marathon.mesos:8080/v2/apps/gestalt-test || true
-  artifacts:
