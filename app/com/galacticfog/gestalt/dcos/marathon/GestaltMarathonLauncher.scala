@@ -470,7 +470,7 @@ class GestaltMarathonLauncher @Inject()(config: Configuration,
             "name" -> "Default-License-1",
             "description" -> "Default GF license",
             "properties" -> Json.obj(
-              "data" -> "ABwwGgQUbktXo+QJqMEcA0p+wq3gXxWdn/kCAgQAHuug2cM3L7C3fSzuCle0gMtM9O1kS3Tn28ObNDAc72j10bE3QNGHmRuZrWqxB4hASOVj3lQXTcmPjkEjY53fEdAioKTONAaXc71wYiFpxr48asjBj65NLwsDz8V8O0ZL4eukHbe05YPq7LhJ9JHvdwd4Z6KqXfWW3qVJveaAkbqeJZMWhxDmOpDOF7VxJtRo2Vc4efBafYDj5rQWlALLt7bddo7IqQ48WpUCS/ivJNXhmxznip0B2BlpoPPdKJUPvmRdIjxYy6gvyuApYOwDOSkoZbHEb6hB9KnCExqlfG32RKfw2m4yzYkTk6kXoUvQsacMobuV4lsNEqbafbpDxTif8zUuA4OcoF6uctsuktBK5V9I5u7HviHdXv4dYU1fDIL3DZHbPkaseXA/FxlVDw=="
+              "data" -> "ABwwGgQU2sRrqimETPuadqSI2eFk4Up3KvQCAgQAk5ajGc/wnSIQmzCTnO2F9OudiuXkMEdOHCocTJ74nZfSWUbjjmbiTiQsLA9OFIRhLyqVE+jrjWzRX+1kebdRgfqmLoOlfYtBsfx+r1W00Db/RbLbcZSMjTFYfQ+a0VgE/wsbo/rOJIubOpvqhvb7RtszjHD1XZAVQIE1gtiV9XhmIgvBrTVyaR+IKtZQ//pwKrZ4nwgzVLivdH6hosvFIBjvH82L2AR9FIl7aaXiHoMhajm/kpf2iMyoNsggpR4SYpWGt3si7S5gkhew0dfR6waSXdAGMPtdbrZLeLqAZPH4pXZB9X1TuGa2Xfg9dqq6819sTJvqx6AOQFdihsHxqnbw8+9cYiBnDsEEOvTYZBBuVV28lHYFQPt8ftuAr1idNu9RIn2+Z06zXZhynbiMrI1IDIaFerKgHmueF2G/Bog="
             )
           )
           val licenseUrl = s"http://${metaUrl}/root/licenses"
