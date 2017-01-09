@@ -22,7 +22,7 @@ resolvers += "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/
 libraryDependencies += "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.5-SNAPSHOT" withSources()
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
-libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "1.8.1"
+libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "2.0.0"
 
 scalacOptions in Test ++= Seq("-Yrangepos")
 
