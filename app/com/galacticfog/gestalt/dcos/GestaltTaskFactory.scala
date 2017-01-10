@@ -1,5 +1,7 @@
 package com.galacticfog.gestalt.dcos
 
+import scala.language.implicitConversions
+
 import java.util.UUID
 import javax.inject.Inject
 

@@ -7,9 +7,10 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 scalaVersion := "2.11.7"
 
 import com.typesafe.sbt.packager.docker._
-dockerUpdateLatest := false
-dockerRepository := Some("galacticfog.artifactoryonline.com")
-dockerBaseImage := "galacticfog.artifactoryonline.com/gestalt-mesos-base:v1"
+maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+dockerUpdateLatest := true
+dockerBaseImage := "galacticfog/gestalt-mesos-base:3.1.0"
+dockerExposedPorts := Seq(9000)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 libraryDependencies ++= Seq("org.specs2" %% "specs2-core" % "3.8.4" % "test")
@@ -22,7 +23,9 @@ resolvers += "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/
 libraryDependencies += "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.5-SNAPSHOT" withSources()
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
-libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "1.8.1"
+libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "2.0.0"
+
+scalacOptions ++= Seq("-feature")
 
 scalacOptions in Test ++= Seq("-Yrangepos")
 
