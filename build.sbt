@@ -24,6 +24,8 @@ libraryDependencies += "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.2.
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "2.0.0"
 
+scalacOptions ++= Seq("-feature")
+
 scalacOptions in Test ++= Seq("-Yrangepos")
 
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"

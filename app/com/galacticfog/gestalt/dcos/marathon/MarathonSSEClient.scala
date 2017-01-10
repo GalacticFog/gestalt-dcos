@@ -2,17 +2,17 @@ package com.galacticfog.gestalt.dcos.marathon
 
 import javax.inject.{Inject, Named}
 
+import scala.language.postfixOps
+
 import akka.{Done, NotUsed}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.headers.Accept
-import akka.http.scaladsl.model.{HttpHeader, HttpMethods}
 import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.{ActorMaterializer, DelayOverflowStrategy}
+import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import play.api.Configuration
-import play.api.inject.ApplicationLifecycle
 import play.api.libs.ws.WSClient
 import play.api.{Logger => logger}
 import play.api.libs.json._
@@ -22,9 +22,9 @@ import play.api.libs.functional.syntax._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
+import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
 
 sealed trait ServiceStatus
 final case object LAUNCHING extends ServiceStatus
@@ -45,15 +45,20 @@ case object ServiceInfo {
   implicit val serviceInfoWrites = Json.writes[ServiceInfo]
 }
 
+object BiggerUnmarshalling extends EventStreamUnmarshalling {
+  override protected def maxLineSize: Int = 524288
+  override protected def maxEventSize: Int = 524288
+}
+
 class MarathonSSEClient @Inject() (config: Configuration,
                                    @Named("scheduler-actor") schedulerActor: ActorRef,
                                    gtf: GestaltTaskFactory,
                                    wsclient: WSClient)
                                   (implicit system: ActorSystem) {
 
-  import MarathonSSEClient._
   import system.dispatcher
-  import EventStreamUnmarshalling._
+  import MarathonSSEClient._
+  import BiggerUnmarshalling._
 
   val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
 
@@ -70,12 +75,15 @@ class MarathonSSEClient @Inject() (config: Configuration,
   logger.info(s"connecting to marathon event bus: ${marathon}")
 
   val handler = Sink.actorRef(schedulerActor, Done)
-  Http()
-    .singleRequest(Get("${marathon}/v2/events"))
+  Http(system)
+    .singleRequest(
+      Get(s"${marathon}/v2/events")
+        .addHeader(
+          Accept(`text/event-stream`)
+        )
+    )
     .flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
-    .foreach(_.runForeach(println))
-
-  //    .foreach(_.runWith(handler))
+    .foreach(_.runWith(handler))
 
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
@@ -202,16 +210,18 @@ class MarathonSSEClient @Inject() (config: Configuration,
 object MarathonSSEClient {
   def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq
 
-  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[Any] = {
-    event.data map { data =>
+  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[T] = {
+    event.data filter {_.trim.nonEmpty} flatMap { data =>
       Try{Json.parse(data)} match {
         case Failure(e) =>
           logger.warn(s"error parsing event data as JSON:\n${data}", e)
+          logger.warn(s"payload was:\n${data}")
           None
         case Success(js) =>
           js.validate[T] match {
             case JsError(_) =>
               logger.warn(s"error unmarshalling ${event.`type`} JSON")
+              logger.warn(s"payload was:\n${data}")
               None
             case JsSuccess(obj, _) => Some(obj)
           }
