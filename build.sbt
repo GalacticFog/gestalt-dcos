@@ -7,9 +7,10 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 scalaVersion := "2.11.7"
 
 import com.typesafe.sbt.packager.docker._
-dockerUpdateLatest := false
-dockerRepository := Some("galacticfog.artifactoryonline.com")
-dockerBaseImage := "galacticfog.artifactoryonline.com/gestalt-mesos-base:v1"
+maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+dockerUpdateLatest := true
+dockerBaseImage := "galacticfog/gestalt-mesos-base:3.1.0"
+dockerExposedPorts := Seq(9000)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 libraryDependencies ++= Seq("org.specs2" %% "specs2-core" % "3.8.4" % "test")
