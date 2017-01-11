@@ -49,28 +49,24 @@ case object GlobalDBConfig {
   )
 }
 
-class GestaltTaskFactory @Inject() (config: Configuration) {
+class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   val RABBIT_EXCHANGE = "policy-exchange"
 
-  val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
+  val VIP = "" // TODO: finish me
 
-  val TLD = config.getString("marathon.tld")
+  val TLD = launcherConfig.marathon.tld
 
-  val appGroup = config.getString("marathon.app-group").getOrElse(GestaltTaskFactory.DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/")
+  val appGroup = launcherConfig.marathon.appGroup
 
-  val gestaltFrameworkEnsembleVersion = config.getString("gestalt-framework-version")
+  val gestaltFrameworkEnsembleVersion = launcherConfig.gestaltFrameworkVersion
 
   Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
 
-  val provisionDB = config.getBoolean("database.provision") getOrElse true
-  val provisionedDBSize = config.getInt("database.provisioned-size") getOrElse 100
+  val provisionDB = launcherConfig.database.provision
+  val provisionedDBSize = launcherConfig.database.provisionedSize
 
-  def dockerImage(service: String) = {
-    config.getString(s"containers.${service}")
-          .orElse(gestaltFrameworkEnsembleVersion.map(ensVer => s"galacticfog/${service}:dcos-${ensVer}"))
-          .getOrElse(GestaltTaskFactory.DEFAULT_DOCKER_IMAGES(service))
-  }
+  import launcherConfig.dockerImage
 
   def getVhostLabels(svcname: String): Map[String,String] = {
     TLD match {
@@ -98,8 +94,6 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
     "ui"           ->     "80",
     "policy"       ->   "9999"
   )
-
-  import GestaltTaskFactory._
 
   def allServices = {
     if (provisionDB) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
@@ -608,23 +602,4 @@ class GestaltTaskFactory @Inject() (config: Configuration) {
       .build()
   }
 
-}
-
-case object GestaltTaskFactory {
-  val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
-  val DEFAULT_DOCKER_IMAGES = Map(
-    "rabbit"                     -> "galacticfog/rabbit:dcos-latest",
-    "kong"                       -> "galacticfog/kong:dcos-latest",
-    "gestalt-data"               -> "galacticfog/gestalt-data:dcos-latest",
-    "gestalt-security"           -> "galacticfog/gestalt-security:dcos-latest",
-    "gestalt-meta"               -> "galacticfog/gestalt-meta:dcos-latest",
-    "gestalt-policy"             -> "galacticfog/gestalt-policy:dcos-latest",
-    "gestalt-lambda"             -> "galacticfog/gestalt-lambda:dcos-latest",
-    "gestalt-api-gateway"        -> "galacticfog/gestalt-api-gateway:dcos-latest",
-    "gestalt-api-proxy"          -> "galacticfog/gestalt-api-proxy:dcos-latest",
-    "gestalt-ui"                 -> "galacticfog/gestalt-ui:dcos-latest",
-    "lambda-javascript-executor" -> "galacticfog/lambda-javascript-executor:dcos-latest",
-    "lambda-java-executor"       -> "galacticfog/lambda-java-executor:dcos-latest",
-    "lambda-dotnet-executor"     -> "galacticfog/lambda-dotnet-executor:dcos-latest"
-  )
 }

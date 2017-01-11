@@ -4,7 +4,6 @@ import modules.Module
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragment
-import play.api.Configuration
 import play.api.inject.guice.{GuiceInjectorBuilder, GuiceApplicationBuilder}
 import play.api.inject.bind
 import play.api.libs.json.Json

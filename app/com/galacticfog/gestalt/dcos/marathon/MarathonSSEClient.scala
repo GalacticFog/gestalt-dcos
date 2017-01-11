@@ -3,7 +3,6 @@ package com.galacticfog.gestalt.dcos.marathon
 import javax.inject.{Inject, Named}
 
 import scala.language.postfixOps
-
 import akka.{Done, NotUsed}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
@@ -11,7 +10,7 @@ import akka.http.scaladsl.model.headers.Accept
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import play.api.Configuration
 import play.api.libs.ws.WSClient
 import play.api.{Logger => logger}
@@ -50,34 +49,30 @@ object BiggerUnmarshalling extends EventStreamUnmarshalling {
   override protected def maxEventSize: Int = 524288
 }
 
-class MarathonSSEClient @Inject() (config: Configuration,
-                                   @Named("scheduler-actor") schedulerActor: ActorRef,
-                                   gtf: GestaltTaskFactory,
-                                   wsclient: WSClient)
-                                  (implicit system: ActorSystem) {
+class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
+                                    @Named("scheduler-actor") schedulerActor: ActorRef,
+                                    wsclient: WSClient )
+                                  ( implicit system: ActorSystem ) {
 
   import system.dispatcher
   import MarathonSSEClient._
   import BiggerUnmarshalling._
 
-  val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
+  val marathonBaseUrl = launcherConfig.marathon.baseUrl
 
-  val appGroup = gtf.appGroup.stripPrefix("/").stripSuffix("/")
-  val appIdWithGroup = s"/${gtf.appGroup}/(.*)".r
-
-  val allServices = gtf.allServices
+  val appGroup = launcherConfig.marathon.appGroup.stripPrefix("/").stripSuffix("/")
+  val appIdWithGroup = s"/${appGroup}/(.*)".r
 
   val STATUS_UPDATE_TIMEOUT = 15.seconds
 
   implicit val mat = ActorMaterializer()
 
-  val marathon = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
-  logger.info(s"connecting to marathon event bus: ${marathon}")
+  logger.info(s"connecting to marathon event bus: ${marathonBaseUrl}")
 
   val handler = Sink.actorRef(schedulerActor, Done)
   Http(system)
     .singleRequest(
-      Get(s"${marathon}/v2/events")
+      Get(s"${marathonBaseUrl}/v2/events")
         .addHeader(
           Accept(`text/event-stream`)
         )
@@ -88,7 +83,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
-    wsclient.url(s"${marathon}/v2/apps/${appId}")
+    wsclient.url(s"${marathonBaseUrl}/v2/apps/${appId}")
       .withQueryString("force" -> "true")
       .put(
         Json.toJson(appPayload)
@@ -108,7 +103,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
   def killApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
     val appId = s"/${appGroup}/${svcName}"
-    wsclient.url(s"${marathon}/v2/apps${appId}")
+    wsclient.url(s"${marathonBaseUrl}/v2/apps${appId}")
       .withQueryString("force" -> "true")
       .delete()
       .map { resp =>
@@ -120,7 +115,7 @@ class MarathonSSEClient @Inject() (config: Configuration,
 
   def stopApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
-    wsclient.url(s"${marathon}/v2/apps/${appGroup}/${svcName}")
+    wsclient.url(s"${marathonBaseUrl}/v2/apps/${appGroup}/${svcName}")
       .withQueryString("force" -> "true")
       .put(Json.obj("instances" -> 0))
       .map { resp =>

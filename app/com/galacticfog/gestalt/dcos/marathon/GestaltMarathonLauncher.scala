@@ -5,16 +5,17 @@ import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM}
 import akka.event.LoggingAdapter
-import com.galacticfog.gestalt.dcos.{GlobalDBConfig, GestaltTaskFactory}
+import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, GlobalDBConfig, LauncherConfig}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.Configuration
 import play.api.libs.json.{JsObject, Json}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import play.api.libs.ws.{WSAuthScheme, WSClient}
+
 import scala.concurrent.Future
 import scala.concurrent.duration._
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 import MarathonSSEClient.parseEvent
 import play.api.libs.json._
 import play.api.libs.json.Reads._
@@ -100,16 +101,12 @@ object GestaltMarathonLauncher {
   )
 }
 
-class GestaltMarathonLauncher @Inject()( config: Configuration,
+class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
                                          marClient: MarathonSSEClient,
                                          wsclient: WSClient,
                                          gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
 
   import GestaltMarathonLauncher._
-
-  def getConfigString(path: String, default: String): String = config.getString(path).getOrElse(default)
-
-  def getConfigInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
 
   def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
     this.context.system.scheduler.scheduleOnce(delay, self, message)
@@ -117,12 +114,12 @@ class GestaltMarathonLauncher @Inject()( config: Configuration,
 
   implicit val apiKeyReads = Json.format[GestaltAPIKey]
 
-  val marathonBaseUrl = config.getString("marathon.url") getOrElse "http://marathon.mesos:8080"
+  val marathonBaseUrl = launcherConfig.marathon.baseUrl
 
-  val TLD    = config.getString("marathon.tld")
+  val TLD    = launcherConfig.marathon.tld
   val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
 
-  val VIP = config.getString("service.vip") getOrElse "10.10.10.10"
+  val VIP = "" // TODO: finish me
 
   // setup a-priori/static globals
 
@@ -134,8 +131,8 @@ class GestaltMarathonLauncher @Inject()( config: Configuration,
   def provisionedDB: JsObject = Json.obj(
     "hostname" -> VIP,
     "port" -> 5432,
-    "username" -> getConfigString("database.username", "gestaltdev"),
-    "password" -> getConfigString("database.password", "letmein"),
+    "username" -> launcherConfig.database.username,
+    "password" -> launcherConfig.database.password,
     "prefix" -> "gestalt-"
   )
 
@@ -149,19 +146,19 @@ class GestaltMarathonLauncher @Inject()( config: Configuration,
     } yield Json.obj(
       "hostname" -> host,
       "port" -> port,
-      "username" -> getConfigString("database.username", "gestaltdev"),
-      "password" -> getConfigString("database.password", "letmein"),
+      "username" -> launcherConfig.database.username,
+      "password" -> launcherConfig.database.password,
       "prefix" -> "gestalt-"
     )
     js getOrElse provisionedDB
   }
 
   def configuredDB: JsObject = Json.obj(
-    "hostname" -> getConfigString("database.hostname", "data.gestalt.marathon.mesos"),
-    "port" -> getConfigInt("database.port", 5432),
-    "username" -> getConfigString("database.username", "gestaltdev"),
-    "password" -> getConfigString("database.password", "letmein"),
-    "prefix" -> getConfigString("database.prefix", "gestalt-")
+    "hostname" -> launcherConfig.database.hostname,
+    "port" -> launcherConfig.database.port,
+    "username" -> launcherConfig.database.username,
+    "password" -> launcherConfig.database.password,
+    "prefix" -> launcherConfig.database.prefix
   )
 
   val databaseConfig = if (gtf.provisionDB) Json.obj(
@@ -173,13 +170,13 @@ class GestaltMarathonLauncher @Inject()( config: Configuration,
   val globals = marathonConfig ++ databaseConfig
 
   val securityInitCredentials = JsObject(
-    Seq("username" -> JsString(getConfigString("security.username","gestalt-admin"))) ++
-      config.getString("security.password").map("password" -> JsString(_))
+    Seq("username" -> JsString(launcherConfig.security.username)) ++
+      launcherConfig.security.password.map("password" -> JsString(_))
   )
 
   val securityProvidedApiKey = for {
-    key <- config.getString("security.key")
-    secret <- config.getString("security.secret")
+    key <- launcherConfig.security.key
+    secret <- launcherConfig.security.secret
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
   private def launchApp(serviceName: String, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {

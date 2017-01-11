@@ -13,8 +13,6 @@ dockerBaseImage := "galacticfog/gestalt-mesos-base:3.1.0"
 dockerExposedPorts := Seq(9000)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
-libraryDependencies ++= Seq("org.specs2" %% "specs2-core" % "3.8.4" % "test")
-libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.8.4" % "test")
 
 resolvers += "Mesosphere Repo" at "http://downloads.mesosphere.io/maven"
 libraryDependencies += "mesosphere" %% "mesos-utils" % "0.28.0" withJavadoc()
@@ -34,8 +32,11 @@ libraryDependencies ++= Seq(
   jdbc,
   cache,
   ws,
+  specs2 % Test,
   "org.webjars" %% "webjars-play" % "2.5.0",
   "org.webjars" % "bootstrap" % "3.1.1-2",
   "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
   "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
 )
+
+libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.6.6" % "test")

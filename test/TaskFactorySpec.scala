@@ -1,7 +1,6 @@
 import com.galacticfog.gestalt.dcos.{AppSpec, GestaltTaskFactory}
 import modules.Module
 import org.specs2.mutable.Specification
-import play.api.{Environment, Configuration}
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
 import play.api.libs.json.Json
 
