@@ -3,6 +3,7 @@ import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
 import play.api.libs.json.Json
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 
 class TaskFactorySpec extends Specification {
 
@@ -33,16 +34,16 @@ class TaskFactorySpec extends Specification {
 
       val globals = Json.obj()
 
-      gtf.getAppSpec("data", globals) must haveImage("test-data:tag")
-      gtf.getAppSpec("rabbit", globals) must haveImage("test-rabbit:tag")
-      gtf.getAppSpec("kong", globals) must haveImage("test-kong:tag")
-      gtf.getAppSpec("security", globals) must haveImage("test-security:tag")
-      gtf.getAppSpec("meta", globals) must haveImage("test-meta:tag")
-      gtf.getAppSpec("policy", globals) must haveImage("test-policy:tag")
-      gtf.getAppSpec("api-gateway", globals) must haveImage("test-api-gateway:tag")
-      gtf.getAppSpec("api-proxy", globals) must haveImage("test-api-proxy:tag")
-      gtf.getAppSpec("ui", globals) must haveImage("test-ui:tag")
-      val lambda = gtf.getAppSpec("lambda", globals)
+      gtf.getAppSpec(DATA, globals) must haveImage("test-data:tag")
+      gtf.getAppSpec(RABBIT, globals) must haveImage("test-rabbit:tag")
+      gtf.getAppSpec(KONG, globals) must haveImage("test-kong:tag")
+      gtf.getAppSpec(SECURITY, globals) must haveImage("test-security:tag")
+      gtf.getAppSpec(META, globals) must haveImage("test-meta:tag")
+      gtf.getAppSpec(POLICY, globals) must haveImage("test-policy:tag")
+      gtf.getAppSpec(API_GATEWAY, globals) must haveImage("test-api-gateway:tag")
+      gtf.getAppSpec(API_PROXY, globals) must haveImage("test-api-proxy:tag")
+      gtf.getAppSpec(UI, globals) must haveImage("test-ui:tag")
+      val lambda = gtf.getAppSpec(LAMBDA, globals)
       lambda must haveImage("test-lambda:tag")
       lambda must haveEnvVar("JS_EXECUTOR" -> "test-js-executor:tag")
       lambda must haveEnvVar("JAVA_EXECUTOR" -> "test-java-executor:tag")
@@ -62,16 +63,16 @@ class TaskFactorySpec extends Specification {
 
       val globals = Json.obj()
 
-      gtf.getAppSpec("data", globals) must haveImage("galacticfog/gestalt-data:dcos-9.10.11.12")
-      gtf.getAppSpec("rabbit", globals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
-      gtf.getAppSpec("kong", globals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
-      gtf.getAppSpec("security", globals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
-      gtf.getAppSpec("meta", globals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
-      gtf.getAppSpec("policy", globals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
-      gtf.getAppSpec("api-gateway", globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
-      gtf.getAppSpec("api-proxy", globals) must haveImage("galacticfog/gestalt-api-proxy:dcos-9.10.11.12")
-      gtf.getAppSpec("ui", globals) must haveImage("galacticfog/gestalt-ui:dcos-9.10.11.12")
-      val lambda = gtf.getAppSpec("lambda", globals)
+      gtf.getAppSpec(DATA, globals) must haveImage("galacticfog/gestalt-data:dcos-9.10.11.12")
+      gtf.getAppSpec(RABBIT, globals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
+      gtf.getAppSpec(KONG, globals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
+      gtf.getAppSpec(SECURITY, globals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
+      gtf.getAppSpec(META, globals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
+      gtf.getAppSpec(POLICY, globals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
+      gtf.getAppSpec(API_GATEWAY, globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
+      gtf.getAppSpec(API_PROXY, globals) must haveImage("galacticfog/gestalt-api-proxy:dcos-9.10.11.12")
+      gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui:dcos-9.10.11.12")
+      val lambda = gtf.getAppSpec(LAMBDA, globals)
       lambda must haveImage("galacticfog/gestalt-lambda:dcos-9.10.11.12")
       lambda must haveEnvVar("JS_EXECUTOR" -> s"galacticfog/lambda-javascript-executor:dcos-9.10.11.12")
       lambda must haveEnvVar("JAVA_EXECUTOR" -> s"galacticfog/lambda-java-executor:dcos-9.10.11.12")
@@ -88,16 +89,16 @@ class TaskFactorySpec extends Specification {
 
       val globals = Json.obj()
 
-      gtf.getAppSpec("data", globals) must haveImage("galacticfog/gestalt-data:dcos-latest")
-      gtf.getAppSpec("rabbit", globals) must haveImage("galacticfog/rabbit:dcos-latest")
-      gtf.getAppSpec("kong", globals) must haveImage("galacticfog/kong:dcos-latest")
-      gtf.getAppSpec("security", globals) must haveImage("galacticfog/gestalt-security:dcos-latest")
-      gtf.getAppSpec("meta", globals) must haveImage("galacticfog/gestalt-meta:dcos-latest")
-      gtf.getAppSpec("policy", globals) must haveImage("galacticfog/gestalt-policy:dcos-latest")
-      gtf.getAppSpec("api-gateway", globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-latest")
-      gtf.getAppSpec("api-proxy", globals) must haveImage("galacticfog/gestalt-api-proxy:dcos-latest")
-      gtf.getAppSpec("ui", globals) must haveImage("galacticfog/gestalt-ui:dcos-latest")
-      val lambda = gtf.getAppSpec("lambda", globals)
+      gtf.getAppSpec(DATA, globals) must haveImage("galacticfog/gestalt-data:dcos-latest")
+      gtf.getAppSpec(RABBIT, globals) must haveImage("galacticfog/rabbit:dcos-latest")
+      gtf.getAppSpec(KONG, globals) must haveImage("galacticfog/kong:dcos-latest")
+      gtf.getAppSpec(SECURITY, globals) must haveImage("galacticfog/gestalt-security:dcos-latest")
+      gtf.getAppSpec(META, globals) must haveImage("galacticfog/gestalt-meta:dcos-latest")
+      gtf.getAppSpec(POLICY, globals) must haveImage("galacticfog/gestalt-policy:dcos-latest")
+      gtf.getAppSpec(API_GATEWAY, globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-latest")
+      gtf.getAppSpec(API_PROXY, globals) must haveImage("galacticfog/gestalt-api-proxy:dcos-latest")
+      gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui:dcos-latest")
+      val lambda = gtf.getAppSpec(LAMBDA, globals)
       lambda must haveImage("galacticfog/gestalt-lambda:dcos-latest")
       lambda must haveEnvVar("JS_EXECUTOR" -> s"galacticfog/lambda-javascript-executor:dcos-latest")
       lambda must haveEnvVar("JAVA_EXECUTOR" -> s"galacticfog/lambda-java-executor:dcos-latest")

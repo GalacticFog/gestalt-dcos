@@ -1,10 +1,11 @@
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.marathon._
 import modules.Module
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragment
-import play.api.inject.guice.{GuiceInjectorBuilder, GuiceApplicationBuilder}
+import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
 import play.api.inject.bind
 import play.api.libs.json.Json
 import play.test.WithApplication
@@ -100,7 +101,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         ))
       )
 
-      val security = gtf.getMarathonPayload("security", global)
+      val security = gtf.getMarathonPayload(SECURITY, global)
       security must_== expected
 
     }
@@ -139,7 +140,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
 
 
-      val lambda = gtf.getMarathonPayload("lambda", global)
+      val lambda = gtf.getMarathonPayload(LAMBDA, global)
       lambda.container.docker must beSome
       lambda.container.docker.get.network must_== "HOST"
       lambda.container.docker.get.portMappings must beNone
@@ -174,9 +175,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
     }
 
     "appropriately set realm override for security consumer services (host IP)" in {
@@ -205,9 +206,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
-      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
-      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
     }
 
     "appropriately set realm override for security consumer services (globals)" in {
@@ -237,9 +238,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      gtf.getMarathonPayload("meta", global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
-      gtf.getMarathonPayload("lambda", global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
-      gtf.getMarathonPayload("api-gateway", global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
+      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
+      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
     }
 
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
@@ -266,7 +267,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
       Fragment.foreach(gtf.allServices) { svc =>
         val payload = gtf.getMarathonPayload(svc, global)
-        svc ! {(payload.cmd must beSome) or (payload.args must beSome)}
+        svc.name ! {(payload.cmd must beSome) or (payload.args must beSome)}
       }
     }
 
@@ -277,7 +278,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
       val global = Json.obj()
-      val data = gtf.getMarathonPayload("data", global)
+      val data = gtf.getMarathonPayload(DATA, global)
       data.residency must beSome(Residency(Residency.WAIT_FOREVER))
     }
 
