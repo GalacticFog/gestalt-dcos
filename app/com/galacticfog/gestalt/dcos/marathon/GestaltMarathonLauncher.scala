@@ -35,7 +35,7 @@ case object LaunchingSecurity         extends LauncherState {override def target
 case object RetrievingAPIKeys         extends LauncherState
 case object LaunchingKong             extends LauncherState {override def targetService = Some(KONG)}
 case object LaunchingApiGateway       extends LauncherState {override def targetService = Some(API_GATEWAY)}
-case object LaunchingLambda           extends LauncherState {override def targetService = Some(LAMBDA)}
+case object LaunchingLambda           extends LauncherState {override def targetService = Some(LASER)}
 case object LaunchingMeta             extends LauncherState {override def targetService = Some(META)}
 case object BootstrappingMeta         extends LauncherState
 case object SyncingMeta               extends LauncherState

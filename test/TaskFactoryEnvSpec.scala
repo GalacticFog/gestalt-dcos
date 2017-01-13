@@ -36,7 +36,7 @@ class TaskFactoryEnvSpec extends Specification {
       else                                          gtf.getAppSpec(META, globals)        must haveImage(s"galacticfog/gestalt-meta:dcos-${ensver}")
       if (env("GESTALT_POLICY_IMG").isDefined)      gtf.getAppSpec(POLICY, globals)      must haveImage(env("GESTALT_POLICY_IMG").get)
       else                                          gtf.getAppSpec(POLICY, globals)      must haveImage(s"galacticfog/gestalt-policy:dcos-${ensver}")
-      val lambdaSpec = gtf.getAppSpec(LAMBDA, globals)
+      val lambdaSpec = gtf.getAppSpec(LASER, globals)
       if (env("GESTALT_LAMBDA_IMG").isDefined)      lambdaSpec must haveImage(env("GESTALT_LAMBDA_IMG").get)
       else                                          lambdaSpec must haveImage(s"galacticfog/gestalt-lambda:dcos-${ensver}")
       lambdaSpec must haveEnvVar("JS_EXECUTOR"     -> env("LAMBDA_JAVASCRIPT_EXECUTOR_IMG").getOrElse(s"galacticfog/lambda-javascript-executor:dcos-${ensver}"))

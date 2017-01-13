@@ -47,7 +47,15 @@ case object ServiceInfo {
       "serviceName" -> o.name
     )
   }
-  implicit val serviceInfoWrites = Json.writes[ServiceInfo]
+  implicit val serviceInfoWrites = new Writes[ServiceInfo] {
+    override def writes(si: ServiceInfo): JsValue = Json.obj(
+      "serviceName" -> si.service.name,
+      "vhosts" -> Json.toJson(si.vhosts),
+      "hostname" -> Json.toJson(si.hostname),
+      "ports" -> Json.toJson(si.ports),
+      "status" -> Json.toJson(si.status)
+    )
+  }
 }
 
 object BiggerUnmarshalling extends EventStreamUnmarshalling {

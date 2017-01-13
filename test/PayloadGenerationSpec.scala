@@ -140,7 +140,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
 
 
-      val lambda = gtf.getMarathonPayload(LAMBDA, global)
+      val lambda = gtf.getMarathonPayload(LASER, global)
       lambda.container.docker must beSome
       lambda.container.docker.get.network must_== "HOST"
       lambda.container.docker.get.portMappings must beNone
@@ -176,7 +176,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
 
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
     }
 
@@ -207,7 +207,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
 
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
-      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
     }
 
@@ -239,7 +239,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
 
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
-      gtf.getMarathonPayload(LAMBDA, global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
     }
 
