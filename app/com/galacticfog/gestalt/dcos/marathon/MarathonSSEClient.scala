@@ -105,7 +105,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       resp.status match {
         case 201 => Future.successful(resp.json)
         case 200 => Future.successful(resp.json)
-        case not201 =>
+        case _ =>
           logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
           Future.failed(new RuntimeException(
             Try{(resp.json \ "message").as[String]} getOrElse resp.body

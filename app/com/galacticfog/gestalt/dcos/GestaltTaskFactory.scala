@@ -72,8 +72,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     name = service.name,
     args = Some(Seq()),
     image = launcherConfig.dockerImage(service),
-    cpus = DATA.cpu,
-    mem = DATA.mem,
+    cpus = service.cpu,
+    mem = service.mem,
     network = ContainerInfo.DockerInfo.Network.BRIDGE
   )
 
@@ -110,7 +110,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case UI          => getUI(globals)
       case KONG        => getKong(globals)
       case API_GATEWAY => getApiGateway(globals)
-      case LASER      => getLambda(globals)
+      case LASER      => getLaser(globals)
       case POLICY      => getPolicy(globals)
     }
   }
@@ -158,7 +158,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
     appSpec(SECURITY).copy(
-      args = Some(Seq("-J-Xmx512m")),
+      args = Some(Seq(s"-J-Xmx${(SECURITY.mem * 1.5).toInt}m")),
       env = Map(
         "DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "DATABASE_PORT"     -> s"${dbConfig.port}",
@@ -186,7 +186,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   private[this] def getMeta(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     appSpec(META).copy(
-      args = Some(Seq("-J-Xmx512m")),
+      args = Some(Seq(s"-J-Xmx${(META.mem * 1.5).toInt}m")),
       env = gestaltSecurityEnvVars(globals) ++ Map(
         "DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "DATABASE_PORT"     -> s"${dbConfig.port}",
@@ -239,7 +239,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   private[this] def getPolicy(globals: JsValue): AppSpec = {
     val secConfig = (globals \ "security")
     appSpec(POLICY).copy(
-      args = Some(Seq("-J-Xmx512m")),
+      args = Some(Seq(s"-J-Xmx${(POLICY.mem * 1.5).toInt}m")),
       env = Map(
         "LAMBDA_HOST"     -> serviceHostname(LASER),
         "LAMBDA_PORT"     -> vipPort(LASER),
@@ -279,12 +279,12 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getLambda(globals: JsValue): AppSpec = {
+  private[this] def getLaser(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
     appSpec(LASER).copy(
       args = None,
-      cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-laser -Dhttp.port=$PORT0 -J-Xmx1024m"),
+      cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-laser -Dhttp.port=$PORT0 -J-Xmx" + (LASER.mem*1.5).toInt + "m"),
       env = gestaltSecurityEnvVars(globals) ++ Map(
         "LAMBDA_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "LAMBDA_DATABASE_PORT"     -> s"${dbConfig.port}",
@@ -374,7 +374,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   private[this] def getApiGateway(globals: JsValue): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
     appSpec(API_GATEWAY).copy(
-      args = Some(Seq("-J-Xmx512m")),
+      args = Some(Seq(s"-J-Xmx${(API_GATEWAY.mem * 1.5).toInt}m")),
       env = gestaltSecurityEnvVars(globals) ++ Map(
         "GATEWAY_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "GATEWAY_DATABASE_PORT"     -> s"${dbConfig.port}",

@@ -19,9 +19,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "service.vip" -> "10.11.12.13",
           "marathon.tld" -> "galacticfog.com",
-          "containers.gestalt-security" -> "test-security:tag"
+          "containers.security" -> "test-security:tag"
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -51,7 +50,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val expected = MarathonAppPayload(
         id = "/gestalt-framework-tasks/security",
-        args = Some(Seq("-J-Xmx512m")),
+        args = Some(Seq("-J-Xmx1152m")),
         env = Map(
           "OAUTH_RATE_LIMITING_PERIOD" -> "5",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "1000",
@@ -79,7 +78,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
               containerPort = 9000,
               protocol = "tcp",
               name = Some("http-api"),
-              labels = Some(Map("VIP_0" -> "10.11.12.13:9455"))
+              labels = Some(Map("VIP_0" -> "/security.gestalt-framework-tasks:9455"))
             )))
           ))
         ),
@@ -151,7 +150,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "service.vip" -> "10.11.12.13",
           "marathon.tld" -> "galacticfog.com"
         )
         .injector
@@ -184,7 +182,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "service.vip" -> "10.11.12.13"
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -206,16 +203,15 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
-      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
-      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://10.11.12.13:9455")
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
+      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
     }
 
     "appropriately set realm override for security consumer services (globals)" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "service.vip" -> "10.11.12.13"
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]

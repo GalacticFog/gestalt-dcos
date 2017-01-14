@@ -441,6 +441,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
             case Failure(ex) =>
               log.warning("error provisioning providers in meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
+              // TODO: this potentially has the unfortunate effect of creating the providers multiple times
               sendMessageToSelf(5.seconds, RetryRequest)
           }
         case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
@@ -618,6 +619,9 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
           status = NOT_FOUND
         ))
       )
+    case Event(e @ MarathonAppTerminatedEvent(nonFrameworkAppId,_,_), d) =>
+      log.debug(s"received app terminated event from non-framework service ${nonFrameworkAppId}")
+      stay()
     case Event(e @ MarathonDeploymentFailure(_, _, deploymentId), d) =>
       goto(Error) using d.copy(
         error = Some(s"Deployment ${deploymentId} failed for service ${???}"),
@@ -639,6 +643,9 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _, _) , d) =>
       log.info(s"received StatusUpdateEvent(${taskStatus}) for task belonging to ${service.name}")
       requestUpdateAndStay(service)
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _, _) , d) =>
+      log.debug(s"ignoring StatusUpdateEvent(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
+      stay()
     case Event(LaunchServicesRequest,d) =>
       log.info("ignoring LauncherServicesRequest in stage " + stateName)
       stay()

@@ -105,7 +105,7 @@ object LauncherConfig {
     case object KONG         extends FrameworkService                       {val name = "kong";        val cpu = 0.25; val mem = 128;}
     case object DATA         extends FrameworkService with ServiceEndpoint  {val name = "data";        val cpu = 0.50; val mem = 256;  val port = 5432}
     case object SECURITY     extends FrameworkService with ServiceEndpoint  {val name = "security";    val cpu = 0.50; val mem = 768;  val port = 9455}
-    case object META         extends FrameworkService with ServiceEndpoint  {val name = "meta";        val cpu = 0.50; val mem = 768;  val port = 14374}
+    case object META         extends FrameworkService with ServiceEndpoint  {val name = "meta";        val cpu = 1.50; val mem = 1280; val port = 14374}
     case object LASER        extends FrameworkService with ServiceEndpoint  {val name = "laser";       val cpu = 0.50; val mem = 1280; val port = 1111}
     case object POLICY       extends FrameworkService with ServiceEndpoint  {val name = "policy";      val cpu = 0.25; val mem = 768;  val port = 9999}
     case object API_GATEWAY  extends FrameworkService with ServiceEndpoint  {val name = "api-gateway"; val cpu = 0.25; val mem = 768;  val port = 6473}
