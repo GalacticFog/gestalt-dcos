@@ -6,7 +6,7 @@ case class VolumePersistence(size: Int)
 
 case class Volume(containerPath: String,
                   mode: String,
-                  persistent: VolumePersistence)
+                  persistent: Option[VolumePersistence])
 
 case class PortDefinition(port: Int,
                           name: Option[String],
@@ -94,5 +94,6 @@ case class MarathonAppPayload(id: String,
                               tasksRunning: Option[Int] = None,
                               tasksHealthy: Option[Int] = None,
                               tasksUnhealthy: Option[Int] = None,
-                              tasks: Option[Seq[MarathonTask]] = None)
+                              tasks: Option[Seq[MarathonTask]] = None,
+                              taskKillGracePeriodSeconds: Option[Int] = None)
 

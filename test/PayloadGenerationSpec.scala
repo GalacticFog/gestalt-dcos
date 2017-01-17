@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.marathon._
 import modules.Module
@@ -239,6 +239,22 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
     }
 
+    "database sets residency and grace period along with persistent storage" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      val global = Json.obj()
+      val data = gtf.getMarathonPayload(DATA, global)
+      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
+      data.taskKillGracePeriodSeconds must beSome(300)
+      data.container.volumes must beSome(containTheSameElementsAs(
+        Seq(Volume("pgdata", "RW", Some(VolumePersistence(config.database.provisionedSize))))
+      ))
+    }
+
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -265,17 +281,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         val payload = gtf.getMarathonPayload(svc, global)
         svc.name ! {(payload.cmd must beSome) or (payload.args must beSome)}
       }
-    }
-
-    "database sets residency along with persistent storage" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-
-      val global = Json.obj()
-      val data = gtf.getMarathonPayload(DATA, global)
-      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
     }
 
   }

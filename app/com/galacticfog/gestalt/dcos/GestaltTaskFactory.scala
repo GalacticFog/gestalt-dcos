@@ -30,8 +30,8 @@ case class AppSpec(name: String,
                    volumes: Option[Seq[marathon.Volume]] = None,
                    residency: Option[Residency] = None,
                    healthChecks: Seq[HealthCheck] = Seq.empty,
+                   taskKillGracePeriodSeconds: Option[Int] = None,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
-
 
 case class GlobalDBConfig(hostname: String,
                           port: Int,
@@ -110,7 +110,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case UI          => getUI(globals)
       case KONG        => getKong(globals)
       case API_GATEWAY => getApiGateway(globals)
-      case LASER      => getLaser(globals)
+      case LASER       => getLaser(globals)
       case POLICY      => getPolicy(globals)
     }
   }
@@ -136,11 +136,12 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       volumes = Some(Seq(marathon.Volume(
         containerPath = "pgdata",
         mode = "RW",
-        persistent = VolumePersistence(
+        persistent = Some(VolumePersistence(
           size = provisionedDBSize
-        )
+        ))
       ))),
       residency = Some(Residency(Residency.WAIT_FOREVER)),
+      taskKillGracePeriodSeconds = Some(300),
       env = Map(
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password,
@@ -519,7 +520,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       readinessCheck = app.readinessCheck,
       portDefinitions = if (!isBridged) app.ports.map {_.map(
         p => PortDefinition(port = p.number, protocol = "tcp", name = Some(p.name), labels = Some(p.labels))
-      )} else None
+      )} else None,
+      taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds
     )
   }
 

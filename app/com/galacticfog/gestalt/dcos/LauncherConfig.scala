@@ -1,6 +1,7 @@
 package com.galacticfog.gestalt.dcos
 
 import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
+import com.galacticfog.gestalt.security.sdk.BuildInfo
 import com.google.inject.{Inject, Singleton}
 import play.api.Configuration
 
@@ -132,22 +133,22 @@ object LauncherConfig {
   }
 
   val DEFAULT_DOCKER_IMAGES: Map[Dockerable,String] = Map(
-    Services.RABBIT              -> "galacticfog/rabbit:dcos-latest",
-    Services.KONG                -> "galacticfog/kong:dcos-latest",
-    Services.DATA                -> "galacticfog/gestalt-data:dcos-latest",
-    Services.SECURITY            -> "galacticfog/gestalt-security:dcos-latest",
-    Services.META                -> "galacticfog/gestalt-meta:dcos-latest",
-    Services.POLICY              -> "galacticfog/gestalt-policy:dcos-latest",
-    Services.LASER               -> "galacticfog/gestalt-laser:dcos-latest",
-    Services.API_GATEWAY         -> "galacticfog/gestalt-api-gateway:dcos-latest",
-    Services.API_PROXY           -> "galacticfog/gestalt-api-proxy:dcos-latest",
-    Services.UI                  -> "galacticfog/gestalt-ui:dcos-latest",
-    Executors.EXECUTOR_DOTNET    -> "galacticfog/gestalt-laser-executor-dotnet:dcos-latest",
-    Executors.EXECUTOR_JS        -> "galacticfog/gestalt-laser-executor-js:dcos-latest",
-    Executors.EXECUTOR_JVM       -> "galacticfog/gestalt-laser-executor-jvm:dcos-latest",
-    Executors.EXECUTOR_PYTHON    -> "galacticfog/gestalt-laser-executor-python:dcos-latest",
-    Executors.EXECUTOR_GOLANG    -> "galacticfog/gestalt-laser-executor-golang:dcos-latest",
-    Executors.EXECUTOR_RUBY      -> "galacticfog/gestalt-laser-executor-ruby:dcos-latest"
+    Services.RABBIT              -> s"galacticfog/rabbit:dcos-${BuildInfo.version}",
+    Services.KONG                -> s"galacticfog/kong:dcos-${BuildInfo.version}",
+    Services.DATA                -> s"galacticfog/gestalt-data:dcos-${BuildInfo.version}",
+    Services.SECURITY            -> s"galacticfog/gestalt-security:dcos-${BuildInfo.version}",
+    Services.META                -> s"galacticfog/gestalt-meta:dcos-${BuildInfo.version}",
+    Services.POLICY              -> s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}",
+    Services.LASER               -> s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}",
+    Services.API_GATEWAY         -> s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}",
+    Services.API_PROXY           -> s"galacticfog/gestalt-api-proxy:dcos-${BuildInfo.version}",
+    Services.UI                  -> s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_DOTNET    -> s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_JS        -> s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_JVM       -> s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_PYTHON    -> s"galacticfog/gestalt-laser-executor-python:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_GOLANG    -> s"galacticfog/gestalt-laser-executor-golang:dcos-${BuildInfo.version}",
+    Executors.EXECUTOR_RUBY      -> s"galacticfog/gestalt-laser-executor-ruby:dcos-${BuildInfo.version}"
   )
 
   case class MesosConfig( master: String,
