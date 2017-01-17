@@ -310,7 +310,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_EXCHANGE" -> "lambda-executor-exchange",
         //
         "MANAGEMENT_PROTOCOL" -> "ws",
-        "MIN_COOL_EXECUTORS" -> "3",
+        "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
         //
         "MAX_PORT_RANGE" -> "11000",
         "MIN_PORT_RANGE" -> "10500",

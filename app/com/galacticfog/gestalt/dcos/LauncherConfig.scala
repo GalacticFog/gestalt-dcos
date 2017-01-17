@@ -39,6 +39,10 @@ class LauncherConfig @Inject()(config: Configuration) {
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080")
   )
 
+  val laser = LaserConfig(
+    minCoolExecutors = getInt("laser.min-cool-executors", 1)
+  )
+
   val security = SecurityConfig(
     username = getString("security.username", "gestalt-admin"),
     password = config.getString("security.password"),
@@ -53,8 +57,7 @@ class LauncherConfig @Inject()(config: Configuration) {
       .stripPrefix("/")
       .stripSuffix("/")
       .split("/")
-      .reverse
-      .foldLeft(service.name)(_ + "." + _)
+      .foldRight(service.name)(_ + "-" + _)
   }
 
   def vipLabel(service: ServiceEndpoint): String = "/" + vipBase(service) + ":" + service.port
@@ -172,4 +175,5 @@ object LauncherConfig {
                              key: Option[String],
                              secret: Option[String] )
 
+  case class LaserConfig( minCoolExecutors: Int )
 }

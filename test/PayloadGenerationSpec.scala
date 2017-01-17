@@ -78,7 +78,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
               containerPort = 9000,
               protocol = "tcp",
               name = Some("http-api"),
-              labels = Some(Map("VIP_0" -> "/security.gestalt-framework-tasks:9455"))
+              labels = Some(Map("VIP_0" -> "/gestalt-framework-tasks-security:9455"))
             )))
           ))
         ),
@@ -203,9 +203,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         """.stripMargin
       )
 
-      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
-      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
-      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://security.gestalt-framework-tasks.marathon.l4lb.thisdcos.directory:9455")
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
+      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
     }
 
     "appropriately set realm override for security consumer services (globals)" in {

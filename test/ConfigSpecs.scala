@@ -22,43 +22,43 @@ class ConfigSpecs extends PlaySpecification with Mockito {
   "LauncherConfig" should {
 
     "generate named VIP from requested nested application group with slashes" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
-      launcherConfig.vipLabel(DATA) must_== "/data.dev.gestalt-tasks-in-test:5432"
+      launcherConfig.vipLabel(DATA) must_== "/gestalt-tasks-in-test-dev-data:5432"
     }
 
     "generate named VIP from requested nested application group without slashes" in new WithAppGroup( "gestalt-tasks-in-test/dev" ) {
-      launcherConfig.vipLabel(DATA) must_== "/data.dev.gestalt-tasks-in-test:5432"
+      launcherConfig.vipLabel(DATA) must_== "/gestalt-tasks-in-test-dev-data:5432"
     }
 
     "generate named VIP from requested flat application group without slashes" in new WithAppGroup( "gestalt-tasks-in-test" ) {
-      launcherConfig.vipLabel(DATA) must_== "/data.gestalt-tasks-in-test:5432"
+      launcherConfig.vipLabel(DATA) must_== "/gestalt-tasks-in-test-data:5432"
     }
 
     "generate named VIP from requested flat application group with slashes" in new WithAppGroup( "/gestalt-tasks-in-test/" ) {
-      launcherConfig.vipLabel(DATA) must_== "/data.gestalt-tasks-in-test:5432"
+      launcherConfig.vipLabel(DATA) must_== "/gestalt-tasks-in-test-data:5432"
     }
 
     "generated named VIP from default app" in new WithAppGroup {
-      launcherConfig.vipLabel(DATA) must_== s"/data.${LauncherConfig.DEFAULT_APP_GROUP}:5432"
+      launcherConfig.vipLabel(DATA) must_== s"/${LauncherConfig.DEFAULT_APP_GROUP}-data:5432"
     }
 
     "generate VIP hostname from requested nested application group with slashes" in new WithAppGroup( "/gestalt-tasks-in-test/dev/" ) {
-      launcherConfig.vipHostname(DATA) must_== "data.dev.gestalt-tasks-in-test.marathon.l4lb.thisdcos.directory"
+      launcherConfig.vipHostname(DATA) must_== "gestalt-tasks-in-test-dev-data.marathon.l4lb.thisdcos.directory"
     }
 
     "generate VIP hostname from requested nested application group without slashes" in new WithAppGroup( "gestalt-tasks-in-test/dev" ) {
-      launcherConfig.vipHostname(DATA) must_== "data.dev.gestalt-tasks-in-test.marathon.l4lb.thisdcos.directory"
+      launcherConfig.vipHostname(DATA) must_== "gestalt-tasks-in-test-dev-data.marathon.l4lb.thisdcos.directory"
     }
 
     "generate VIP hostname from requested flat application group without slashes" in new WithAppGroup( "gestalt-tasks-in-test" ) {
-      launcherConfig.vipHostname(DATA) must_== "data.gestalt-tasks-in-test.marathon.l4lb.thisdcos.directory"
+      launcherConfig.vipHostname(DATA) must_== "gestalt-tasks-in-test-data.marathon.l4lb.thisdcos.directory"
     }
 
     "generate VIP hostname from requested flat application group with slashes" in new WithAppGroup( "/gestalt-tasks-in-test/" ) {
-      launcherConfig.vipHostname(DATA) must_== "data.gestalt-tasks-in-test.marathon.l4lb.thisdcos.directory"
+      launcherConfig.vipHostname(DATA) must_== "gestalt-tasks-in-test-data.marathon.l4lb.thisdcos.directory"
     }
 
     "generated VIP hostname from default app" in new WithAppGroup {
-      launcherConfig.vipHostname(DATA) must_== s"data.${LauncherConfig.DEFAULT_APP_GROUP}.marathon.l4lb.thisdcos.directory"
+      launcherConfig.vipHostname(DATA) must_== s"${LauncherConfig.DEFAULT_APP_GROUP}-data.marathon.l4lb.thisdcos.directory"
     }
 
   }
