@@ -1,6 +1,7 @@
 package controllers
 
 import javax.inject._
+
 import akka.actor.ActorRef
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
 import com.galacticfog.gestalt.dcos.marathon._
@@ -10,8 +11,9 @@ import play.api.mvc._
 import views.html.index
 import akka.pattern.ask
 import akka.util.Timeout
-import scala.concurrent.duration._
+import com.galacticfog.gestalt.security.sdk.BuildInfo
 
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
 
 @Singleton
@@ -28,7 +30,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def dashboard = Action {
-    Ok(index.render(webJarAssets,gtf.provisionDB, gtf.gestaltFrameworkEnsembleVersion getOrElse "latest"))
+    Ok(index.render(webJarAssets,gtf.provisionDB, gtf.gestaltFrameworkEnsembleVersion getOrElse BuildInfo.version))
   }
 
   def data() = Action.async {

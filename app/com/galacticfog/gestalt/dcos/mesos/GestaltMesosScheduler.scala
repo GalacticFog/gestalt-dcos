@@ -1,18 +1,20 @@
 package com.galacticfog.gestalt.dcos.mesos
 
 import java.util
-import javax.inject.{Named, Inject}
+import javax.inject.{Inject, Named}
 
 import akka.actor.ActorRef
+import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.LaunchServicesRequest
 import org.apache.mesos.Protos._
-import org.apache.mesos.{MesosSchedulerDriver, SchedulerDriver, Scheduler}
-import play.api.{Logger => logger, Configuration}
+import org.apache.mesos.{MesosSchedulerDriver, Scheduler, SchedulerDriver}
+import play.api.{Configuration, Logger => logger}
 import play.api.inject.ApplicationLifecycle
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
+
 import scala.collection.JavaConversions._
 
 class DummyScheduler @Inject() extends Scheduler {
@@ -50,21 +52,20 @@ class DummyScheduler @Inject() extends Scheduler {
 
 }
 
-class GestaltSchedulerDriver @Inject() (config: Configuration,
-                                        lifecycle: ApplicationLifecycle,
-                                        scheduler: DummyScheduler,
-                                        @Named("scheduler-actor") schedulerActor: ActorRef) {
+class GestaltSchedulerDriver @Inject() ( launcherConfig: LauncherConfig,
+                                         lifecycle: ApplicationLifecycle,
+                                         scheduler: DummyScheduler,
+                                         @Named("scheduler-actor") schedulerActor: ActorRef) {
   import org.apache.mesos.Protos._
 
   logger.info("creating GestaltSchedulerDriver for DummyScheduler")
 
-  val master = config.getString("mesos.master") getOrElse "master.mesos:5050"
+  val master = launcherConfig.mesos.master
   logger.info(s"attempting to register with mesos-master @ ${master}")
 
-  val schedulerHostname = config.getString("hostname") getOrElse java.net.InetAddress.getLocalHost.getHostName
-  logger.info(s"scheduler running @ ${schedulerHostname}")
-
-  val schedulerName = config.getString("scheduler.name") getOrElse "gestalt-framework-scheduler"
+  val schedulerHostname = launcherConfig.mesos.schedulerHostname
+  val schedulerName = launcherConfig.mesos.schedulerName
+  logger.info(s"scheduler will register with name ${schedulerName} and hostname ${schedulerHostname}")
 
   val frameworkInfoBuilder = FrameworkInfo.newBuilder()
     .setName(schedulerName)
