@@ -281,6 +281,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   }
 
   private[this] def getLaser(globals: JsValue): AppSpec = {
+    val laserSchedulerFrameworkName = {
+      val appGroup = launcherConfig.marathon.appGroup.stripPrefix("/").stripSuffix("/")
+      appGroup.replaceAll("[/]","-") + "-" + "laser"
+    }
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
     appSpec(LASER).copy(
@@ -319,7 +323,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "MESOS_NATIVE_JAVA_LIBRARY" -> "/usr/lib/libmesos.so",
         "MESOS_NATIVE_LIBRARY" -> "/usr/lib/libmesos.so",
         "MESOS_ROLE" -> "*",
-        "SCHEDULER_NAME" -> "gestalt-laser-scheduler",
+        "SCHEDULER_NAME" -> laserSchedulerFrameworkName,
         "OFFER_TTL" -> "5",
         //
         "EXECUTOR_HEARTBEAT_MILLIS" -> "1000",
@@ -368,7 +372,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         portName = "http-api",
         intervalSeconds = 5
       )),
-      labels = getVhostLabels(LASER)
+      labels = getVhostLabels(LASER) ++ Map(
+        "DCOS_PACKAGE_FRAMEWORK_NAME" -> laserSchedulerFrameworkName,
+        "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
+      )
     )
   }
 
