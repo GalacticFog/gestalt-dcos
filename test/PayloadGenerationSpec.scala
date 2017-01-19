@@ -50,7 +50,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val expected = MarathonAppPayload(
         id = "/gestalt-framework-tasks/security",
-        args = Some(Seq("-J-Xmx1152m")),
+        args = Some(Seq("-J-Xmx768m")),
         env = Map(
           "OAUTH_RATE_LIMITING_PERIOD" -> "5",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "1000",
@@ -62,7 +62,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         ),
         instances = 1,
         cpus = 0.5,
-        mem = 768,
+        mem = 1536,
         disk = 0,
         requirePorts = true,
         container = MarathonContainerInfo(

@@ -17,6 +17,8 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def getBool(path: String, default: Boolean): Boolean = config.getBoolean(path).getOrElse(default)
 
+  def getDouble(path: String, default: Double): Double = config.getDouble(path).getOrElse(default)
+
   val database = DatabaseConfig(
     provision = getBool("database.provision", true),
     provisionedSize = getInt("database.provisioned-size", 100),
@@ -36,7 +38,8 @@ class LauncherConfig @Inject()(config: Configuration) {
   val marathon = MarathonConfig(
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
-    baseUrl = getString("marathon.url", "http://marathon.mesos:8080")
+    baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
+    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
   )
 
   val laser = LaserConfig(
@@ -106,14 +109,14 @@ object LauncherConfig {
 
   object Services {
     case object RABBIT       extends FrameworkService                       {val name = "rabbit";      val cpu = 0.50; val mem = 256;}
-    case object KONG         extends FrameworkService                       {val name = "kong";        val cpu = 0.25; val mem = 128;}
-    case object DATA         extends FrameworkService with ServiceEndpoint  {val name = "data";        val cpu = 0.50; val mem = 256;  val port = 5432}
-    case object SECURITY     extends FrameworkService with ServiceEndpoint  {val name = "security";    val cpu = 0.50; val mem = 768;  val port = 9455}
-    case object META         extends FrameworkService with ServiceEndpoint  {val name = "meta";        val cpu = 1.50; val mem = 1280; val port = 14374}
-    case object LASER        extends FrameworkService with ServiceEndpoint  {val name = "laser";       val cpu = 0.50; val mem = 1280; val port = 1111}
-    case object POLICY       extends FrameworkService with ServiceEndpoint  {val name = "policy";      val cpu = 0.25; val mem = 768;  val port = 9999}
-    case object API_GATEWAY  extends FrameworkService with ServiceEndpoint  {val name = "api-gateway"; val cpu = 0.25; val mem = 768;  val port = 6473}
-    case object API_PROXY    extends FrameworkService with ServiceEndpoint  {val name = "api-proxy";   val cpu = 0.25; val mem = 128;  val port = 81}
+    case object KONG         extends FrameworkService                       {val name = "kong";        val cpu = 0.50; val mem = 128;}
+    case object DATA         extends FrameworkService with ServiceEndpoint  {val name = "data";        val cpu = 1.00; val mem = 512;  val port = 5432}
+    case object SECURITY     extends FrameworkService with ServiceEndpoint  {val name = "security";    val cpu = 0.50; val mem = 1536; val port = 9455}
+    case object META         extends FrameworkService with ServiceEndpoint  {val name = "meta";        val cpu = 1.50; val mem = 1536; val port = 14374}
+    case object LASER        extends FrameworkService with ServiceEndpoint  {val name = "laser";       val cpu = 0.50; val mem = 1536; val port = 1111}
+    case object POLICY       extends FrameworkService with ServiceEndpoint  {val name = "policy";      val cpu = 0.25; val mem = 1024; val port = 9999}
+    case object API_GATEWAY  extends FrameworkService with ServiceEndpoint  {val name = "api-gateway"; val cpu = 0.25; val mem = 1024; val port = 6473}
+    case object API_PROXY    extends FrameworkService with ServiceEndpoint  {val name = "api-proxy";   val cpu = 0.50; val mem = 128;  val port = 81}
     case object UI           extends FrameworkService with ServiceEndpoint  {val name = "ui";          val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object RABBIT_AMQP  extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 5672}
@@ -168,7 +171,8 @@ object LauncherConfig {
 
   case class MarathonConfig( appGroup: String,
                              tld: Option[String],
-                             baseUrl: String )
+                             baseUrl: String,
+                             jvmOverheadFactor: Double )
 
   case class SecurityConfig( username: String,
                              password: Option[String],
