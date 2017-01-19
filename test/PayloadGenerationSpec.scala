@@ -255,6 +255,43 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
     }
 
+    "set framework labels on laser scheduler" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.app-group" -> "/gestalt/test/east/"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      val global = Json.parse(
+        """{
+          |  "database": {
+          |     "hostname": "test-db.marathon.mesos",
+          |     "port": 5432,
+          |     "username": "test-user",
+          |     "password": "test-password",
+          |     "prefix": "test-"
+          |  },
+          |  "security": {
+          |     "apiKey": "apikey",
+          |     "realm" : "192.168.1.50:12345",
+          |     "apiSecret": "apisecret"
+          |  }
+          |}
+        """.stripMargin
+      )
+
+      val laserPayload = gtf.getMarathonPayload(LASER, global)
+      laserPayload.labels must havePairs(
+        "DCOS_PACKAGE_FRAMEWORK_NAME" -> "gestalt-test-east-laser",
+        "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
+      )
+      laserPayload.env must havePair(
+        "SCHEDULER_NAME" -> "gestalt-test-east-laser"
+      )
+    }
+
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
