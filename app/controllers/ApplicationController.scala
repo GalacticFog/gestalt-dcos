@@ -3,7 +3,7 @@ package controllers
 import javax.inject._
 
 import akka.actor.ActorRef
-import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.{BuildInfo, GestaltTaskFactory}
 import com.galacticfog.gestalt.dcos.marathon._
 import play.api._
 import play.api.libs.json.Json
@@ -11,7 +11,6 @@ import play.api.mvc._
 import views.html.index
 import akka.pattern.ask
 import akka.util.Timeout
-import com.galacticfog.gestalt.security.sdk.BuildInfo
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
@@ -19,8 +18,7 @@ import scala.concurrent.ExecutionContext
 @Singleton
 class ApplicationController @Inject()(webJarAssets: WebJarAssets,
                                       @Named("scheduler-actor") schedulerFSM: ActorRef,
-                                      gtf: GestaltTaskFactory,
-                                      marClient: MarathonSSEClient)
+                                      gtf: GestaltTaskFactory)
                                      (implicit ec: ExecutionContext) extends Controller {
 
   def health = Action {

@@ -1,5 +1,7 @@
 package com.galacticfog.gestalt.dcos.marathon
 
+import scala.language.postfixOps
+
 import java.util.UUID
 import javax.inject.Inject
 
@@ -16,11 +18,9 @@ import play.api.libs.ws.{WSAuthScheme, WSClient}
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-import MarathonSSEClient.parseEvent
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import play.api.libs.json._
 import play.api.libs.json.Reads._
-
 import LauncherConfig.Services._
 
 sealed trait LauncherState {
@@ -52,7 +52,8 @@ case object Error                     extends LauncherState
 final case class ServiceData( statuses: Map[FrameworkService,ServiceInfo],
                               adminKey: Option[GestaltAPIKey],
                               error: Option[String],
-                              errorStage: Option[String] ) {
+                              errorStage: Option[String],
+                              connected: Boolean ) {
   def getUrl(state: LauncherState): Seq[String] = {
     state.targetService
       .flatMap(statuses.get)
@@ -62,9 +63,10 @@ final case class ServiceData( statuses: Map[FrameworkService,ServiceInfo],
   }
 }
 case object ServiceData {
-  def empty: ServiceData = ServiceData(Map.empty,None,None,None)
+  def empty: ServiceData = ServiceData(Map.empty, None, None, None, false)
 }
 
+case object OpenConnectionToMarathonEventBus
 case object StatusRequest
 case object LaunchServicesRequest
 case class ShutdownRequest(shutdownDB: Boolean)
@@ -225,6 +227,9 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
 
   when(Uninitialized) {
     case Event(LaunchServicesRequest,d) =>
+      if ( ! d.connected ) {
+        sendMessageToSelf(0 seconds, OpenConnectionToMarathonEventBus)
+      }
       if (gtf.provisionDB) {
         goto(LAUNCH_ORDER.head)
       } else {
@@ -441,7 +446,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
             case Failure(ex) =>
               log.warning("error provisioning providers in meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
-              // TODO: this potentially has the unfortunate effect of creating the providers multiple times
+              // TODO: this potentially has the unfortunate effect of creating the providers multiple times; check before adding
               sendMessageToSelf(5.seconds, RetryRequest)
           }
         case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
@@ -578,12 +583,37 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   }
 
   whenUnhandled {
+    case Event(OpenConnectionToMarathonEventBus, d) =>
+      if (d.connected) {
+        log.info("ignoring request OpenConnectionToMarathonEventBus, I think I'm already connected")
+      } else {
+        log.info("attempting to connect to Marathon event bus")
+        marClient.connectToBus(self)
+      }
+      stay()
+    case Event(MarathonSSEClient.Connected, d) =>
+      log.info("successfully connected to Marathon event bus")
+      stay() using d.copy(
+        connected = true
+      )
+    case Event(MarathonSSEClient.Disconnected, d) =>
+      log.error("connection to Marathon event bus was closed, will attempt to reconnect")
+      sendMessageToSelf(30 seconds, OpenConnectionToMarathonEventBus)
+      stay() using d.copy(
+        connected = false
+      )
+    case Event(MarathonSSEClient.Failed(t), d) =>
+      log.error("error connecting to Marathon event bus, will attempt to reconnect", t)
+      sendMessageToSelf(30 seconds, OpenConnectionToMarathonEventBus)
+      stay() using d.copy(
+        connected = false
+      )
     case Event(sse @ ServerSentEvent(Some(data), Some(eventType), _, _), d) =>
       val mesg = eventType match {
-        case "app_terminated_event"        => parseEvent[MarathonAppTerminatedEvent](sse)
-        case "health_status_changed_event" => parseEvent[MarathonHealthStatusChange](sse)
-        case "status_update_event"         => parseEvent[MarathonStatusUpdateEvent](sse)
-        case "deployment_failure"          => parseEvent[MarathonDeploymentFailure](sse)
+        case "app_terminated_event"        => MarathonSSEClient.parseEvent[MarathonAppTerminatedEvent](sse)
+        case "health_status_changed_event" => MarathonSSEClient.parseEvent[MarathonHealthStatusChange](sse)
+        case "status_update_event"         => MarathonSSEClient.parseEvent[MarathonStatusUpdateEvent](sse)
+        case "deployment_failed"           => MarathonSSEClient.parseEvent[MarathonDeploymentFailure](sse)
         case _ => {
           log.debug(s"ignoring event ${eventType}")
           None
@@ -623,10 +653,12 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       log.debug(s"received app terminated event from non-framework service ${nonFrameworkAppId}")
       stay()
     case Event(e @ MarathonDeploymentFailure(_, _, deploymentId), d) =>
-      goto(Error) using d.copy(
-        error = Some(s"Deployment ${deploymentId} failed for service ${???}"),
-        errorStage = Some(stateName.toString)
-      )
+      log.info(s"ignoring MarathonDeploymentFailure(${deploymentId})")
+      stay()
+//      goto(Error) using d.copy(
+//        error = Some(s"Deployment ${deploymentId} failed for service (unknown)"), // TODO: do something here
+//        errorStage = Some(stateName.toString)
+//      )
     case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), taskId, _, alive), d) =>
       log.info(s"received MarathonHealthStatusChange(${taskId}.alive == ${alive}) for task belonging to ${service.name}")
       val updatedStatus = d.statuses.get(service).map(info =>

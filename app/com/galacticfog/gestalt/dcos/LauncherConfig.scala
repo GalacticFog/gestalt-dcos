@@ -1,7 +1,6 @@
 package com.galacticfog.gestalt.dcos
 
 import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
-import com.galacticfog.gestalt.security.sdk.BuildInfo
 import com.google.inject.{Inject, Singleton}
 import play.api.Configuration
 

@@ -2,7 +2,25 @@ name := """gestalt-dcos"""
 
 version := "0.3.0-RC1"
 
-lazy val root = (project in file(".")).enablePlugins(PlayScala)
+lazy val root = (project in file(".")).
+  enablePlugins(PlayScala).
+  enablePlugins(BuildInfoPlugin).
+  settings(
+    buildInfoKeys := Seq[BuildInfoKey](
+      name, version, scalaVersion, sbtVersion,
+      "builtBy" -> System.getProperty("user.name"),
+      "gitHash" -> new java.lang.Object(){
+              override def toString(): String = {
+                      try { 
+                    val extracted = new java.io.InputStreamReader(
+                              java.lang.Runtime.getRuntime().exec("git rev-parse HEAD").getInputStream())                         
+                    (new java.io.BufferedReader(extracted)).readLine()
+                      } catch {      case t: Throwable => "get git hash failed"    }
+              }}.toString()
+    ),
+    buildInfoPackage := "com.galacticfog.gestalt.dcos",
+    buildInfoUsePackageAsPath := true
+  )
 
 scalaVersion := "2.11.7"
 

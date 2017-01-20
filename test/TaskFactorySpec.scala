@@ -1,10 +1,9 @@
-import com.galacticfog.gestalt.dcos.{AppSpec, GestaltTaskFactory}
+import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory}
 import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
 import play.api.libs.json.Json
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.security.sdk.BuildInfo
 
 class TaskFactorySpec extends Specification {
 

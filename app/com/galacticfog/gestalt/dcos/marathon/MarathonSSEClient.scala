@@ -83,16 +83,26 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   logger.info(s"connecting to marathon event bus: ${marathonBaseUrl}")
 
-  val handler = Sink.actorRef(schedulerActor, Done)
-  Http(system)
-    .singleRequest(
-      Get(s"${marathonBaseUrl}/v2/events")
-        .addHeader(
-          Accept(`text/event-stream`)
-        )
-    )
-    .flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
-    .foreach(_.runWith(handler))
+  def connectToBus(actorRef: ActorRef) = {
+    val handler = Sink.actorRef(actorRef, Disconnected)
+    Http(system)
+      .singleRequest(
+        Get(s"${marathonBaseUrl}/v2/events")
+          .addHeader(
+            Accept(`text/event-stream`)
+          )
+      )
+      .flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
+      .onComplete {
+        case Success(eventSource) =>
+          logger.debug("successfully attached to marathon event bus")
+          actorRef ! Connected
+          eventSource.runWith(handler)
+        case Failure(t) =>
+          logger.debug("failure connecting to marathon event bus", t)
+          actorRef ! Failed(t)
+      }
+  }
 
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
@@ -122,7 +132,6 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       .delete()
       .map { resp =>
         logger.info(s"marathon.delete(${service.name}) => ${resp.statusText}")
-        if (resp.status == 200 || resp.status == 404) schedulerActor ! MarathonAppTerminatedEvent(appId, "app_terminated_event", "")
         resp.status == 200
       }
   }
@@ -217,6 +226,11 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 }
 
 object MarathonSSEClient {
+
+  case object Connected
+  case object Disconnected
+  case class Failed(t: Throwable)
+
   def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq
 
   def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[T] = {

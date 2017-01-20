@@ -38,9 +38,9 @@
     <appender-ref ref="ASYNCSTDOUT" />
   </root>
 
-  <logger name="akka" level="INFO" />
+  <logger name="akka" level="DEBUG" />
 
-  <logger name="akka.actor.LoggingFSM" level="INFO" />
+  <logger name="akka.actor.LoggingFSM" level="DEBUG" />
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher" level="DEBUG" />
 
