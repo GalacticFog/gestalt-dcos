@@ -61,9 +61,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
 
-  val provisionDB = launcherConfig.database.provision
-  val provisionedDBSize = launcherConfig.database.provisionedSize
-
   import launcherConfig.dockerImage
   import LauncherConfig.Services._
   import LauncherConfig.Executors._
@@ -96,7 +93,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def vipPort(service: ServiceEndpoint) = service.port.toString
 
   def allServices = {
-    if (provisionDB) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
+    if (launcherConfig.database.provision) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
     else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
   }
 
@@ -137,7 +134,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         containerPath = "pgdata",
         mode = "RW",
         persistent = Some(VolumePersistence(
-          size = provisionedDBSize
+          size = launcherConfig.database.provisionedSize
         ))
       ))),
       residency = Some(Residency(Residency.WAIT_FOREVER)),
@@ -282,8 +279,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getLaser(globals: JsValue): AppSpec = {
     val laserSchedulerFrameworkName = {
-      val appGroup = launcherConfig.marathon.appGroup.stripPrefix("/").stripSuffix("/")
-      appGroup.replaceAll("[/]","-") + "-" + "laser"
+      launcherConfig.marathon.appGroup.replaceAll("[/]","-") + "-" + "laser"
     }
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
@@ -487,10 +483,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getMarathonPayload(service: FrameworkService, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globals), globals)
 
   def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
-    val cleanPrefix = "/" + appGroup.stripPrefix("/").stripSuffix("/") + "/"
     val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
-      id = cleanPrefix + app.name,
+      id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,
       args = app.args,
       env = app.env,
       instances = app.numInstances,

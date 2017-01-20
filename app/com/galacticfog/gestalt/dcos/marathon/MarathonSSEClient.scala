@@ -72,18 +72,15 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   import MarathonSSEClient._
   import BiggerUnmarshalling._
 
-  val marathonBaseUrl = launcherConfig.marathon.baseUrl
+  private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl
 
-  val appGroup = launcherConfig.marathon.appGroup.stripPrefix("/").stripSuffix("/")
-  val appIdWithGroup = s"/${appGroup}/(.*)".r
+  private[this] val appGroup = launcherConfig.marathon.appGroup
+  private[this] val appIdWithGroup = s"/${appGroup}/(.*)".r
 
-  val STATUS_UPDATE_TIMEOUT = 15.seconds
-
-  implicit val mat = ActorMaterializer()
-
-  logger.info(s"connecting to marathon event bus: ${marathonBaseUrl}")
+  private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
   def connectToBus(actorRef: ActorRef) = {
+    implicit val mat = ActorMaterializer()
     val handler = Sink.actorRef(actorRef, Disconnected)
     Http(system)
       .singleRequest(
@@ -103,7 +100,6 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           actorRef ! Failed(t)
       }
   }
-
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")

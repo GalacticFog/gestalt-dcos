@@ -56,8 +56,6 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   protected[this] def vipBase(service: Dockerable): String = {
     marathon.appGroup
-      .stripPrefix("/")
-      .stripSuffix("/")
       .split("/")
       .foldRight(service.name)(_ + "-" + _)
   }

@@ -3,7 +3,7 @@ package controllers
 import javax.inject._
 
 import akka.actor.ActorRef
-import com.galacticfog.gestalt.dcos.{BuildInfo, GestaltTaskFactory}
+import com.galacticfog.gestalt.dcos.{BuildInfo, GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.marathon._
 import play.api._
 import play.api.libs.json.Json
@@ -18,6 +18,7 @@ import scala.concurrent.ExecutionContext
 @Singleton
 class ApplicationController @Inject()(webJarAssets: WebJarAssets,
                                       @Named("scheduler-actor") schedulerFSM: ActorRef,
+                                      launcherConfig: LauncherConfig,
                                       gtf: GestaltTaskFactory)
                                      (implicit ec: ExecutionContext) extends Controller {
 
@@ -28,7 +29,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def dashboard = Action {
-    Ok(index.render(webJarAssets,gtf.provisionDB, gtf.gestaltFrameworkEnsembleVersion getOrElse BuildInfo.version))
+    Ok(index.render(webJarAssets, launcherConfig.database.provision, gtf.gestaltFrameworkEnsembleVersion getOrElse BuildInfo.version))
   }
 
   def data() = Action.async {
