@@ -24,11 +24,11 @@ import LauncherConfig.Services._
 
 sealed trait LauncherState
 
-trait LaunchingState extends LauncherState {
+sealed trait LaunchingState extends LauncherState {
   def targetService: FrameworkService
 }
 
-// in order...
+// ordered/ordinary states...
 case object Uninitialized             extends LauncherState
 case object LaunchingDB               extends LaunchingState {val targetService = DATA}
 case object LaunchingRabbit           extends LaunchingState {val targetService = RABBIT}
@@ -63,29 +63,8 @@ final case class ServiceData( statuses: Map[FrameworkService,ServiceInfo],
   }
 }
 case object ServiceData {
-  def empty: ServiceData = ServiceData(Map.empty, None, None, None, false)
+  def init: ServiceData = ServiceData(Map.empty, None, None, None, false)
 }
-
-case object OpenConnectionToMarathonEventBus
-case object StatusRequest
-case object LaunchServicesRequest
-case class ShutdownRequest(shutdownDB: Boolean)
-case object ShutdownAcceptedResponse
-case object RetryRequest
-final case class KillRequest(service: FrameworkService)
-final case class ErrorEvent(message: String, errorStage: Option[String])
-final case class SecurityInitializationComplete(key: GestaltAPIKey)
-final case class UpdateServiceInfo(info: ServiceInfo)
-final case class ServiceDeployed(service: FrameworkService)
-case object APIKeyTimeout
-case object MetaBootstrapFinished
-case object MetaBootstrapTimeout
-case object MetaSyncFinished
-case object MetaSyncTimeout
-case object MetaProvidersProvisioned
-case object MetaProviderTimeout
-case object MetaLicensingComplete
-case object MetaLicenseTimeout
 
 final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo], isConnectedToMarathon: Boolean)
 
@@ -94,6 +73,7 @@ case object StatusResponse {
 }
 
 object GestaltMarathonLauncher {
+
   val LAUNCH_ORDER: Seq[LauncherState] = Seq(
     LaunchingDB, LaunchingRabbit,
     LaunchingSecurity, RetrievingAPIKeys,
@@ -104,6 +84,30 @@ object GestaltMarathonLauncher {
     LaunchingApiProxy, LaunchingUI,
     AllServicesLaunched
   )
+
+  case object OpenConnectionToMarathonEventBus
+  case object StatusRequest
+  case object LaunchServicesRequest
+  case class ShutdownRequest(shutdownDB: Boolean)
+  case object ShutdownAcceptedResponse
+  case object RetryRequest
+  final case class KillRequest(service: FrameworkService)
+  final case class ErrorEvent(message: String, errorStage: Option[String])
+  final case class SecurityInitializationComplete(key: GestaltAPIKey)
+  final case class UpdateServiceInfo(info: ServiceInfo)
+  final case class ServiceDeployed(service: FrameworkService)
+
+  sealed trait TimeoutEvent
+
+  case object APIKeyTimeout extends TimeoutEvent
+  case object MetaBootstrapFinished
+  case object MetaBootstrapTimeout extends TimeoutEvent
+  case object MetaSyncFinished
+  case object MetaSyncTimeout extends TimeoutEvent
+  case object MetaProvidersProvisioned
+  case object MetaProviderTimeout extends TimeoutEvent
+  case object MetaLicensingComplete
+  case object MetaLicenseTimeout extends TimeoutEvent
 }
 
 class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
@@ -205,6 +209,178 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     }
   }
 
+  private[this] def initSecurity(secUrl: String): Future[SecurityInitializationComplete] = {
+    val initUrl = s"http://${secUrl}/init"
+    log.info(s"initializing security at {}",initUrl)
+    wsclient.url(initUrl).withRequestTimeout(30.seconds).post(securityInitCredentials) flatMap { resp =>
+      log.info("security.init response: {}",resp.toString)
+      resp.status match {
+        case 200 =>
+          Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
+            case Success(key) =>
+              Future.successful(SecurityInitializationComplete(key))
+            case Failure(e) =>
+              Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
+          }
+        case 400 =>
+          log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
+          securityProvidedApiKey match {
+            case Some(key) =>
+              log.info("continuing with API keys from configuration")
+              Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
+            case None =>
+              log.warning("attempting to clear init flag from security database")
+              val databaseConfig = if (launcherConfig.database.provision) Json.obj(
+                "database" -> provisionedDBHostIP
+              ) else Json.obj(
+                "database" -> configuredDB
+              )
+              SecurityInitReset(databaseConfig).clearInit()(log)
+              Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
+          }
+        case _ =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException(mesg))
+      }
+    }
+  }
+
+  private[this] def bootstrapMeta(metaUrl: String, apiKey: GestaltAPIKey) = {
+    val initUrl = s"http://${metaUrl}/bootstrap"
+    val rootUrl = s"http://${metaUrl}/root"
+    for {
+      check <- wsclient.url(rootUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).get()
+      done <- if (check.status == 500) {
+        log.info("attempting to bootstrap meta")
+        wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey, apiKey.apiSecret.get, WSAuthScheme.BASIC).post("") flatMap { resp =>
+          log.info("meta.bootstrap response: {}", resp.toString)
+          resp.status match {
+            case 204 =>
+              Future.successful(MetaBootstrapFinished)
+            case not204 =>
+              val mesg = Try {
+                (resp.json \ "message").as[String]
+              }.getOrElse(resp.body)
+              Future.failed(new RuntimeException(mesg))
+          }
+        }
+      } else {
+        log.info("meta appears to already have been bootstrapped; will proceed with next stage")
+        Future.successful(MetaBootstrapFinished)
+      }
+    } yield done
+  }
+
+  private[this] def syncMeta(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaSyncFinished.type] = {
+    val initUrl = s"http://${metaUrl}/sync"
+    log.info(s"syncing meta at {}",initUrl)
+    wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post("") flatMap { resp =>
+      log.info("meta.sync response: {}",resp.toString)
+      resp.status match {
+        case 204 =>
+          Future.successful(MetaSyncFinished)
+        case not200 =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException(mesg))
+      }
+    }
+  }
+
+  private[this] def provisionMetaProviders(metaUrl: String, kongGatewayUrl: String, apiKey: GestaltAPIKey) = {
+    // TODO: this potentially has the unfortunate effect of creating the providers multiple times; check before adding
+    val initUrl = s"http://${metaUrl}/root/providers"
+    val marathonProviderJson = Json.parse(
+      s"""
+         |{
+         |  "description": "",
+         |  "resource_type": "Gestalt::Configuration::Provider::Marathon",
+         |  "properties": {
+         |    "environments": [],
+         |    "config": {
+         |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
+         |      "url": "${marathonBaseUrl}",
+         |      "networks": [
+         |        { "name": "HOST" },
+         |        { "name": "BRIDGE" }
+         |      ],
+         |      "extra": {}
+         |    },
+         |    "locations": [
+         |      { "name": "dcos", "enabled": true }
+         |    ]
+         |  },
+         |  "name": "base-marathon"
+         |}
+            """.stripMargin)
+    val kongExternalAccess = TLD match {
+      case Some(tld) => s"https://kong.${tld}"
+      case None => s"http://${kongGatewayUrl}"
+    }
+    val kongProviderJson = Json.parse(
+      s"""
+         |{
+         |  "description": "",
+         |  "resource_type": "Gestalt::Configuration::Provider::ApiGateway",
+         |  "properties": {
+         |    "environments": [],
+         |    "config": {
+         |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
+         |      "url": "${gtf.vipDestination(KONG_SERVICE)}",
+         |      "extra": "${kongExternalAccess}"
+         |    },
+         |    "locations": [
+         |      { "name": "dcos", "enabled": true }
+         |    ]
+         |  },
+         |  "name": "base-kong"
+         |}
+            """.stripMargin)
+
+    log.info(s"provisioning providers in meta at {}",initUrl)
+    val marathonAttempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(marathonProviderJson) flatMap { resp =>
+      log.info("meta.provision(marathonProvider) response: {}",resp.toString)
+      resp.status match {
+        case 201 =>
+          Future.successful(MetaProvidersProvisioned)
+        case not201 =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException("Error provisioning marathon provider: " + mesg))
+      }
+    }
+    val kongAttempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(kongProviderJson) flatMap { resp =>
+      log.info("meta.provision(kongProvider) response: {}",resp.toString)
+      resp.status match {
+        case 201 =>
+          Future.successful(MetaProvidersProvisioned)
+        case not201 =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException("Error provisioning kong provider: " + mesg))
+      }
+    }
+    Future.sequence(Seq(marathonAttempt,kongAttempt))
+  }
+
+  private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey) = {
+    val licenseBody = Json.obj(
+      "name" -> "Default-License-1",
+      "description" -> "Default GF license",
+      "properties" -> Json.obj(
+        "data" -> "ABwwGgQU0yrowwdZqokCoV+gsama8FPom7gCAgQANZ0VCWktNu7ACEokBT2hTHLu+ZDhGWZCeANF1klgMvRSoQmerkWTED1hCrTw3H0A0UC/TyU/9B0kjs9aT11H5uTQticJZnJ3GCn4/DLawLJ+JDwktF0pA9ATTVieJcqW1VDE3vgpgU6HllQOfBGmsmASPEOtYBte+gbKn5msKpUvbooLW5xyNKKe9U7vmmtvI2Th3wgb354k2imi8LJaVxywKd9BRe78mWhsKa9d57V+n9NAlQfN24wcyxzc23VuMK/v3fFl6YT3ro9ddXlIoRMl7mJ3nWN2HtYlfHTULsAsbIwHUsY44WZI926RDunstC03dm+mfT9jDTIciJ38jX0lGvbAY1X3ovl9v3EoroIjXwz4JKg5FbEH2vdoFwdy1UznCxSq10537hwmmnEfC16JUFySfe0o"
+      )
+    )
+    val licenseUrl = s"http://${metaUrl}/root/licenses"
+    wsclient.url(licenseUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(licenseBody) flatMap { resp =>
+      log.info("meta.license response: {}",resp.toString)
+      resp.status match {
+        case 201 =>
+          Future.successful(MetaLicensingComplete)
+        case not200 =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException(mesg))
+      }
+    }
+  }
+
   private[this] def nextState(state: LauncherState): LauncherState = {
     val cur = LAUNCH_ORDER.indexOf(state)
     if (LAUNCH_ORDER.isDefinedAt(cur+1)) LAUNCH_ORDER(cur+1) else Error
@@ -223,12 +399,36 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
         stay() using newData
   }
 
-  startWith(Uninitialized, ServiceData.empty)
+  object FrameworkServiceFromAppId {
+    private [this] val appIdWithGroup = s"/${launcherConfig.marathon.appGroup}/(.*)".r
+    def unapply(appId: String): Option[FrameworkService] = appIdWithGroup.unapplySeq(appId)
+      .flatMap(_.headOption)
+      .flatMap(LauncherConfig.Services.fromName)
+  }
+
+  def requestUpdateAndStay(service: FrameworkService) = {
+    marClient.getServiceStatus(service).onComplete {
+      case Success(status) =>
+        self ! UpdateServiceInfo(status)
+      case Failure(ex) =>
+        log.warning("error retrieving app status from Marathon: {}",ex.getMessage)
+    }
+    stay()
+  }
+
+
+  /*************************************************************************************
+    *
+    * the finite state machines
+    *
+    *************************************************************************************/
+
+  startWith(Uninitialized, ServiceData.init)
 
   when(Uninitialized) {
     case Event(LaunchServicesRequest,d) =>
       if ( ! d.connected ) {
-        sendMessageToSelf(0 seconds, OpenConnectionToMarathonEventBus)
+        self ! OpenConnectionToMarathonEventBus
       }
       if (launcherConfig.database.provision) {
         goto(LAUNCH_ORDER.head)
@@ -264,189 +464,46 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     case _ -> RetrievingAPIKeys =>
       nextStateData.getUrl(SECURITY) match {
         case Seq() => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
-        case Seq(secUrl) =>
-          val initUrl = s"http://${secUrl}/init"
-          log.info(s"initializing security at {}",initUrl)
-          val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).post(securityInitCredentials) flatMap { resp =>
-            log.info("security.init response: {}",resp.toString)
-            resp.status match {
-              case 200 =>
-                Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
-                  case Success(key) =>
-                    Future.successful(SecurityInitializationComplete(key))
-                  case Failure(e) =>
-                    Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
-                }
-              case 400 =>
-                log.warning("400 from security init, likely that security service already initialized, cannot extract keys to configure downstream services")
-                securityProvidedApiKey match {
-                  case Some(key) =>
-                    log.info("continuing with API keys from configuration")
-                    Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
-                  case None =>
-                    log.warning("attempting to clear init flag from security database")
-                    val databaseConfig = if (launcherConfig.database.provision) Json.obj(
-                      "database" -> provisionedDBHostIP
-                    ) else Json.obj(
-                      "database" -> configuredDB
-                    )
-                    SecurityInitReset(databaseConfig).clearInit()(log)
-                    Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
-                }
-              case _ =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
-            }
-          }
-          attempt.onComplete {
-            case Success(msg) =>
-              self ! msg
-            case Failure(ex) =>
-              log.warning("error initializing security service: {}",ex.getMessage)
-              // keep retrying until our time runs out and we leave this state
-              sendMessageToSelf(5.seconds, RetryRequest)
-          }
+        case Seq(secUrl) => initSecurity(secUrl) onComplete {
+          case Success(msg) => self ! msg
+          case Failure(ex) =>
+            log.warning("error initializing security service: {}",ex.getMessage)
+            // keep retrying until our time runs out and we leave this state
+            sendMessageToSelf(5.seconds, RetryRequest)
+        }
       }
     case _ -> BootstrappingMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
-        case (Seq(metaUrl),Some(apiKey)) =>
-          val initUrl = s"http://${metaUrl}/bootstrap"
-          val rootUrl = s"http://${metaUrl}/root"
-          val bootstrap = for {
-            check <- wsclient.url(rootUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).get()
-            done <- if (check.status == 500) {
-              log.info("attempting to bootstrap meta")
-              wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey, apiKey.apiSecret.get, WSAuthScheme.BASIC).post("") flatMap { resp =>
-                log.info("meta.bootstrap response: {}", resp.toString)
-                resp.status match {
-                  case 204 =>
-                    Future.successful(MetaBootstrapFinished)
-                  case not204 =>
-                    val mesg = Try {
-                      (resp.json \ "message").as[String]
-                    }.getOrElse(resp.body)
-                    Future.failed(new RuntimeException(mesg))
-                }
-              }
-            } else {
-              log.info("meta appears to already have been bootstrapped; will proceed with next stage")
-              Future.successful(MetaBootstrapFinished)
-            }
-          } yield done
-          bootstrap.onComplete {
-            case Success(msg) => self ! msg
-            case Failure(ex) =>
-              log.warning("error bootstrapping meta service: {}",ex.getMessage)
-              // keep retrying until our time runs out and we leave this state
-              sendMessageToSelf(5.seconds, RetryRequest)
-          }
+        case (Seq(metaUrl),Some(apiKey)) => bootstrapMeta(metaUrl, apiKey) onComplete {
+          case Success(msg) => self ! msg
+          case Failure(ex) =>
+            log.warning("error bootstrapping meta service: {}",ex.getMessage)
+            // keep retrying until our time runs out and we leave this state
+            sendMessageToSelf(5.seconds, RetryRequest)
+        }
       }
     case _ -> SyncingMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
         case (_,None) => self ! ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
-        case (Seq(metaUrl),Some(apiKey)) =>
-          val initUrl = s"http://${metaUrl}/sync"
-          log.info(s"syncing meta at {}",initUrl)
-          val attempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post("") flatMap { resp =>
-            log.info("meta.sync response: {}",resp.toString)
-            resp.status match {
-              case 204 =>
-                Future.successful(MetaSyncFinished)
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
-            }
-          }
-          attempt.onComplete {
-            case Success(msg) => self ! msg
-            case Failure(ex) =>
-              log.warning("error syncing meta service: {}",ex.getMessage)
-              // keep retrying until our time runs out and we leave this state
-              sendMessageToSelf(5.seconds, RetryRequest)
-          }
+        case (Seq(metaUrl),Some(apiKey)) => syncMeta(metaUrl, apiKey) onComplete {
+          case Success(msg) => self ! msg
+          case Failure(ex) =>
+            log.warning("error syncing meta service: {}",ex.getMessage)
+            // keep retrying until our time runs out and we leave this state
+            sendMessageToSelf(5.seconds, RetryRequest)
+        }
       }
     case _ -> ProvisioningMetaProviders =>
       (nextStateData.getUrl(META), nextStateData.getUrl(KONG), nextStateData.adminKey) match {
         case (Seq(metaUrl),Seq(kongGatewayUrl,kongServiceUrl),Some(apiKey)) =>
-          val initUrl = s"http://${metaUrl}/root/providers"
-          val marathonProviderJson = Json.parse(
-            s"""
-              |{
-              |  "description": "",
-              |  "resource_type": "Gestalt::Configuration::Provider::Marathon",
-              |  "properties": {
-              |    "environments": [],
-              |    "config": {
-              |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
-              |      "url": "${marathonBaseUrl}",
-              |      "networks": [
-              |        { "name": "HOST" },
-              |        { "name": "BRIDGE" }
-              |      ],
-              |      "extra": {}
-              |    },
-              |    "locations": [
-              |      { "name": "dcos", "enabled": true }
-              |    ]
-              |  },
-              |  "name": "base-marathon"
-              |}
-            """.stripMargin)
-          val kongExternalAccess = TLD match {
-            case Some(tld) => s"https://kong.${tld}"
-            case None => s"http://${kongGatewayUrl}"
-          }
-          val kongProviderJson = Json.parse(
-            s"""
-               |{
-               |  "description": "",
-               |  "resource_type": "Gestalt::Configuration::Provider::ApiGateway",
-               |  "properties": {
-               |    "environments": [],
-               |    "config": {
-               |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
-               |      "url": "${gtf.vipDestination(KONG_SERVICE)}",
-               |      "extra": "${kongExternalAccess}"
-               |    },
-               |    "locations": [
-               |      { "name": "dcos", "enabled": true }
-               |    ]
-               |  },
-               |  "name": "base-kong"
-               |}
-            """.stripMargin)
-
-          log.info(s"provisioning providers in meta at {}",initUrl)
-          val marathonAttempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(marathonProviderJson) flatMap { resp =>
-            log.info("meta.provision(marathonProvider) response: {}",resp.toString)
-            resp.status match {
-              case 201 =>
-                Future.successful(MetaProvidersProvisioned)
-              case not201 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException("Error provisioning marathon provider: " + mesg))
-            }
-          }
-          val kongAttempt = wsclient.url(initUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(kongProviderJson) flatMap { resp =>
-            log.info("meta.provision(kongProvider) response: {}",resp.toString)
-            resp.status match {
-              case 201 =>
-                Future.successful(MetaProvidersProvisioned)
-              case not201 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException("Error provisioning kong provider: " + mesg))
-            }
-          }
-          val fProviders = Future.sequence(Seq(marathonAttempt,kongAttempt))
-          fProviders.onComplete {
+          provisionMetaProviders(metaUrl,kongGatewayUrl,apiKey) onComplete {
             case Success(msg) => self ! msg.head // both are MetaProvidersProvisioned
             case Failure(ex) =>
               log.warning("error provisioning providers in meta service: {}",ex.getMessage)
               // keep retrying until our time runs out and we leave this state
-              // TODO: this potentially has the unfortunate effect of creating the providers multiple times; check before adding
               sendMessageToSelf(5.seconds, RetryRequest)
           }
         case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
@@ -457,32 +514,13 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
         case (Seq(),_) => self ! ErrorEvent("while provisioning meta license, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while provisioning meta license, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
-        case (Seq(metaUrl),Some(apiKey)) =>
-          val licenseBody = Json.obj(
-            "name" -> "Default-License-1",
-            "description" -> "Default GF license",
-            "properties" -> Json.obj(
-              "data" -> "ABwwGgQU0yrowwdZqokCoV+gsama8FPom7gCAgQANZ0VCWktNu7ACEokBT2hTHLu+ZDhGWZCeANF1klgMvRSoQmerkWTED1hCrTw3H0A0UC/TyU/9B0kjs9aT11H5uTQticJZnJ3GCn4/DLawLJ+JDwktF0pA9ATTVieJcqW1VDE3vgpgU6HllQOfBGmsmASPEOtYBte+gbKn5msKpUvbooLW5xyNKKe9U7vmmtvI2Th3wgb354k2imi8LJaVxywKd9BRe78mWhsKa9d57V+n9NAlQfN24wcyxzc23VuMK/v3fFl6YT3ro9ddXlIoRMl7mJ3nWN2HtYlfHTULsAsbIwHUsY44WZI926RDunstC03dm+mfT9jDTIciJ38jX0lGvbAY1X3ovl9v3EoroIjXwz4JKg5FbEH2vdoFwdy1UznCxSq10537hwmmnEfC16JUFySfe0o"
-            )
-          )
-          val licenseUrl = s"http://${metaUrl}/root/licenses"
-          val licenseAttempt = wsclient.url(licenseUrl).withRequestTimeout(30.seconds).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(licenseBody) flatMap { resp =>
-            log.info("meta.license response: {}",resp.toString)
-            resp.status match {
-              case 201 =>
-                Future.successful(MetaLicensingComplete)
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
-            }
-          }
-          licenseAttempt.onComplete {
-            case Success(msg) => self ! msg
-            case Failure(ex) =>
-              log.warning("error licensing meta service: {}",ex.getMessage)
-              // keep retrying until our time runs out and we leave this state
-              sendMessageToSelf(5.seconds, RetryRequest)
-          }
+        case (Seq(metaUrl),Some(apiKey)) => provisionMetaLicense(metaUrl,apiKey) onComplete {
+          case Success(msg) => self ! msg
+          case Failure(ex) =>
+            log.warning("error licensing meta service: {}",ex.getMessage)
+            // keep retrying until our time runs out and we leave this state
+            sendMessageToSelf(5.seconds, RetryRequest)
+        }
       }
   }
 
@@ -566,21 +604,6 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   when(AllServicesLaunched)(FSM.NullFunction)
   when(Error)(FSM.NullFunction)
 
-  object FrameworkServiceFromAppId {
-    private [this] val appIdWithGroup = s"/${launcherConfig.marathon.appGroup}/(.*)".r
-    def unapply(appId: String): Option[FrameworkService] = appIdWithGroup.unapplySeq(appId) flatMap(_.headOption) flatMap(LauncherConfig.Services.fromName)
-  }
-
-  def requestUpdateAndStay(service: FrameworkService) = {
-    marClient.getServiceStatus(service).onComplete {
-      case Success(status) =>
-        self ! UpdateServiceInfo(status)
-      case Failure(ex) =>
-        log.warning("error retrieving app status from Marathon: {}",ex.getMessage)
-    }
-    stay()
-  }
-
   whenUnhandled {
     case Event(OpenConnectionToMarathonEventBus, d) =>
       if (d.connected) {
@@ -654,10 +677,11 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     case Event(e @ MarathonDeploymentFailure(_, _, deploymentId), d) =>
       log.info(s"ignoring MarathonDeploymentFailure(${deploymentId})")
       stay()
-//      goto(Error) using d.copy(
-//        error = Some(s"Deployment ${deploymentId} failed for service (unknown)"), // TODO: do something appropriate here, once we've started storing deployment IDs
-//        errorStage = Some(stateName.toString)
-//      )
+    // TODO: do something appropriate here, once we've started storing deployment IDs
+    //      goto(Error) using d.copy(
+    //        error = Some(s"Deployment ${deploymentId} failed for service (unknown)"),
+    //        errorStage = Some(stateName.toString)
+    //      )
     case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), taskId, _, alive), d) =>
       log.info(s"received MarathonHealthStatusChange(${taskId}.alive == ${alive}) for task belonging to ${service.name}")
       val updatedStatus = d.statuses.get(service).map(info =>
@@ -727,11 +751,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
         services = services,
         isConnectedToMarathon = d.connected
       )
-    case Event(APIKeyTimeout,d) =>
-      stay
-    case Event(MetaBootstrapTimeout,d) =>
-      stay
-    case Event(MetaSyncTimeout,d) =>
+    case Event(t: TimeoutEvent, d) =>
       stay
     case Event(e, d) =>
       log.warning("unhandled event of type " + e.getClass.toString)

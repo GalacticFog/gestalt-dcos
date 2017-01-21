@@ -5,7 +5,7 @@ import javax.inject.{Inject, Named}
 
 import akka.actor.ActorRef
 import com.galacticfog.gestalt.dcos.LauncherConfig
-import com.galacticfog.gestalt.dcos.marathon.LaunchServicesRequest
+import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
 import org.apache.mesos.Protos._
 import org.apache.mesos.{MesosSchedulerDriver, Scheduler, SchedulerDriver}
 import play.api.{Configuration, Logger => logger}
@@ -87,7 +87,7 @@ class GestaltSchedulerDriver @Inject() ( launcherConfig: LauncherConfig,
 
   logger.info("Starting MesosSchedulerDriver: " + driver.start())
 
-  schedulerActor ! LaunchServicesRequest
+  schedulerActor ! GestaltMarathonLauncher.LaunchServicesRequest
 
   def getDriver: SchedulerDriver = driver
 
