@@ -43,3 +43,7 @@
     border: none;
 }
 
+.table-nonfluid {
+    width: auto;
+}
+
