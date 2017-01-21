@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
+import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, LaunchingState}
 import com.google.inject.{Inject, Singleton}
 import play.api.Configuration
 
@@ -64,9 +64,10 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipHostname(service: Dockerable): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
 
-  val allServices = {
-    if (database.provision) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
-    else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
+  val provisionedServices = {
+    val all = GestaltMarathonLauncher.LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
+    if (database.provision) all
+    else all.filterNot(_ == DATA)
   }
 
   def dockerImage(service: Dockerable) = {

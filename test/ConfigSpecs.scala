@@ -19,6 +19,15 @@ class ConfigSpecs extends PlaySpecification with Mockito {
     val launcherConfig = injector.instanceOf[LauncherConfig]
   }
 
+  abstract class WithConfig(config: (String,Any)*) extends Scope {
+    val injector =
+      new GuiceApplicationBuilder()
+        .disable[modules.Module]
+        .configure(config:_*)
+        .injector
+    val launcherConfig = injector.instanceOf[LauncherConfig]
+  }
+
   "LauncherConfig" should {
 
     "strip prefix/suffix slashes from application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
@@ -47,6 +56,18 @@ class ConfigSpecs extends PlaySpecification with Mockito {
 
     "generated VIP hostname from default app" in new WithAppGroup {
       launcherConfig.vipHostname(DATA) must_== s"${LauncherConfig.DEFAULT_APP_GROUP}-data.marathon.l4lb.thisdcos.directory"
+    }
+
+    "exclude database provisioning based on config" in new WithConfig("database.provision" -> false) {
+      launcherConfig.provisionedServices must not contain(DATA)
+    }
+
+    "include database provisioning based on config" in new WithConfig("database.provision" -> true) {
+      launcherConfig.provisionedServices must contain(DATA)
+    }
+
+    "include database provisioning by default" in new WithConfig() {
+      launcherConfig.provisionedServices must contain(DATA)
     }
 
   }

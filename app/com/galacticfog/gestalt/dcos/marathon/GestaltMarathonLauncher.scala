@@ -22,27 +22,29 @@ import play.api.libs.json._
 import play.api.libs.json.Reads._
 import LauncherConfig.Services._
 
-sealed trait LauncherState {
-  def targetService: Option[FrameworkService] = None
+sealed trait LauncherState
+
+trait LaunchingState extends LauncherState {
+  def targetService: FrameworkService
 }
 
 // in order...
 case object Uninitialized             extends LauncherState
-case object LaunchingDB               extends LauncherState {override def targetService = Some(DATA)}
-case object LaunchingRabbit           extends LauncherState {override def targetService = Some(RABBIT)}
-case object LaunchingSecurity         extends LauncherState {override def targetService = Some(SECURITY)}
+case object LaunchingDB               extends LaunchingState {val targetService = DATA}
+case object LaunchingRabbit           extends LaunchingState {val targetService = RABBIT}
+case object LaunchingSecurity         extends LaunchingState {val targetService = SECURITY}
 case object RetrievingAPIKeys         extends LauncherState
-case object LaunchingKong             extends LauncherState {override def targetService = Some(KONG)}
-case object LaunchingApiGateway       extends LauncherState {override def targetService = Some(API_GATEWAY)}
-case object LaunchingLaser           extends LauncherState {override def targetService = Some(LASER)}
-case object LaunchingMeta             extends LauncherState {override def targetService = Some(META)}
+case object LaunchingKong             extends LaunchingState {val targetService = KONG}
+case object LaunchingApiGateway       extends LaunchingState {val targetService = API_GATEWAY}
+case object LaunchingLaser            extends LaunchingState {val targetService = LASER}
+case object LaunchingMeta             extends LaunchingState {val targetService = META}
 case object BootstrappingMeta         extends LauncherState
 case object SyncingMeta               extends LauncherState
 case object ProvisioningMetaProviders extends LauncherState
 case object ProvisioningMetaLicense   extends LauncherState
-case object LaunchingApiProxy         extends LauncherState {override def targetService = Some(API_PROXY)}
-case object LaunchingUI               extends LauncherState {override def targetService = Some(UI)}
-case object LaunchingPolicy           extends LauncherState {override def targetService = Some(POLICY)}
+case object LaunchingApiProxy         extends LaunchingState {val targetService = API_PROXY}
+case object LaunchingUI               extends LaunchingState {val targetService = UI}
+case object LaunchingPolicy           extends LaunchingState {val targetService = POLICY}
 case object AllServicesLaunched       extends LauncherState
 // exceptional states
 case object ShuttingDown              extends LauncherState
@@ -112,7 +114,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   import GestaltMarathonLauncher._
   import LauncherConfig.Services._
 
-  def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
+  private[this] def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
     this.context.system.scheduler.scheduleOnce(delay, self, message)
   }
 
@@ -179,7 +181,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     secret <- launcherConfig.security.secret
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
-  private def launchApp(service: FrameworkService, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
+  private[this] def launchApp(service: FrameworkService, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
     val currentState = stateName.toString
     val allConfig = apiKey.map(apiKey => Json.obj(
       "security" -> JsObject(Seq(
@@ -203,14 +205,14 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     }
   }
 
-  private def nextState(state: LauncherState): LauncherState = {
+  private[this] def nextState(state: LauncherState): LauncherState = {
     val cur = LAUNCH_ORDER.indexOf(state)
     if (LAUNCH_ORDER.isDefinedAt(cur+1)) LAUNCH_ORDER(cur+1) else Error
   }
 
-  private def standardWhen(state: LauncherState) = when(state) {
-    case Event(e @  UpdateServiceInfo(status), d) if state.targetService.contains(status.service ) =>
-      val svcName = state.targetService.get
+  private[this] def standardWhen(state: LaunchingState) = when(state) {
+    case Event(e @ UpdateServiceInfo(status), d) if state.targetService == status.service =>
+      val svcName = state.targetService
       log.info(s"while launching, ${svcName} updated to ${status.status}")
       val newData = d.copy(
         statuses = d.statuses + (svcName -> status)
@@ -250,11 +252,11 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       }
   }
 
-  LAUNCH_ORDER.filter(_.targetService.isDefined).foreach(standardWhen)
+  LAUNCH_ORDER.collect({case s: LaunchingState => s}).foreach(standardWhen)
 
   // service launch stages
   onTransition {
-    case _ -> stage if stage.targetService.isDefined => launchApp(stage.targetService.get, nextStateData.adminKey, nextStateData.getUrl(SECURITY).headOption)
+    case (_, stage: LaunchingState) => launchApp(stage.targetService, nextStateData.adminKey, nextStateData.getUrl(SECURITY).headOption)
   }
 
   // post-launch stages
@@ -681,8 +683,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     case Event(ShutdownRequest(shutdownDB),d) =>
       sender() ! ShutdownAcceptedResponse
       val deleteApps = LAUNCH_ORDER
-        .flatMap {_.targetService}
-        .filter { svc => (shutdownDB || svc != LaunchingDB.targetService.get)}
+        .collect({case s: LaunchingState => s.targetService})
+        .filter { svc => (shutdownDB || svc != DATA) }
         .reverse
       deleteApps.foreach {
         service => marClient.killApp(service)
@@ -710,7 +712,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
         case Error => d.errorStage.map("Error during ".+).getOrElse("Error")
         case _ => stateName.toString
       }
-      val services = launcherConfig.allServices.map(service =>
+      val services = launcherConfig.provisionedServices.map(service =>
         d.statuses.get(service) getOrElse ServiceInfo(
           service = service,
           vhosts = Seq.empty,

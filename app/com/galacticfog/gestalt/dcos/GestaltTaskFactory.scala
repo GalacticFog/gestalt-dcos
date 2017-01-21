@@ -92,11 +92,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   def vipPort(service: ServiceEndpoint) = service.port.toString
 
-  def allServices = {
-    if (launcherConfig.database.provision) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
-    else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
-  }
-
   def getAppSpec(service: FrameworkService, globals: JsValue): AppSpec = {
     service match {
       case DATA        => getData(globals)
