@@ -34,7 +34,7 @@ case object LaunchingSecurity         extends LauncherState {override def target
 case object RetrievingAPIKeys         extends LauncherState
 case object LaunchingKong             extends LauncherState {override def targetService = Some(KONG)}
 case object LaunchingApiGateway       extends LauncherState {override def targetService = Some(API_GATEWAY)}
-case object LaunchingLambda           extends LauncherState {override def targetService = Some(LASER)}
+case object LaunchingLaser           extends LauncherState {override def targetService = Some(LASER)}
 case object LaunchingMeta             extends LauncherState {override def targetService = Some(META)}
 case object BootstrappingMeta         extends LauncherState
 case object SyncingMeta               extends LauncherState
@@ -85,7 +85,7 @@ case object MetaProviderTimeout
 case object MetaLicensingComplete
 case object MetaLicenseTimeout
 
-final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo])
+final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo], isConnectedToMarathon: Boolean)
 
 case object StatusResponse {
   implicit val statusResponseWrites = Json.writes[StatusResponse]
@@ -96,7 +96,7 @@ object GestaltMarathonLauncher {
     LaunchingDB, LaunchingRabbit,
     LaunchingSecurity, RetrievingAPIKeys,
     LaunchingKong, LaunchingApiGateway,
-    LaunchingLambda,
+    LaunchingLaser,
     LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders, ProvisioningMetaLicense,
     LaunchingPolicy,
     LaunchingApiProxy, LaunchingUI,
@@ -564,9 +564,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   when(AllServicesLaunched)(FSM.NullFunction)
   when(Error)(FSM.NullFunction)
 
-  val appIdWithGroup = s"/${launcherConfig.marathon.appGroup}/(.*)".r
-
   object FrameworkServiceFromAppId {
+    private [this] val appIdWithGroup = s"/${launcherConfig.marathon.appGroup}/(.*)".r
     def unapply(appId: String): Option[FrameworkService] = appIdWithGroup.unapplySeq(appId) flatMap(_.headOption) flatMap(LauncherConfig.Services.fromName)
   }
 
@@ -654,7 +653,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       log.info(s"ignoring MarathonDeploymentFailure(${deploymentId})")
       stay()
 //      goto(Error) using d.copy(
-//        error = Some(s"Deployment ${deploymentId} failed for service (unknown)"), // TODO: do something here
+//        error = Some(s"Deployment ${deploymentId} failed for service (unknown)"), // TODO: do something appropriate here, once we've started storing deployment IDs
 //        errorStage = Some(stateName.toString)
 //      )
     case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), taskId, _, alive), d) =>
@@ -723,7 +722,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       stay replying StatusResponse(
         launcherStage = stage,
         error = d.error,
-        services = services
+        services = services,
+        isConnectedToMarathon = d.connected
       )
     case Event(APIKeyTimeout,d) =>
       stay

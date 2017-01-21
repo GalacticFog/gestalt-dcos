@@ -10,9 +10,10 @@
  * argument is an `Html` object containing the body of the page.
  *@
 @main(webJarAssets, "Gestalt Framework", version) {
+
     <div class="row">
-        <div class="col-md-10 col-md-offset-1" id="launcher-stage">
-            <h3>gestalt-framework is initializing</h3>
+        <div class="col-md-10 col-md-offset-1">
+            <h3>Gestalt Framework Launcher</h3>
         </div>
     </div>
 
@@ -36,10 +37,26 @@
             </table>
         </div>
     </div>
+
     <div class="row">
         <div class="col-md-10 col-md-offset-1">
             <button id="shutdownButton" type="button" class="btn btn-danger"  data-toggle="modal" data-target="#shutdownModal">Shutdown services</button>
             <button id="restartButton"  type="button" class="btn btn-primary">Restart services</button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-10 col-md-offset-1"> <hr> </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-offset-1 col-md-2">
+            <table class="table table-borderless">
+                <tbody>
+                    <tr><td>Marathon event bus:</td><td id="marathon-connection"/></tr>
+                    <tr><td>Status:</td><td id="launcher-stage"/></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -104,7 +121,12 @@
                     } else {
                         $('#launcher-error').html("").hide();
                     }
-                    $('#launcher-stage').html("<h3>gestalt-framework is " + data.launcherStage + "</h3>");
+                    if (data.isConnectedToMarathon) {
+                        $('#marathon-connection').html("Connected").removeClass("connected-false").addClass("connected-true")
+                    } else {
+                        $('#marathon-connection').html("Disconnected").removeClass("connected-true").addClass("connected-false")
+                    }
+                    $('#launcher-stage').html(data.launcherStage);
                     populateTable(data.services);
                     if (data.launcherStage === "ShuttingDown" || data.launcherStage == "Uninitialized") {
                         $('#restartButton').prop('disabled',false);
