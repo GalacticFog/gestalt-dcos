@@ -2,14 +2,14 @@ package com.galacticfog.gestalt.dcos
 
 import scala.language.implicitConversions
 import java.util.UUID
-import javax.inject.Inject
 
-import com.galacticfog.gestalt.dcos.LauncherConfig.{Dockerable, FrameworkService, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, ServiceEndpoint}
 import com.galacticfog.gestalt.dcos.marathon._
+import javax.inject.{Inject, Singleton}
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
-import play.api.{Configuration, Logger}
+import play.api.Logger
 import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String])
@@ -49,6 +49,7 @@ case object GlobalDBConfig {
   )
 }
 
+@Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   val RABBIT_EXCHANGE = "policy-exchange"

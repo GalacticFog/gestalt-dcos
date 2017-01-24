@@ -33,17 +33,26 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def data() = Action.async {
-    implicit val timeout: Timeout = 15.seconds
+    implicit val timeout: Timeout = 25.seconds
     for {
-      f <- schedulerFSM ? GestaltMarathonLauncher.StatusRequest
-      resp = f.asInstanceOf[StatusResponse]
+      f <- {
+        Logger.debug("sending StatusRequest to launcher")
+        schedulerFSM ? GestaltMarathonLauncher.StatusRequest
+      }
+      resp = {
+        Logger.debug("received StatusResponse from launcher")
+        f.asInstanceOf[StatusResponse]
+      }
     } yield Ok(Json.toJson(resp))
   }
 
-  def shutdown(shutdownDB: Boolean) = Action {
+  def shutdown(shutdownDB: Boolean) = Action.async {
+    implicit val timeout: Timeout = 25.seconds
     Logger.info(s"received shutdown request: shutdownDB == ${shutdownDB}")
-    schedulerFSM ! GestaltMarathonLauncher.ShutdownRequest(shutdownDB = shutdownDB)
-    Accepted(Json.obj("message" -> "Framework shutting down"))
+    val response = schedulerFSM ? GestaltMarathonLauncher.ShutdownRequest(shutdownDB = shutdownDB)
+    response map {
+      _ => Accepted(Json.obj("message" -> "Framework shutting down"))
+    }
   }
 
   def restart() = Action {

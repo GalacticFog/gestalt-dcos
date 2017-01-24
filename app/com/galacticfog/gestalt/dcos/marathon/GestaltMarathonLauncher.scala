@@ -1,11 +1,12 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import scala.language.postfixOps
+import java.io.{PrintWriter, StringWriter}
 
+import scala.language.postfixOps
 import java.util.UUID
 import javax.inject.Inject
 
-import akka.actor.{FSM, LoggingFSM}
+import akka.actor.{FSM, LoggingFSM, Status}
 import akka.event.LoggingAdapter
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, GlobalDBConfig, LauncherConfig}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
@@ -21,6 +22,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import LauncherConfig.Services._
+import play.api.inject.ApplicationLifecycle
 
 sealed trait LauncherState
 
@@ -73,6 +75,8 @@ case object StatusResponse {
 }
 
 object GestaltMarathonLauncher {
+
+  val MARATHON_RECONNECT_DELAY = 10 seconds
 
   val LAUNCH_ORDER: Seq[LauncherState] = Seq(
     LaunchingDB, LaunchingRabbit,
@@ -618,16 +622,12 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       stay() using d.copy(
         connected = true
       )
-    case Event(MarathonSSEClient.Disconnected, d) =>
-      log.error("connection to Marathon event bus was closed, will attempt to reconnect")
-      sendMessageToSelf(30 seconds, OpenConnectionToMarathonEventBus)
-      stay() using d.copy(
-        connected = false
-      )
-    case Event(MarathonSSEClient.Failed(t), d) =>
-      log.error("error connecting to Marathon event bus, will attempt to reconnect", t)
-      sendMessageToSelf(30 seconds, OpenConnectionToMarathonEventBus)
-      stay() using d.copy(
+    case Event(Status.Failure(t), d) =>
+      val sw = new StringWriter
+      t.printStackTrace(new PrintWriter(sw))
+      log.error("received Failure status from Marathon event bus, will attempt to reconnect: {}",sw.toString)
+      sendMessageToSelf(MARATHON_RECONNECT_DELAY, OpenConnectionToMarathonEventBus)
+      stay using d.copy(
         connected = false
       )
     case Event(sse @ ServerSentEvent(Some(data), Some(eventType), _, _), d) =>

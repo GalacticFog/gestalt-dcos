@@ -1,22 +1,20 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import javax.inject.{Inject, Named}
+import javax.inject.{Inject, Named, Singleton}
 
 import scala.language.postfixOps
-import akka.{Done, NotUsed}
+import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.headers.Accept
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
-import play.api.Configuration
+import com.galacticfog.gestalt.dcos.LauncherConfig
 import play.api.libs.ws.WSClient
 import play.api.{Logger => logger}
 import play.api.libs.json._
 import play.api.libs.json.Reads._
-import play.api.libs.functional.syntax._
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -63,6 +61,7 @@ object BiggerUnmarshalling extends EventStreamUnmarshalling {
   override protected def maxEventSize: Int = 524288
 }
 
+@Singleton
 class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
                                     @Named("scheduler-actor") schedulerActor: ActorRef,
                                     wsclient: WSClient )
@@ -81,7 +80,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   def connectToBus(actorRef: ActorRef) = {
     implicit val mat = ActorMaterializer()
-    val handler = Sink.actorRef(actorRef, Disconnected)
+    val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
     Http(system)
       .singleRequest(
         Get(s"${marathonBaseUrl}/v2/events")
@@ -97,7 +96,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           eventSource.runWith(handler)
         case Failure(t) =>
           logger.debug("failure connecting to marathon event bus", t)
-          actorRef ! Failed(t)
+          actorRef ! akka.actor.Status.Failure(new RuntimeException("error connecting to Marathon event bus", t))
       }
   }
 
@@ -224,8 +223,6 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 object MarathonSSEClient {
 
   case object Connected
-  case object Disconnected
-  case class Failed(t: Throwable)
 
   def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq
 

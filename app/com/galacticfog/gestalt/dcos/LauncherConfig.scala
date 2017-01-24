@@ -1,7 +1,7 @@
 package com.galacticfog.gestalt.dcos
 
 import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, LaunchingState}
-import com.google.inject.{Inject, Singleton}
+import javax.inject.{Inject, Named, Singleton}
 import play.api.Configuration
 
 @Singleton
@@ -26,12 +26,6 @@ class LauncherConfig @Inject()(config: Configuration) {
     username = getString("database.username", "gestaltdev"),
     password = getString("database.password", "letmein"),
     prefix = getString("database.prefix", "gestalt-")
-  )
-
-  val mesos = MesosConfig(
-    master = getString("mesos.master", "master.mesos:5050"),
-    schedulerHostname = getString("scheduler.hostname", java.net.InetAddress.getLocalHost.getHostName),
-    schedulerName = getString("scheduler.name", "gestalt-framework-scheduler")
   )
 
   val marathon = MarathonConfig(
