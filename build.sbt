@@ -27,7 +27,7 @@ scalaVersion := "2.11.7"
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 dockerUpdateLatest := true
-dockerBaseImage := "galacticfog/gestalt-mesos-base:3.1.0"
+dockerBaseImage := "java:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
