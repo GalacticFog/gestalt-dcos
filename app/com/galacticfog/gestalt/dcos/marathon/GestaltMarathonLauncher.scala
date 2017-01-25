@@ -511,8 +511,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
               sendMessageToSelf(5.seconds, RetryRequest)
           }
         case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
-        case (_,Seq(_),_) => self ! ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString))
         case (_,_,None)   => self ! ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString))
+        case _ => self ! ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString))
       }
     case _ -> ProvisioningMetaLicense =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
