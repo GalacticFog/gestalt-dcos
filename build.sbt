@@ -29,6 +29,13 @@ maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 dockerUpdateLatest := true
 dockerBaseImage := "java:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
+dockerCommands := dockerCommands.value.flatMap {
+  case cmd@Cmd("FROM",_) => List(
+    cmd,
+    Cmd("RUN", "apk add --update bash && rm -rf /var/cache/apk/*")     
+  )
+  case other => List(other)
+}
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 
