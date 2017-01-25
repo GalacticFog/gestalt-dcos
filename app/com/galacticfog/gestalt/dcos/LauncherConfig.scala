@@ -36,7 +36,8 @@ class LauncherConfig @Inject()(config: Configuration) {
   )
 
   val laser = LaserConfig(
-    minCoolExecutors = getInt("laser.min-cool-executors", 1)
+    minCoolExecutors = getInt("laser.min-cool-executors", 1),
+    scaleDownTimeout = getInt("laser.scale-down-timeout", 15)
   )
 
   val security = SecurityConfig(
@@ -171,5 +172,7 @@ object LauncherConfig {
                              key: Option[String],
                              secret: Option[String] )
 
-  case class LaserConfig( minCoolExecutors: Int )
+  case class LaserConfig( minCoolExecutors: Int,
+                          scaleDownTimeout: Int
+                        )
 }

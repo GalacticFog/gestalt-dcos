@@ -307,6 +307,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         //
         "MANAGEMENT_PROTOCOL" -> "ws",
         "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
+        "SCALE_DOWN_TIME_SECONDS" -> launcherConfig.laser.scaleDownTimeout.toString,
         //
         "MAX_PORT_RANGE" -> "11000",
         "MIN_PORT_RANGE" -> "10500",
