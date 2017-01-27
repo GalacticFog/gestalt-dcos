@@ -39,8 +39,10 @@ class LauncherConfig @Inject()(config: Configuration) {
   )
 
   val laser = LaserConfig(
-    minCoolExecutors = getInt("laser.min-cool-executors", 1),
-    scaleDownTimeout = getInt("laser.scale-down-timeout", 15)
+    minCoolExecutors = getInt("laser.min-cool-executors", LaserConfig.DEFAULT_MIN_COOL_EXECS),
+    scaleDownTimeout = getInt("laser.scale-down-timeout", LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT),
+    minPortRange     = getInt("laser.min-port-range", LaserConfig.DEFAULT_MIN_PORT_RANGE),
+    maxPortRange     = getInt("laser.max-port-range", LaserConfig.DEFAULT_MAX_PORT_RANGE)
   )
 
   val security = SecurityConfig(
@@ -183,5 +185,15 @@ object LauncherConfig {
                              secret: Option[String] )
 
   case class LaserConfig( minCoolExecutors: Int,
-                          scaleDownTimeout: Int )
+                          scaleDownTimeout: Int,
+                          minPortRange: Int,
+                          maxPortRange: Int )
+
+  case object LaserConfig {
+    val DEFAULT_MIN_PORT_RANGE = 60000
+    val DEFAULT_MAX_PORT_RANGE = 60500
+    val DEFAULT_MIN_COOL_EXECS = 1
+    val DEFAULT_SCALE_DOWN_TIMEOUT = 15
+  }
+
 }

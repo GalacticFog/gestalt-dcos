@@ -310,9 +310,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "MANAGEMENT_PROTOCOL" -> "ws",
         "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
         "SCALE_DOWN_TIME_SECONDS" -> launcherConfig.laser.scaleDownTimeout.toString,
+        "MIN_PORT_RANGE" -> launcherConfig.laser.minPortRange.toString,
+        "MAX_PORT_RANGE" -> launcherConfig.laser.maxPortRange.toString,
         //
-        "MAX_PORT_RANGE" -> "11000",
-        "MIN_PORT_RANGE" -> "10500",
         "MAX_LAMBDAS_PER_OFFER" -> "6",
         "MESOS_MASTER_CONNECTION" -> "zk://master.mesos:2181/mesos",
         "MESOS_NATIVE_JAVA_LIBRARY" -> "/usr/lib/libmesos.so",
