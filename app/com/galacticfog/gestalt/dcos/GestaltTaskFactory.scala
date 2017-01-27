@@ -76,12 +76,14 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   )
 
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
-    TLD match {
+     TLD match {
       case Some(tld) => Map(
         "HAPROXY_0_VHOST" -> s"${service.name}.${tld}",
         "HAPROXY_GROUP" -> "external"
       )
-      case None => Map.empty
+      case None => Map(
+        "HAPROXY_GROUP" -> "external"
+      )
     }
   }
 

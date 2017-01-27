@@ -1,7 +1,5 @@
 package com.galacticfog.gestalt.dcos
 
-import play.api.libs.json._
-import play.api.libs.functional.syntax._
 import play.api.libs.json.Json
 
 package object marathon {
@@ -29,5 +27,8 @@ package object marathon {
   implicit val deploymentFailureRead = Json.reads[MarathonDeploymentFailure]
   implicit val healthStatusChangedRead = Json.reads[MarathonHealthStatusChange]
   implicit val appTerminatedEventRead = Json.reads[MarathonAppTerminatedEvent]
+  implicit val deploymentStepActions = Json.reads[MarathonDeploymentInfo.Step.Action]
+  implicit val deploymentStep = Json.reads[MarathonDeploymentInfo.Step]
+  implicit val deploymentInfo = Json.reads[MarathonDeploymentInfo]
 
 }

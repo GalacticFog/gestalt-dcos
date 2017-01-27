@@ -27,7 +27,7 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Virtual Host</th>
+                        <th>Service Endpoints</th>
                         <th>Container Instance</th>
                         <th>Status</th>
                     </tr>
@@ -115,7 +115,7 @@
 
             function doPoll(){
                 $.getJSON("data", function(data) {
-                    setTimeout(doPoll,3000);
+                    setTimeout(doPoll,2000);
                     if (data.error) {
                         $('#launcher-error').html(data.error).show();
                     } else {
@@ -140,7 +140,7 @@
                 if (svc.vhosts === null) return '';
                 var vhosts = [];
                 $.each(svc.vhosts, function (i,vhost) {
-                    url = 'https://' + vhost;
+                    url = vhost;
                     vhosts.push(
                             '<a href="' + url + '">' + url + '</a>'
                     );

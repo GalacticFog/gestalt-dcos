@@ -1,8 +1,10 @@
 package com.galacticfog.gestalt.dcos
 
 import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, LaunchingState}
-import javax.inject.{Inject, Named, Singleton}
+import javax.inject.{Inject, Singleton}
 import play.api.Configuration
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 @Singleton
 class LauncherConfig @Inject()(config: Configuration) {
@@ -18,21 +20,22 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def getDouble(path: String, default: Double): Double = config.getDouble(path).getOrElse(default)
 
-  val database = DatabaseConfig(
-    provision = getBool("database.provision", true),
-    provisionedSize = getInt("database.provisioned-size", 100),
-    hostname = getString("database.hostname", "data.gestalt.marathon.mesos"),
-    port = getInt("database.port", 5432),
-    username = getString("database.username", "gestaltdev"),
-    password = getString("database.password", "letmein"),
-    prefix = getString("database.prefix", "gestalt-")
-  )
-
   val marathon = MarathonConfig(
+    marathonLbUrl = config.getString("marathon.lb-url"),
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
+  )
+
+  val database = DatabaseConfig(
+    provision = getBool("database.provision", true),
+    provisionedSize = getInt("database.provisioned-size", 100),
+    hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
+    port = getInt("database.port", 5432),
+    username = getString("database.username", "gestaltdev"),
+    password = getString("database.password", "letmein"),
+    prefix = getString("database.prefix", "gestalt-")
   )
 
   val laser = LaserConfig(
@@ -84,6 +87,12 @@ class LauncherConfig @Inject()(config: Configuration) {
 object LauncherConfig {
 
   val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
+
+  val MARATHON_RECONNECT_DELAY = 10 seconds
+
+  val EXTERNAL_API_CALL_TIMEOUT = 30 seconds
+
+  val EXTERNAL_API_RETRY_INTERVAL = 5 seconds
 
   sealed trait Dockerable {
     def name: String
@@ -162,7 +171,8 @@ object LauncherConfig {
                              password: String,
                              prefix: String )
 
-  case class MarathonConfig( appGroup: String,
+  case class MarathonConfig( marathonLbUrl: Option[String],
+                             appGroup: String,
                              tld: Option[String],
                              baseUrl: String,
                              jvmOverheadFactor: Double )
@@ -173,6 +183,5 @@ object LauncherConfig {
                              secret: Option[String] )
 
   case class LaserConfig( minCoolExecutors: Int,
-                          scaleDownTimeout: Int
-                        )
+                          scaleDownTimeout: Int )
 }
