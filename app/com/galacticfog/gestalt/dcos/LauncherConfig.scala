@@ -1,9 +1,10 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
-import com.galacticfog.gestalt.security.sdk.BuildInfo
-import com.google.inject.{Inject, Singleton}
+import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, LaunchingState}
+import javax.inject.{Inject, Singleton}
 import play.api.Configuration
+import scala.concurrent.duration._
+import scala.language.postfixOps
 
 @Singleton
 class LauncherConfig @Inject()(config: Configuration) {
@@ -19,31 +20,27 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def getDouble(path: String, default: Double): Double = config.getDouble(path).getOrElse(default)
 
-  val database = DatabaseConfig(
-    provision = getBool("database.provision", true),
-    provisionedSize = getInt("database.provisioned-size", 100),
-    hostname = getString("database.hostname", "data.gestalt.marathon.mesos"),
-    port = getInt("database.port", 5432),
-    username = getString("database.username", "gestaltdev"),
-    password = getString("database.password", "letmein"),
-    prefix = getString("database.prefix", "gestalt-")
-  )
-
-  val mesos = MesosConfig(
-    master = getString("mesos.master", "master.mesos:5050"),
-    schedulerHostname = getString("scheduler.hostname", java.net.InetAddress.getLocalHost.getHostName),
-    schedulerName = getString("scheduler.name", "gestalt-framework-scheduler")
-  )
-
   val marathon = MarathonConfig(
+    marathonLbUrl = config.getString("marathon.lb-url"),
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
   )
 
+  val database = DatabaseConfig(
+    provision = getBool("database.provision", true),
+    provisionedSize = getInt("database.provisioned-size", 100),
+    hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
+    port = getInt("database.port", 5432),
+    username = getString("database.username", "gestaltdev"),
+    password = getString("database.password", "letmein"),
+    prefix = getString("database.prefix", "gestalt-")
+  )
+
   val laser = LaserConfig(
-    minCoolExecutors = getInt("laser.min-cool-executors", 1)
+    minCoolExecutors = getInt("laser.min-cool-executors", 1),
+    scaleDownTimeout = getInt("laser.scale-down-timeout", 15)
   )
 
   val security = SecurityConfig(
@@ -57,8 +54,6 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   protected[this] def vipBase(service: Dockerable): String = {
     marathon.appGroup
-      .stripPrefix("/")
-      .stripSuffix("/")
       .split("/")
       .foldRight(service.name)(_ + "-" + _)
   }
@@ -67,9 +62,10 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipHostname(service: Dockerable): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
 
-  val allServices = {
-    if (database.provision) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
-    else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
+  val provisionedServices = {
+    val all = GestaltMarathonLauncher.LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
+    if (database.provision) all
+    else all.filterNot(_ == DATA)
   }
 
   def dockerImage(service: Dockerable) = {
@@ -91,6 +87,12 @@ class LauncherConfig @Inject()(config: Configuration) {
 object LauncherConfig {
 
   val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
+
+  val MARATHON_RECONNECT_DELAY = 10 seconds
+
+  val EXTERNAL_API_CALL_TIMEOUT = 30 seconds
+
+  val EXTERNAL_API_RETRY_INTERVAL = 5 seconds
 
   sealed trait Dockerable {
     def name: String
@@ -169,7 +171,8 @@ object LauncherConfig {
                              password: String,
                              prefix: String )
 
-  case class MarathonConfig( appGroup: String,
+  case class MarathonConfig( marathonLbUrl: Option[String],
+                             appGroup: String,
                              tld: Option[String],
                              baseUrl: String,
                              jvmOverheadFactor: Double )
@@ -179,5 +182,6 @@ object LauncherConfig {
                              key: Option[String],
                              secret: Option[String] )
 
-  case class LaserConfig( minCoolExecutors: Int )
+  case class LaserConfig( minCoolExecutors: Int,
+                          scaleDownTimeout: Int )
 }

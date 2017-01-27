@@ -2,14 +2,14 @@ package com.galacticfog.gestalt.dcos
 
 import scala.language.implicitConversions
 import java.util.UUID
-import javax.inject.Inject
 
-import com.galacticfog.gestalt.dcos.LauncherConfig.{Dockerable, FrameworkService, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, ServiceEndpoint}
 import com.galacticfog.gestalt.dcos.marathon._
+import javax.inject.{Inject, Singleton}
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
-import play.api.{Configuration, Logger}
+import play.api.Logger
 import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String])
@@ -49,6 +49,7 @@ case object GlobalDBConfig {
   )
 }
 
+@Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   val RABBIT_EXCHANGE = "policy-exchange"
@@ -60,9 +61,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   val gestaltFrameworkEnsembleVersion = launcherConfig.gestaltFrameworkVersion
 
   Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
-
-  val provisionDB = launcherConfig.database.provision
-  val provisionedDBSize = launcherConfig.database.provisionedSize
 
   import launcherConfig.dockerImage
   import LauncherConfig.Services._
@@ -78,12 +76,14 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   )
 
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
-    TLD match {
+     TLD match {
       case Some(tld) => Map(
         "HAPROXY_0_VHOST" -> s"${service.name}.${tld}",
         "HAPROXY_GROUP" -> "external"
       )
-      case None => Map.empty
+      case None => Map(
+        "HAPROXY_GROUP" -> "external"
+      )
     }
   }
 
@@ -94,11 +94,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def vipLabel = launcherConfig.vipLabel(_)
 
   def vipPort(service: ServiceEndpoint) = service.port.toString
-
-  def allServices = {
-    if (provisionDB) GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService)
-    else GestaltMarathonLauncher.LAUNCH_ORDER.flatMap(_.targetService).filterNot(_ == "data")
-  }
 
   def getAppSpec(service: FrameworkService, globals: JsValue): AppSpec = {
     service match {
@@ -137,7 +132,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         containerPath = "pgdata",
         mode = "RW",
         persistent = Some(VolumePersistence(
-          size = provisionedDBSize
+          size = launcherConfig.database.provisionedSize
         ))
       ))),
       residency = Some(Residency(Residency.WAIT_FOREVER)),
@@ -282,8 +277,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getLaser(globals: JsValue): AppSpec = {
     val laserSchedulerFrameworkName = {
-      val appGroup = launcherConfig.marathon.appGroup.stripPrefix("/").stripSuffix("/")
-      appGroup.replaceAll("[/]","-") + "-" + "laser"
+      launcherConfig.marathon.appGroup.replaceAll("[/]","-") + "-" + "laser"
     }
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
@@ -315,6 +309,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         //
         "MANAGEMENT_PROTOCOL" -> "ws",
         "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
+        "SCALE_DOWN_TIME_SECONDS" -> launcherConfig.laser.scaleDownTimeout.toString,
         //
         "MAX_PORT_RANGE" -> "11000",
         "MIN_PORT_RANGE" -> "10500",
@@ -487,10 +482,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getMarathonPayload(service: FrameworkService, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globals), globals)
 
   def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
-    val cleanPrefix = "/" + appGroup.stripPrefix("/").stripSuffix("/") + "/"
     val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
-      id = cleanPrefix + app.name,
+      id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,
       args = app.args,
       env = app.env,
       instances = app.numInstances,

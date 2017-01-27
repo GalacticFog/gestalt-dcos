@@ -297,6 +297,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
 
       val global = Json.parse(
         """{
@@ -314,7 +315,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |}
         """.stripMargin
       )
-      Fragment.foreach(gtf.allServices) { svc =>
+      Fragment.foreach(config.provisionedServices) { svc =>
         val payload = gtf.getMarathonPayload(svc, global)
         svc.name ! {(payload.cmd must beSome) or (payload.args must beSome)}
       }
