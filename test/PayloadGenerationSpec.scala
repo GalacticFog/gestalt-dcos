@@ -255,6 +255,24 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
     }
 
+    lazy val testGlobalVars = Json.parse(
+      """{
+        |  "database": {
+        |     "hostname": "test-db.marathon.mesos",
+        |     "port": 5432,
+        |     "username": "test-user",
+        |     "password": "test-password",
+        |     "prefix": "test-"
+        |  },
+        |  "security": {
+        |     "apiKey": "apikey",
+        |     "realm" : "192.168.1.50:12345",
+        |     "apiSecret": "apisecret"
+        |  }
+        |}
+      """.stripMargin
+    )
+
     "set framework labels on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -263,32 +281,73 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-
-      val global = Json.parse(
-        """{
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "apiKey": "apikey",
-          |     "realm" : "192.168.1.50:12345",
-          |     "apiSecret": "apisecret"
-          |  }
-          |}
-        """.stripMargin
-      )
-
-      val laserPayload = gtf.getMarathonPayload(LASER, global)
+      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
       laserPayload.labels must havePairs(
         "DCOS_PACKAGE_FRAMEWORK_NAME" -> "gestalt-test-east-laser",
         "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
       )
       laserPayload.env must havePair(
         "SCHEDULER_NAME" -> "gestalt-test-east-laser"
+      )
+    }
+
+    "set min-cool, scaledown-timeout vars on laser scheduler per config" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.scale-down-timeout" -> 300,
+          "laser.min-cool-executors" -> 10
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
+      laserPayload.env must havePairs(
+        "MIN_COOL_EXECUTORS" -> "10",
+        "SCALE_DOWN_TIME_SECONDS" -> "300"
+      )
+    }
+
+    "set default min-cool, scaledown-timeout vars on laser scheduler" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
+      laserPayload.env must havePairs(
+        "MIN_COOL_EXECUTORS" -> LauncherConfig.LaserConfig.DEFAULT_MIN_COOL_EXECS.toString,
+        "SCALE_DOWN_TIME_SECONDS" -> LauncherConfig.LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT.toString
+      )
+    }
+
+    "set port range vars on laser scheduler per config" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.min-port-range" -> 100,
+          "laser.max-port-range" -> 200
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
+      laserPayload.env must havePairs(
+        "MIN_PORT_RANGE" -> "100",
+        "MAX_PORT_RANGE" -> "200"
+      )
+    }
+
+    "set default port range vars on laser scheduler" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
+      laserPayload.env must havePairs(
+        "MIN_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString,
+        "MAX_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString
       )
     }
 
@@ -299,24 +358,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
 
-      val global = Json.parse(
-        """{
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "apiKey": "apikey",
-          |     "apiSecret": "apisecret"
-          |  }
-          |}
-        """.stripMargin
-      )
       Fragment.foreach(config.provisionedServices) { svc =>
-        val payload = gtf.getMarathonPayload(svc, global)
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
         svc.name ! {(payload.cmd must beSome) or (payload.args must beSome)}
       }
     }
