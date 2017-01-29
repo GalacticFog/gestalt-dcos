@@ -70,8 +70,8 @@ class TaskFactorySpec extends Specification {
 
       val globals = Json.obj()
 
-      gtf.getAppSpec(DATA(0), globals) must haveImage("galacticfog/gestalt-data:dcos-9.10.11.12")
-      gtf.getAppSpec(DATA(1), globals) must haveImage("galacticfog/gestalt-data:dcos-9.10.11.12")
+      gtf.getAppSpec(DATA(0), globals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
+      gtf.getAppSpec(DATA(1), globals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
       gtf.getAppSpec(RABBIT, globals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
       gtf.getAppSpec(KONG, globals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
       gtf.getAppSpec(SECURITY, globals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
@@ -102,8 +102,8 @@ class TaskFactorySpec extends Specification {
 
       val ver = BuildInfo.version
 
-      gtf.getAppSpec(DATA(0), globals)      must haveImage(s"galacticfog/gestalt-data:dcos-${ver}")
-      gtf.getAppSpec(DATA(1), globals)      must haveImage(s"galacticfog/gestalt-data:dcos-${ver}")
+      gtf.getAppSpec(DATA(0), globals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
+      gtf.getAppSpec(DATA(1), globals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
       gtf.getAppSpec(RABBIT, globals)       must haveImage(s"galacticfog/rabbit:dcos-${ver}")
       gtf.getAppSpec(KONG, globals)         must haveImage(s"galacticfog/kong:dcos-${ver}")
       gtf.getAppSpec(SECURITY, globals)     must haveImage(s"galacticfog/gestalt-security:dcos-${ver}")

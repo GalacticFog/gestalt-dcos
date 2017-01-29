@@ -337,9 +337,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgrep_repl"))
-      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgrep_repl"))
-      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgrep_repl"))
+      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
     }
 
     "acknowledge the appropriate number of DATA stages and services according to config" in {
@@ -364,6 +364,50 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       config.provisionedServices.filter(_.isInstanceOf[DATA]) must containTheSameElementsAs(
         Seq(DATA(0))
       )
+    }
+
+    "configure first database container as primary" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.app-group" -> "/gestalt"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getMarathonPayload(DATA(0), testGlobalVars)
+      payload.env must havePair("PGREPL_ROLE" -> "PRIMARY")
+      Json.toJson(payload).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-primary:5432")
+    }
+
+    "configure database replication with consistent password" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val pay0 = gtf.getMarathonPayload(DATA(0), testGlobalVars)
+      val pay1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)
+      pay0.env must haveKey("PGREPL_TOKEN")
+      pay1.env must haveKey("PGREPL_TOKEN")
+      pay0.env("PGREPL_TOKEN") must_== pay1.env("PGREPL_TOKEN")
+    }
+
+    "configure later database containers as secondary" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.app-group" -> "/gestalt"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val standbyvars = Seq(
+        "PGREPL_ROLE" -> "STANDBY",
+        "PGREPL_MASTER_IP" -> "gestalt-data-primary.marathon.l4lb.thisdcos.directory",
+        "PGREPL_MASTER_PORT" -> "5432"
+      )
+      gtf.getMarathonPayload(DATA(1), testGlobalVars).env must havePairs(standbyvars:_*)
+      gtf.getMarathonPayload(DATA(2), testGlobalVars).env must havePairs(standbyvars:_*)
+      gtf.getMarathonPayload(DATA(3), testGlobalVars).env must havePairs(standbyvars:_*)
+      gtf.getMarathonPayload(DATA(10), testGlobalVars).env must havePairs(standbyvars:_*)
     }
 
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {

@@ -140,7 +140,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       env = Map(
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password,
-        "PGDATA" -> "/mnt/mesos/sandbox/pgdata"
+        "PGDATA" -> "/mnt/mesos/sandbox/pgdata",
+        "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY")
       ),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index)))))),

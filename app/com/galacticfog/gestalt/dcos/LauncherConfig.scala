@@ -58,8 +58,10 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
 
-  val LAUNCH_ORDER: Seq[LauncherState] = Seq(
-    LaunchingDB(0), LaunchingRabbit,
+  val LAUNCH_ORDER: Seq[LauncherState] = (if (database.provision) {
+    Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
+  } else Seq.empty) ++ Seq(
+    LaunchingRabbit,
     LaunchingSecurity, RetrievingAPIKeys,
     LaunchingKong, LaunchingApiGateway,
     LaunchingLaser,
@@ -90,6 +92,8 @@ class LauncherConfig @Inject()(config: Configuration) {
       .getString(s"containers.${name}")
       .orElse(gestaltFrameworkVersion.map(
         ensVer => service match {
+          case DATA(_) =>
+            s"galacticfog/postgres_repl:dcos-${ensVer}"
           case RABBIT | KONG =>
             s"galacticfog/${name}:dcos-${ensVer}"
           case _ =>
@@ -166,7 +170,7 @@ object LauncherConfig {
   }
 
   def defaultDockerImages(service: Dockerable) = service match {
-    case Services.DATA(_)             => s"galacticfog/gestalt-data:dcos-${BuildInfo.version}"
+    case Services.DATA(_)             => s"galacticfog/postgres_repl:dcos-${BuildInfo.version}"
     case Services.RABBIT              => s"galacticfog/rabbit:dcos-${BuildInfo.version}"
     case Services.KONG                => s"galacticfog/kong:dcos-${BuildInfo.version}"
     case Services.SECURITY            => s"galacticfog/gestalt-security:dcos-${BuildInfo.version}"

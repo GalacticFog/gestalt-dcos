@@ -76,7 +76,7 @@ class ConfigSpecs extends PlaySpecification with Mockito {
       )
     }
 
-    "include the appropriate number of database secondaries based on config" in new WithConfig("database.numSecondaries" -> 3) {
+    "include the appropriate number of database secondaries based on config" in new WithConfig("database.num-secondaries" -> 3) {
       launcherConfig.provisionedServices must containAllOf( (0 to 3).map(DATA(_)) )
     }
 
