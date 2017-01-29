@@ -31,7 +31,7 @@ sealed trait LaunchingState extends LauncherState {
 
 // ordered/ordinary states...
 case object Uninitialized             extends LauncherState
-case object LaunchingDB               extends LaunchingState {val targetService = DATA}
+case class  LaunchingDB(index: Int)   extends LaunchingState {val targetService = DATA(index)}
 case object LaunchingRabbit           extends LaunchingState {val targetService = RABBIT}
 case object LaunchingSecurity         extends LaunchingState {val targetService = SECURITY}
 case object RetrievingAPIKeys         extends LauncherState
@@ -85,17 +85,6 @@ case object StatusResponse {
 
 object GestaltMarathonLauncher {
 
-  val LAUNCH_ORDER: Seq[LauncherState] = Seq(
-    LaunchingDB, LaunchingRabbit,
-    LaunchingSecurity, RetrievingAPIKeys,
-    LaunchingKong, LaunchingApiGateway,
-    LaunchingLaser,
-    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders, ProvisioningMetaLicense,
-    LaunchingPolicy,
-    LaunchingApiProxy, LaunchingUI,
-    AllServicesLaunched
-  )
-
   case object OpenConnectionToMarathonEventBus
   case object StatusRequest
   case object LaunchServicesRequest
@@ -123,10 +112,10 @@ object GestaltMarathonLauncher {
   case object MetaLicenseTimeout extends TimeoutEvent
 }
 
-class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
-                                         marClient: MarathonSSEClient,
-                                         wsclient: WSClient,
-                                         gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
+class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
+                                        marClient: MarathonSSEClient,
+                                        wsclient: WSClient,
+                                        gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
 
   import GestaltMarathonLauncher._
   import LauncherConfig.Services._
@@ -138,9 +127,9 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
 
   implicit val apiKeyReads = Json.format[GestaltAPIKey]
 
-  val marathonBaseUrl = launcherConfig.marathon.baseUrl
+  val marathonBaseUrl = config.marathon.baseUrl
 
-  val TLD    = launcherConfig.marathon.tld
+  val TLD    = config.marathon.tld
   val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
 
   val marathonConfig = Json.obj(
@@ -149,16 +138,16 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   )
 
   def provisionedDB: JsObject = Json.obj(
-    "hostname" -> launcherConfig.vipHostname(DATA),
+    "hostname" -> config.vipHostname(DATA(0)),
     "port" -> 5432,
-    "username" -> launcherConfig.database.username,
-    "password" -> launcherConfig.database.password,
+    "username" -> config.database.username,
+    "password" -> config.database.password,
     "prefix" -> "gestalt-"
   )
 
   def provisionedDBHostIP: JsObject = {
     val js = for {
-      url <- stateData.getUrl(DATA).headOption
+      url <- stateData.getUrl(DATA(0)).headOption
       parts = url.split(":")
       if parts.length == 2
       host = parts(0)
@@ -166,22 +155,22 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
     } yield Json.obj(
       "hostname" -> host,
       "port" -> port,
-      "username" -> launcherConfig.database.username,
-      "password" -> launcherConfig.database.password,
+      "username" -> config.database.username,
+      "password" -> config.database.password,
       "prefix" -> "gestalt-"
     )
     js getOrElse provisionedDB
   }
 
   def configuredDB: JsObject = Json.obj(
-    "hostname" -> launcherConfig.database.hostname,
-    "port" -> launcherConfig.database.port,
-    "username" -> launcherConfig.database.username,
-    "password" -> launcherConfig.database.password,
-    "prefix" -> launcherConfig.database.prefix
+    "hostname" -> config.database.hostname,
+    "port" -> config.database.port,
+    "username" -> config.database.username,
+    "password" -> config.database.password,
+    "prefix" -> config.database.prefix
   )
 
-  val databaseConfig = if (launcherConfig.database.provision) Json.obj(
+  val databaseConfig = if (config.database.provision) Json.obj(
     "database" -> provisionedDB
   ) else Json.obj(
     "database" -> configuredDB
@@ -190,13 +179,13 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   val globals = marathonConfig ++ databaseConfig
 
   val securityInitCredentials = JsObject(
-    Seq("username" -> JsString(launcherConfig.security.username)) ++
-      launcherConfig.security.password.map("password" -> JsString(_))
+    Seq("username" -> JsString(config.security.username)) ++
+      config.security.password.map("password" -> JsString(_))
   )
 
   val securityProvidedApiKey = for {
-    key <- launcherConfig.security.key
-    secret <- launcherConfig.security.secret
+    key <- config.security.key
+    secret <- config.security.secret
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
   private[this] def launchApp(service: FrameworkService, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
@@ -245,7 +234,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
               Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
             case None =>
               log.warning("attempting to clear init flag from security database")
-              val databaseConfig = if (launcherConfig.database.provision) Json.obj(
+              val databaseConfig = if (config.database.provision) Json.obj(
                 "database" -> provisionedDBHostIP
               ) else Json.obj(
                 "database" -> configuredDB
@@ -330,7 +319,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
          |}
             """.stripMargin)
     val kongExternalAccess = TLD.map("https://kong." + _)
-      .orElse(launcherConfig.marathon.marathonLbUrl.map(_ + ":" + "1234"))
+      .orElse(config.marathon.marathonLbUrl.map(_ + ":" + "1234"))
       .getOrElse(s"http://${kongGatewayUrl}") // assume local
     val kongProviderJson = Json.parse(
       s"""
@@ -401,12 +390,12 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   }
 
   private[this] def nextState(state: LauncherState): LauncherState = {
-    val cur = LAUNCH_ORDER.indexOf(state)
-    if (LAUNCH_ORDER.isDefinedAt(cur+1)) LAUNCH_ORDER(cur+1) else Error
+    val cur = config.LAUNCH_ORDER.indexOf(state)
+    if (config.LAUNCH_ORDER.isDefinedAt(cur+1)) config.LAUNCH_ORDER(cur+1) else Error
   }
 
   object FrameworkServiceFromAppId {
-    private [this] val appIdWithGroup = s"/${launcherConfig.marathon.appGroup}/(.*)".r
+    private [this] val appIdWithGroup = s"/${config.marathon.appGroup}/(.*)".r
     def unapply(appId: String): Option[FrameworkService] = appIdWithGroup.unapplySeq(appId)
       .flatMap(_.headOption)
       .flatMap(LauncherConfig.Services.fromName)
@@ -459,8 +448,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       all.foreach {
         svcInfo => log.info(s"${svcInfo.service} : ${svcInfo.status}")
       }
-      if (launcherConfig.database.provision) {
-        goto(LAUNCH_ORDER.head) using d.update(all)
+      if (config.database.provision) {
+        goto(config.LAUNCH_ORDER.head) using d.update(all)
       } else {
         goto(LaunchingRabbit) using d.update(all)
       }
@@ -472,8 +461,8 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
   when(ShuttingDown) {
     // this is similar to above, but we assume that we've already been initialized so we can proceed directly to launching
     case Event(LaunchServicesRequest,d) =>
-      if (launcherConfig.database.provision) {
-        goto(LAUNCH_ORDER.head)
+      if (config.database.provision) {
+        goto(config.LAUNCH_ORDER.head)
       } else {
         goto(LaunchingRabbit)
       }
@@ -584,7 +573,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
       advanceState(d.update(all))
   }
 
-  LAUNCH_ORDER.collect({case s: LaunchingState => s}).foreach(standardWhen)
+  config.LAUNCH_ORDER.collect({case s: LaunchingState => s}).foreach(standardWhen)
 
   /**************************************************
     *
@@ -838,7 +827,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
 
     case Event(ShutdownRequest(shutdownDB),d) =>
       val s = self
-      val deleteApps = LAUNCH_ORDER
+      val deleteApps = config.LAUNCH_ORDER
         .collect({case s: LaunchingState => s.targetService})
         .filter { svc => (shutdownDB || svc != DATA) }
         .reverse
@@ -859,7 +848,7 @@ class GestaltMarathonLauncher @Inject()( launcherConfig: LauncherConfig,
         case Error => d.errorStage.map("Error during ".+).getOrElse("Error")
         case _ => stateName.toString
       }
-      val services = launcherConfig.provisionedServices.map(service =>
+      val services = config.provisionedServices.map(service =>
         d.statuses.get(service) getOrElse ServiceInfo(
           service = service,
           vhosts = Seq.empty,
