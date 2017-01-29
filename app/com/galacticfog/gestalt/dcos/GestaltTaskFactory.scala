@@ -127,6 +127,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getData(globals: JsValue, index: Int): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
+    val replEnv = if (index > 0) Map(
+      "PGREPL_MASTER_IP" -> serviceHostname(DATA(0)),
+      "PGREPL_MASTER_PORT" -> vipPort(DATA(0))
+    ) else Map.empty
     appSpec(DATA(index)).copy(
       volumes = Some(Seq(marathon.Volume(
         containerPath = "pgdata",
@@ -136,12 +140,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         ))
       ))),
       residency = Some(Residency(Residency.WAIT_FOREVER)),
-      taskKillGracePeriodSeconds = Some(300),
-      env = Map(
+      taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
+      env = replEnv ++ Map(
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password,
         "PGDATA" -> "/mnt/mesos/sandbox/pgdata",
-        "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY")
+        "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY"),
+        "PGREPL_TOKEN" -> launcherConfig.database.pgreplToken
       ),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index)))))),

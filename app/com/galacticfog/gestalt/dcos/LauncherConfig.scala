@@ -35,6 +35,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     provision = getBool("database.provision", true),
     provisionedSize = getInt("database.provisioned-size", 100),
     numSecondaries = getInt("database.num-secondaries", DatabaseConfig.DEFAULT_NUM_SECONDARIES),
+    pgreplToken = getString("database.pgrepl-token", "iw4nn4b3likeu"),
     hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
     port = getInt("database.port", 5432),
     username = getString("database.username", "gestaltdev"),
@@ -73,10 +74,19 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val provisionedServices = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
 
-  protected[this] def vipBase(service: ServiceEndpoint): String = {
-    marathon.appGroup
-      .split("/")
-      .foldRight(service.name)(_ + "-" + _)
+  protected[this] def vipBase(service: ServiceEndpoint): String = service match {
+    case DATA(0) =>
+      marathon.appGroup
+        .split("/")
+        .foldRight("data-primary")(_ + "-" + _)
+    case DATA(_) =>
+      marathon.appGroup
+        .split("/")
+        .foldRight("data-secondary")(_ + "-" + _)
+    case _ =>
+      marathon.appGroup
+        .split("/")
+        .foldRight(service.name)(_ + "-" + _)
   }
 
   def vipLabel(service: ServiceEndpoint): String = "/" + vipBase(service) + ":" + service.port
@@ -195,6 +205,7 @@ object LauncherConfig {
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
                              numSecondaries: Int,
+                             pgreplToken: String,
                              hostname: String,
                              port: Int,
                              username: String,
@@ -203,6 +214,7 @@ object LauncherConfig {
 
   case object DatabaseConfig {
     val DEFAULT_NUM_SECONDARIES = 0
+    val DEFAULT_KILL_GRACE_PERIOD = 300
   }
 
   case class MarathonConfig( marathonLbUrl: Option[String],
