@@ -24,7 +24,8 @@ class TaskFactoryEnvSpec extends Specification {
 
       val ensver = env("GESTALT_FRAMEWORK_VERSION") getOrElse BuildInfo.version
 
-      gtf.getAppSpec(DATA, globals)        must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/gestalt-data:dcos-${ensver}"))
+      gtf.getAppSpec(DATA(0), globals)     must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensver}"))
+      gtf.getAppSpec(DATA(1), globals)     must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensver}"))
       gtf.getAppSpec(RABBIT, globals)      must haveImage(env("GESTALT_RABBIT_IMG").getOrElse(s"galacticfog/rabbit:dcos-${ensver}"))
       gtf.getAppSpec(KONG, globals)        must haveImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:dcos-${ensver}"))
       gtf.getAppSpec(SECURITY, globals)    must haveImage(env("GESTALT_SECURITY_IMG").getOrElse(s"galacticfog/gestalt-security:dcos-${ensver}"))

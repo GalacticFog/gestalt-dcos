@@ -14,8 +14,25 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   "Payload generation" should {
 
-    "work from global (BRIDGE)" in {
+    lazy val testGlobalVars = Json.parse(
+      """{
+        |  "database": {
+        |     "hostname": "test-db.marathon.mesos",
+        |     "port": 5432,
+        |     "username": "test-user",
+        |     "password": "test-password",
+        |     "prefix": "test-"
+        |  },
+        |  "security": {
+        |     "apiKey": "apikey",
+        |     "realm" : "192.168.1.50:12345",
+        |     "apiSecret": "apisecret"
+        |  }
+        |}
+      """.stripMargin
+    )
 
+    "work from global config (BRIDGE)" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -24,7 +41,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-
       val global = Json.parse(
         """{
           |  "marathon": {
@@ -47,7 +63,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |}
         """.stripMargin
       )
-
       val expected = MarathonAppPayload(
         id = "/gestalt-framework-tasks/security",
         args = Some(Seq("-J-Xmx768m")),
@@ -99,19 +114,15 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           intervalSeconds = 5
         ))
       )
-
       val security = gtf.getMarathonPayload(SECURITY, global)
       security must_== expected
-
     }
 
     "map HOST ports appropriately" in {
-
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-
       val global = Json.parse(
         """{
           |  "marathon": {
@@ -137,8 +148,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |}
         """.stripMargin
       )
-
-
       val lambda = gtf.getMarathonPayload(LASER, global)
       lambda.container.docker must beSome
       lambda.container.docker.get.network must_== "HOST"
@@ -154,7 +163,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-
       val global = Json.parse(
         """{
           |  "database": {
@@ -172,7 +180,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |}
         """.stripMargin
       )
-
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
       gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
@@ -181,8 +188,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
     "appropriately set realm override for security consumer services (host IP)" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure(
-        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
@@ -211,11 +216,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
     "appropriately set realm override for security consumer services (globals)" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure(
-        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-
       val global = Json.parse(
         """{
           |  "database": {
@@ -233,47 +235,12 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           |}
         """.stripMargin
       )
-
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
-      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"      -> "192.168.1.50:12345")
+      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "192.168.1.50:12345")
       gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
     }
 
-    "database sets residency and grace period along with persistent storage" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
-
-      val global = Json.obj()
-      val data = gtf.getMarathonPayload(DATA, global)
-      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
-      data.taskKillGracePeriodSeconds must beSome(300)
-      data.container.volumes must beSome(containTheSameElementsAs(
-        Seq(Volume("pgdata", "RW", Some(VolumePersistence(config.database.provisionedSize))))
-      ))
-    }
-
-    lazy val testGlobalVars = Json.parse(
-      """{
-        |  "database": {
-        |     "hostname": "test-db.marathon.mesos",
-        |     "port": 5432,
-        |     "username": "test-user",
-        |     "password": "test-password",
-        |     "prefix": "test-"
-        |  },
-        |  "security": {
-        |     "apiKey": "apikey",
-        |     "realm" : "192.168.1.50:12345",
-        |     "apiSecret": "apisecret"
-        |  }
-        |}
-      """.stripMargin
-    )
-
-    "set framework labels on laser scheduler" in {
+    "set dcos framework service labels on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -310,8 +277,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
     "set default min-cool, scaledown-timeout vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure(
-        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
@@ -340,8 +305,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
     "set default port range vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
-        .configure(
-        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
@@ -349,6 +312,113 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         "MIN_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString,
         "MAX_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString
       )
+    }
+
+    "set database container residency and grace period along with persistent storage" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+      val data = gtf.getMarathonPayload(DATA(0), Json.obj())
+      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
+      data.taskKillGracePeriodSeconds must beSome(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD)
+      data.container.volumes must beSome(containTheSameElementsAs(
+        Seq(Volume("pgdata", "RW", Some(VolumePersistence(config.database.provisionedSize))))
+      ))
+    }
+
+    "use pgrepl database container for primary and secondary database containers" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.num-secondaries" -> 2
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+    }
+
+    "acknowledge the appropriate number of DATA stages and services according to config" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.num-secondaries" -> 3
+        )
+        .injector
+      val config = injector.instanceOf[LauncherConfig]
+      config.provisionedServices.filter(_.isInstanceOf[DATA]) must containTheSameElementsAs(
+        Seq(DATA(0), DATA(1), DATA(2), DATA(3))
+      )
+    }
+
+    "acknowledge the appropriate number of DATA stages and services according to default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val config = injector.instanceOf[LauncherConfig]
+      assert(LauncherConfig.DatabaseConfig.DEFAULT_NUM_SECONDARIES == 0)
+      config.provisionedServices.filter(_.isInstanceOf[DATA]) must containTheSameElementsAs(
+        Seq(DATA(0))
+      )
+    }
+
+    "configure first database container as primary" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.app-group" -> "/gestalt"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getMarathonPayload(DATA(0), testGlobalVars)
+      payload.env must havePair("PGREPL_ROLE" -> "PRIMARY")
+      Json.toJson(payload).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-primary:5432")
+    }
+
+    "configure database replication with consistent password" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+          .configure(
+            "database.pgrepl-token" -> "thetoken"
+          )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val pay0 = gtf.getMarathonPayload(DATA(0), testGlobalVars)
+      val pay1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)
+      pay0.env must haveKey("PGREPL_TOKEN")
+      pay1.env must haveKey("PGREPL_TOKEN")
+      pay0.env.get("PGREPL_TOKEN") must_== pay1.env.get("PGREPL_TOKEN")
+      pay0.env.get("PGREPL_TOKEN") must beSome("thetoken")
+    }
+
+    "configure later database containers as secondary" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.app-group" -> "/gestalt"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val standbyvars = Seq(
+        "PGREPL_ROLE" -> "STANDBY",
+        "PGREPL_MASTER_IP" -> "gestalt-data-primary.marathon.l4lb.thisdcos.directory",
+        "PGREPL_MASTER_PORT" -> "5432"
+      )
+      val p1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)
+      val p2 = gtf.getMarathonPayload(DATA(2), testGlobalVars)
+      val p3 = gtf.getMarathonPayload(DATA(3), testGlobalVars)
+      val p10 = gtf.getMarathonPayload(DATA(10), testGlobalVars)
+      p1.env must havePairs(standbyvars:_*)
+      p2.env must havePairs(standbyvars:_*)
+      p3.env must havePairs(standbyvars:_*)
+      p10.env must havePairs(standbyvars:_*)
+      Json.toJson(p1).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
+      Json.toJson(p2).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
+      Json.toJson(p3).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
+      Json.toJson(p10).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
     }
 
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {

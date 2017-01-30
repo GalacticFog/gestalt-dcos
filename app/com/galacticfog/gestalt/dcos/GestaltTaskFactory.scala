@@ -97,7 +97,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   def getAppSpec(service: FrameworkService, globals: JsValue): AppSpec = {
     service match {
-      case DATA        => getData(globals)
+      case DATA(index) => getData(globals, index)
       case RABBIT      => getRabbit(globals)
       case SECURITY    => getSecurity(globals)
       case META        => getMeta(globals)
@@ -125,9 +125,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getData(globals: JsValue): AppSpec = {
+  private[this] def getData(globals: JsValue, index: Int): AppSpec = {
     val dbConfig = GlobalDBConfig(globals)
-    appSpec(DATA).copy(
+    val replEnv = if (index > 0) Map(
+      "PGREPL_MASTER_IP" -> serviceHostname(DATA(0)),
+      "PGREPL_MASTER_PORT" -> vipPort(DATA(0))
+    ) else Map.empty
+    appSpec(DATA(index)).copy(
       volumes = Some(Seq(marathon.Volume(
         containerPath = "pgdata",
         mode = "RW",
@@ -136,14 +140,16 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         ))
       ))),
       residency = Some(Residency(Residency.WAIT_FOREVER)),
-      taskKillGracePeriodSeconds = Some(300),
-      env = Map(
+      taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
+      env = replEnv ++ Map(
         "POSTGRES_USER" -> dbConfig.username,
         "POSTGRES_PASSWORD" -> dbConfig.password,
-        "PGDATA" -> "/mnt/mesos/sandbox/pgdata"
+        "PGDATA" -> "/mnt/mesos/sandbox/pgdata",
+        "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY"),
+        "PGREPL_TOKEN" -> launcherConfig.database.pgreplToken
       ),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA))))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index)))))),
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = "TCP", path = ""
       ))
@@ -193,7 +199,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "GESTALT_APIGATEWAY" -> s"http://${vipDestination(API_GATEWAY)}",
         "GESTALT_LAMBDA"     -> s"http://${vipDestination(LASER)}",
         //
-        "RABBIT_HOST"      -> serviceHostname(RABBIT),
+        "RABBIT_HOST"      -> serviceHostname(RABBIT_AMQP),
         "RABBIT_PORT"      -> vipPort(RABBIT_AMQP),
         "RABBIT_HTTP_PORT" -> vipPort(RABBIT_HTTP),
         "RABBIT_EXCHANGE"  -> RABBIT_EXCHANGE,
@@ -253,7 +259,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "POLICY_MAX_WORKERS" -> "20",
         "POLICY_MIN_WORKERS" -> "5",
         //
-        "RABBIT_HOST" -> serviceHostname(RABBIT),
+        "RABBIT_HOST" -> serviceHostname(RABBIT_AMQP),
         "RABBIT_PORT" -> vipPort(RABBIT_AMQP),
         "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
         "RABBIT_ROUTE" -> "policy"

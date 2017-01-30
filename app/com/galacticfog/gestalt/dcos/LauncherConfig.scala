@@ -1,10 +1,13 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, LaunchingState}
+import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
+
 import play.api.Configuration
+
 import scala.concurrent.duration._
 import scala.language.postfixOps
+import scala.util.Try
 
 @Singleton
 class LauncherConfig @Inject()(config: Configuration) {
@@ -31,6 +34,8 @@ class LauncherConfig @Inject()(config: Configuration) {
   val database = DatabaseConfig(
     provision = getBool("database.provision", true),
     provisionedSize = getInt("database.provisioned-size", 100),
+    numSecondaries = getInt("database.num-secondaries", DatabaseConfig.DEFAULT_NUM_SECONDARIES),
+    pgreplToken = getString("database.pgrepl-token", "iw4nn4b3likeu"),
     hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
     port = getInt("database.port", 5432),
     username = getString("database.username", "gestaltdev"),
@@ -54,34 +59,58 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
 
-  protected[this] def vipBase(service: Dockerable): String = {
-    marathon.appGroup
-      .split("/")
-      .foldRight(service.name)(_ + "-" + _)
+  val LAUNCH_ORDER: Seq[LauncherState] = (if (database.provision) {
+    Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
+  } else Seq.empty) ++ Seq(
+    LaunchingRabbit,
+    LaunchingSecurity, RetrievingAPIKeys,
+    LaunchingKong, LaunchingApiGateway,
+    LaunchingLaser,
+    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders, ProvisioningMetaLicense,
+    LaunchingPolicy,
+    LaunchingApiProxy, LaunchingUI,
+    AllServicesLaunched
+  )
+
+  val provisionedServices = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
+
+  protected[this] def vipBase(service: ServiceEndpoint): String = service match {
+    case DATA(0) =>
+      marathon.appGroup
+        .split("/")
+        .foldRight("data-primary")(_ + "-" + _)
+    case DATA(_) =>
+      marathon.appGroup
+        .split("/")
+        .foldRight("data-secondary")(_ + "-" + _)
+    case _ =>
+      marathon.appGroup
+        .split("/")
+        .foldRight(service.name)(_ + "-" + _)
   }
 
   def vipLabel(service: ServiceEndpoint): String = "/" + vipBase(service) + ":" + service.port
 
-  def vipHostname(service: Dockerable): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
-
-  val provisionedServices = {
-    val all = GestaltMarathonLauncher.LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
-    if (database.provision) all
-    else all.filterNot(_ == DATA)
-  }
+  def vipHostname(service: ServiceEndpoint): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
 
   def dockerImage(service: Dockerable) = {
+    val name = service match {
+      case DATA(_) => "data"
+      case _ => service.name
+    }
     config
-      .getString(s"containers.${service.name}")
+      .getString(s"containers.${name}")
       .orElse(gestaltFrameworkVersion.map(
         ensVer => service match {
+          case DATA(_) =>
+            s"galacticfog/postgres_repl:dcos-${ensVer}"
           case RABBIT | KONG =>
-            s"galacticfog/${service.name}:dcos-${ensVer}"
+            s"galacticfog/${name}:dcos-${ensVer}"
           case _ =>
-            s"galacticfog/gestalt-${service.name}:dcos-${ensVer}"
+            s"galacticfog/gestalt-${name}:dcos-${ensVer}"
         }
       ))
-      .getOrElse(DEFAULT_DOCKER_IMAGES(service))
+      .getOrElse(defaultDockerImages(service))
   }
 
 }
@@ -106,31 +135,39 @@ object LauncherConfig {
     def mem: Int
   }
 
-  trait ServiceEndpoint extends Dockerable {
+  sealed trait ServiceEndpoint {
     def name: String
     def port: Int
   }
 
   object Services {
-    case object RABBIT       extends FrameworkService                       {val name = "rabbit";      val cpu = 0.50; val mem = 256;}
-    case object KONG         extends FrameworkService                       {val name = "kong";        val cpu = 0.50; val mem = 128;}
-    case object DATA         extends FrameworkService with ServiceEndpoint  {val name = "data";        val cpu = 1.00; val mem = 512;  val port = 5432}
-    case object SECURITY     extends FrameworkService with ServiceEndpoint  {val name = "security";    val cpu = 0.50; val mem = 1536; val port = 9455}
-    case object META         extends FrameworkService with ServiceEndpoint  {val name = "meta";        val cpu = 1.50; val mem = 1536; val port = 14374}
-    case object LASER        extends FrameworkService with ServiceEndpoint  {val name = "laser";       val cpu = 0.50; val mem = 1536; val port = 1111}
-    case object POLICY       extends FrameworkService with ServiceEndpoint  {val name = "policy";      val cpu = 0.25; val mem = 1024; val port = 9999}
-    case object API_GATEWAY  extends FrameworkService with ServiceEndpoint  {val name = "api-gateway"; val cpu = 0.25; val mem = 1024; val port = 6473}
-    case object API_PROXY    extends FrameworkService with ServiceEndpoint  {val name = "api-proxy";   val cpu = 0.50; val mem = 128;  val port = 81}
-    case object UI           extends FrameworkService with ServiceEndpoint  {val name = "ui";          val cpu = 0.25; val mem = 128;  val port = 80}
+    case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
+    case object KONG             extends FrameworkService                      with Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
+    case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 1.00; val mem = 512;  val port = 5432}
+    case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
+    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 1.50; val mem = 1536; val port = 14374}
+    case object LASER            extends FrameworkService with ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
+    case object POLICY           extends FrameworkService with ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
+    case object API_GATEWAY      extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
+    case object API_PROXY        extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-proxy";      val cpu = 0.50; val mem = 128;  val port = 81}
+    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui";             val cpu = 0.25; val mem = 128;  val port = 80}
 
-    case object RABBIT_AMQP  extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 5672}
-    case object RABBIT_HTTP  extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 15672}
-    case object KONG_GATEWAY extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8000}
-    case object KONG_SERVICE extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8001}
+    case object DataFromName {
+      private[this] val dataRegex = "data-([0-9]+)".r
+      def unapply(serviceName: String): Option[DATA] = serviceName match {
+        case dataRegex(index) => Try{DATA(index.toInt)}.toOption
+        case _ => None
+      }
+    }
 
-    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, DATA, SECURITY, META, LASER, POLICY, API_GATEWAY, API_PROXY, UI )
+    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 5672}
+    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 15672}
+    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8000}
+    case object KONG_SERVICE     extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8001}
 
-    def fromName(serviceName: String) = allServices.find(_.name == serviceName)
+    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, API_PROXY, UI )
+
+    def fromName(serviceName: String): Option[FrameworkService] = allServices.find(_.name == serviceName) orElse DataFromName.unapply(serviceName)
   }
 
   object Executors {
@@ -142,24 +179,24 @@ object LauncherConfig {
     case object EXECUTOR_RUBY   extends Dockerable {val name = "laser-executor-ruby"}
   }
 
-  val DEFAULT_DOCKER_IMAGES: Map[Dockerable,String] = Map(
-    Services.RABBIT              -> s"galacticfog/rabbit:dcos-${BuildInfo.version}",
-    Services.KONG                -> s"galacticfog/kong:dcos-${BuildInfo.version}",
-    Services.DATA                -> s"galacticfog/gestalt-data:dcos-${BuildInfo.version}",
-    Services.SECURITY            -> s"galacticfog/gestalt-security:dcos-${BuildInfo.version}",
-    Services.META                -> s"galacticfog/gestalt-meta:dcos-${BuildInfo.version}",
-    Services.POLICY              -> s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}",
-    Services.LASER               -> s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}",
-    Services.API_GATEWAY         -> s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}",
-    Services.API_PROXY           -> s"galacticfog/gestalt-api-proxy:dcos-${BuildInfo.version}",
-    Services.UI                  -> s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_DOTNET    -> s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_JS        -> s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_JVM       -> s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_PYTHON    -> s"galacticfog/gestalt-laser-executor-python:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_GOLANG    -> s"galacticfog/gestalt-laser-executor-golang:dcos-${BuildInfo.version}",
-    Executors.EXECUTOR_RUBY      -> s"galacticfog/gestalt-laser-executor-ruby:dcos-${BuildInfo.version}"
-  )
+  def defaultDockerImages(service: Dockerable) = service match {
+    case Services.DATA(_)             => s"galacticfog/postgres_repl:dcos-${BuildInfo.version}"
+    case Services.RABBIT              => s"galacticfog/rabbit:dcos-${BuildInfo.version}"
+    case Services.KONG                => s"galacticfog/kong:dcos-${BuildInfo.version}"
+    case Services.SECURITY            => s"galacticfog/gestalt-security:dcos-${BuildInfo.version}"
+    case Services.META                => s"galacticfog/gestalt-meta:dcos-${BuildInfo.version}"
+    case Services.POLICY              => s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}"
+    case Services.LASER               => s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}"
+    case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}"
+    case Services.API_PROXY           => s"galacticfog/gestalt-api-proxy:dcos-${BuildInfo.version}"
+    case Services.UI                  => s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_PYTHON    => s"galacticfog/gestalt-laser-executor-python:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:dcos-${BuildInfo.version}"
+    case Executors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:dcos-${BuildInfo.version}"
+  }
 
   case class MesosConfig( master: String,
                           schedulerHostname: String,
@@ -167,11 +204,18 @@ object LauncherConfig {
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
+                             numSecondaries: Int,
+                             pgreplToken: String,
                              hostname: String,
                              port: Int,
                              username: String,
                              password: String,
                              prefix: String )
+
+  case object DatabaseConfig {
+    val DEFAULT_NUM_SECONDARIES = 0
+    val DEFAULT_KILL_GRACE_PERIOD = 300
+  }
 
   case class MarathonConfig( marathonLbUrl: Option[String],
                              appGroup: String,
