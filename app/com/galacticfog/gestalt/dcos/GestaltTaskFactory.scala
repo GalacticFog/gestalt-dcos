@@ -532,41 +532,4 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  def toTaskInfo(app: AppSpec, offer: Offer): TaskInfo = {
-    val commandInfo = CommandInfo.newBuilder()
-      .setShell(false)
-      .setEnvironment(app.env)
-
-    val containerInfo = Protos.ContainerInfo.newBuilder
-      .setType( Protos.ContainerInfo.Type.DOCKER )
-      .setDocker( ContainerInfo.DockerInfo.newBuilder
-        .setImage(app.image)
-        .setForcePullImage(true)
-        .setNetwork(app.network)
-        .build
-      )
-
-    TaskInfo.newBuilder()
-      .setName( app.name )
-      .addResources(
-        Resource.newBuilder()
-          .setName("cpus")
-          .setType(Value.Type.SCALAR)
-          .setScalar(Value.Scalar.newBuilder().setValue( app.cpus ))
-      )
-      .addResources(
-        Resource.newBuilder()
-          .setName("mem")
-          .setType(Value.Type.SCALAR)
-          .setScalar(Value.Scalar.newBuilder().setValue( app.mem ))
-      )
-      .setCommand(commandInfo)
-      .setContainer(containerInfo)
-      .setSlaveId(offer.getSlaveId)
-      .setTaskId(
-        Protos.TaskID.newBuilder().setValue(app.name + "-" + UUID.randomUUID.toString)
-      )
-      .build()
-  }
-
 }
