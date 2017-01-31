@@ -1,6 +1,6 @@
 name := """gestalt-dcos"""
 
-version := "0.3.0-RC1"
+version := "1.1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala).
@@ -26,7 +26,6 @@ scalaVersion := "2.11.7"
 
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
-dockerUpdateLatest := true
 dockerBaseImage := "java:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
