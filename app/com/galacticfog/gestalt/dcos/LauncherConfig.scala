@@ -59,6 +59,9 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
 
+  import GestaltMarathonLauncher._
+  import GestaltMarathonLauncher.States._
+
   val LAUNCH_ORDER: Seq[LauncherState] = (if (database.provision) {
     Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
   } else Seq.empty) ++ Seq(
