@@ -3,7 +3,6 @@ package test
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, SECURITY}
-import com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.test._

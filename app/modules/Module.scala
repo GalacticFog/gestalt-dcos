@@ -21,5 +21,5 @@ class Module extends AbstractModule with AkkaGuiceSupport {
 
 class Kickstart @Inject()(@Named("scheduler-actor") schedulerActor: ActorRef) {
   Logger.info("messaging scheduler-actor to kickstart the launch")
-  schedulerActor ! GestaltMarathonLauncher.LaunchServicesRequest
+  schedulerActor ! GestaltMarathonLauncher.Messages.LaunchServicesRequest
 }

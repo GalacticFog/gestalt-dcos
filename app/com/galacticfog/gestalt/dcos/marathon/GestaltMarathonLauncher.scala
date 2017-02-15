@@ -23,101 +23,111 @@ import play.api.libs.json._
 import play.api.libs.json.Reads._
 import LauncherConfig.Services._
 
-sealed trait LauncherState
-
-sealed trait LaunchingState extends LauncherState {
-  def targetService: FrameworkService
-}
-
-// ordered/ordinary states...
-case object Uninitialized             extends LauncherState
-case class  LaunchingDB(index: Int)   extends LaunchingState {val targetService = DATA(index)}
-case object LaunchingRabbit           extends LaunchingState {val targetService = RABBIT}
-case object LaunchingSecurity         extends LaunchingState {val targetService = SECURITY}
-case object RetrievingAPIKeys         extends LauncherState
-case object LaunchingKong             extends LaunchingState {val targetService = KONG}
-case object LaunchingApiGateway       extends LaunchingState {val targetService = API_GATEWAY}
-case object LaunchingLaser            extends LaunchingState {val targetService = LASER}
-case object LaunchingMeta             extends LaunchingState {val targetService = META}
-case object BootstrappingMeta         extends LauncherState
-case object SyncingMeta               extends LauncherState
-case object ProvisioningMetaProviders extends LauncherState
-case object ProvisioningMetaLicense   extends LauncherState
-case object LaunchingApiProxy         extends LaunchingState {val targetService = API_PROXY}
-case object LaunchingUI               extends LaunchingState {val targetService = UI}
-case object LaunchingPolicy           extends LaunchingState {val targetService = POLICY}
-case object AllServicesLaunched       extends LauncherState
-// exceptional states
-case object ShuttingDown              extends LauncherState
-case object Error                     extends LauncherState
-
-final case class ServiceData( statuses: Map[FrameworkService,ServiceInfo],
-                              adminKey: Option[GestaltAPIKey],
-                              error: Option[String],
-                              errorStage: Option[String],
-                              connected: Boolean ) {
-  def getUrl(service: FrameworkService): Seq[String] = {
-    statuses.get(service)
-      .filter(_.hostname.isDefined)
-      .map({case ServiceInfo(_,_,hostname,ports,_) => ports.map(p => hostname.get + ":" + p.toString)})
-      .getOrElse(Seq.empty)
-  }
-
-  def update(update: ServiceInfo): ServiceData = this.update(Seq(update))
-
-  def update(updates: Seq[ServiceInfo]): ServiceData = {
-    copy(
-      statuses = updates.foldLeft(statuses) {
-        case (c, u) => c + (u.service -> u)
-      }
-    )
-  }
-}
-case object ServiceData {
-  def init: ServiceData = ServiceData(Map.empty, None, None, None, false)
-}
-
-final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo], isConnectedToMarathon: Boolean)
-
-case object StatusResponse {
-  implicit val statusResponseWrites = Json.writes[StatusResponse]
-}
-
 object GestaltMarathonLauncher {
 
-  case object OpenConnectionToMarathonEventBus
-  case object StatusRequest
-  case object LaunchServicesRequest
-  case class ShutdownRequest(shutdownDB: Boolean)
-  case object ShutdownAcceptedResponse
-  case class RetryRequest(state: LauncherState)
-  final case class ErrorEvent(message: String, errorStage: Option[String])
-  final case class SecurityInitializationComplete(key: GestaltAPIKey)
-  case object AdvanceStage
-  final case class UpdateServiceInfo(info: ServiceInfo)
-  final case class UpdateAllServiceInfo(all: Seq[ServiceInfo])
-  final case class ServiceDeployed(service: FrameworkService)
-  final case class ServiceDeleting(service: FrameworkService)
+  object Messages {
+    // public messages
+    case object StatusRequest
+    case object LaunchServicesRequest
+    case class ShutdownRequest(shutdownDB: Boolean)
+    case object ShutdownAcceptedResponse
 
-  sealed trait TimeoutEvent
+    final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo], isConnectedToMarathon: Boolean)
 
-  case object APIKeyTimeout extends TimeoutEvent
-  case object MetaBootstrapFinished
-  case object MetaBootstrapTimeout extends TimeoutEvent
-  case object MetaSyncFinished
-  case object MetaSyncTimeout extends TimeoutEvent
-  case object MetaProvidersProvisioned
-  case object MetaProviderTimeout extends TimeoutEvent
-  case object MetaLicensingComplete
-  case object MetaLicenseTimeout extends TimeoutEvent
+    case object StatusResponse {
+      implicit val statusResponseWrites = Json.writes[StatusResponse]
+    }
+
+    // private messages: internal only
+    private[GestaltMarathonLauncher] case class RetryRequest(state: LauncherState)
+    private[GestaltMarathonLauncher] case object OpenConnectionToMarathonEventBus
+    private[GestaltMarathonLauncher] final case class ErrorEvent(message: String, errorStage: Option[String])
+    private[GestaltMarathonLauncher] final case class SecurityInitializationComplete(key: GestaltAPIKey)
+    private[GestaltMarathonLauncher] case object AdvanceStage
+    private[GestaltMarathonLauncher] final case class UpdateServiceInfo(info: ServiceInfo)
+    private[GestaltMarathonLauncher] final case class UpdateAllServiceInfo(all: Seq[ServiceInfo])
+    private[GestaltMarathonLauncher] final case class ServiceDeployed(service: FrameworkService)
+    private[GestaltMarathonLauncher] final case class ServiceDeleting(service: FrameworkService)
+
+    private[GestaltMarathonLauncher] sealed trait TimeoutEvent
+    private[GestaltMarathonLauncher] case object APIKeyTimeout extends TimeoutEvent
+    private[GestaltMarathonLauncher] case object MetaBootstrapFinished
+    private[GestaltMarathonLauncher] case object MetaBootstrapTimeout extends TimeoutEvent
+    private[GestaltMarathonLauncher] case object MetaSyncFinished
+    private[GestaltMarathonLauncher] case object MetaSyncTimeout extends TimeoutEvent
+    private[GestaltMarathonLauncher] case object MetaProvidersProvisioned
+    private[GestaltMarathonLauncher] case object MetaProviderTimeout extends TimeoutEvent
+    private[GestaltMarathonLauncher] case object MetaLicensingComplete
+    private[GestaltMarathonLauncher] case object MetaLicenseTimeout extends TimeoutEvent
+  }
+
+  sealed trait LauncherState
+
+  sealed trait LaunchingState extends LauncherState {
+    def targetService: FrameworkService
+  }
+
+  object States {
+    // ordered/ordinary states...
+    case object Uninitialized             extends LauncherState
+    case class  LaunchingDB(index: Int)   extends LaunchingState {val targetService = DATA(index)}
+    case object LaunchingRabbit           extends LaunchingState {val targetService = RABBIT}
+    case object LaunchingSecurity         extends LaunchingState {val targetService = SECURITY}
+    case object RetrievingAPIKeys         extends LauncherState
+    case object LaunchingKong             extends LaunchingState {val targetService = KONG}
+    case object LaunchingApiGateway       extends LaunchingState {val targetService = API_GATEWAY}
+    case object LaunchingLaser            extends LaunchingState {val targetService = LASER}
+    case object LaunchingMeta             extends LaunchingState {val targetService = META}
+    case object BootstrappingMeta         extends LauncherState
+    case object SyncingMeta               extends LauncherState
+    case object ProvisioningMetaProviders extends LauncherState
+    case object ProvisioningMetaLicense   extends LauncherState
+    case object LaunchingApiProxy         extends LaunchingState {val targetService = API_PROXY}
+    case object LaunchingUI               extends LaunchingState {val targetService = UI}
+    case object LaunchingPolicy           extends LaunchingState {val targetService = POLICY}
+    case object AllServicesLaunched       extends LauncherState
+    // exceptional states
+    case object ShuttingDown              extends LauncherState
+    case object Error                     extends LauncherState
+  }
+
+  final case class ServiceData( statuses: Map[FrameworkService,ServiceInfo],
+                                adminKey: Option[GestaltAPIKey],
+                                error: Option[String],
+                                errorStage: Option[String],
+                                connected: Boolean ) {
+    def getUrl(service: FrameworkService): Seq[String] = {
+      statuses.get(service)
+        .filter(_.hostname.isDefined)
+        .map({case ServiceInfo(_,_,hostname,ports,_) => ports.map(p => hostname.get + ":" + p.toString)})
+        .getOrElse(Seq.empty)
+    }
+
+    def update(update: ServiceInfo): ServiceData = this.update(Seq(update))
+
+    def update(updates: Seq[ServiceInfo]): ServiceData = {
+      copy(
+        statuses = updates.foldLeft(statuses) {
+          case (c, u) => c + (u.service -> u)
+        }
+      )
+    }
+  }
+  case object ServiceData {
+    def init: ServiceData = ServiceData(Map.empty, None, None, None, false)
+  }
+
+
 }
 
 class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
                                         marClient: MarathonSSEClient,
                                         wsclient: WSClient,
-                                        gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
+                                        gtf: GestaltTaskFactory ) extends LoggingFSM[GestaltMarathonLauncher.LauncherState,GestaltMarathonLauncher.ServiceData] {
 
   import GestaltMarathonLauncher._
+  import GestaltMarathonLauncher.Messages._
+  import GestaltMarathonLauncher.States._
   import LauncherConfig.Services._
   import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
 

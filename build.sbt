@@ -57,6 +57,7 @@ libraryDependencies ++= Seq(
   cache,
   ws,
   specs2 % Test,
+  "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
   "org.webjars" %% "webjars-play" % "2.5.0",
   "org.webjars" % "bootstrap" % "3.1.1-2",
   "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
