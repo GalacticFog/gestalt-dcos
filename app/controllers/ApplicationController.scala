@@ -42,11 +42,11 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     for {
       f <- {
         logger.debug(s"sending StatusRequest to launcher from ${fromAddress}")
-        schedulerFSM ? GestaltMarathonLauncher.StatusRequest
+        schedulerFSM ? GestaltMarathonLauncher.Messages.StatusRequest
       }
       resp = {
         logger.debug(s"received StatusResponse from launcher for ${fromAddress}")
-        f.asInstanceOf[StatusResponse]
+        f.asInstanceOf[GestaltMarathonLauncher.Messages.StatusResponse]
       }
     } yield Ok(Json.toJson(resp))
   }
@@ -54,7 +54,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   def shutdown(shutdownDB: Boolean) = Action.async { implicit request =>
     implicit val timeout: Timeout = 25.seconds
     logger.info(s"received shutdown request: shutdownDB == ${shutdownDB} ${fromAddress}")
-    val response = schedulerFSM ? GestaltMarathonLauncher.ShutdownRequest(shutdownDB = shutdownDB)
+    val response = schedulerFSM ? GestaltMarathonLauncher.Messages.ShutdownRequest(shutdownDB = shutdownDB)
     response map {
       _ => Accepted(Json.obj("message" -> s"Framework shutting down for ${fromAddress}"))
     }
@@ -62,7 +62,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
 
   def restart() = Action { implicit request =>
     logger.info(s"received restart request from ${fromAddress}")
-    schedulerFSM ! GestaltMarathonLauncher.LaunchServicesRequest
+    schedulerFSM ! GestaltMarathonLauncher.Messages.LaunchServicesRequest
     Accepted(Json.obj("message" -> "Starting framework services"))
   }
 
