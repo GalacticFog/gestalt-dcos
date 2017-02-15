@@ -427,8 +427,6 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
 
   def active(si: ServiceInfo) = {si.status == RUNNING || si.status == HEALTHY}
 
-  val a: (ServiceInfo) => Boolean = active(_)
-
   def advanceState(newData: ServiceData): State = {
     stateName match {
       case state: LaunchingState if newData.statuses.get(state.targetService).exists(active) => {
@@ -839,7 +837,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       val s = self
       val deleteApps = config.LAUNCH_ORDER
         .collect({case s: LaunchingState => s.targetService})
-        .filter { svc => (shutdownDB || svc != DATA) }
+        .filter { svc => (shutdownDB || !svc.isInstanceOf[DATA]) }
         .reverse
       deleteApps.foreach {
         service => marClient.killApp(service) onComplete {
