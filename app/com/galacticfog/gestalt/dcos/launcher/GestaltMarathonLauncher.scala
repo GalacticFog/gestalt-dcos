@@ -395,7 +395,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
-  private[this] def provisionMetaProviders(metaUrl: String, kongGatewayUrl: String, apiKey: GestaltAPIKey) = {
+  private[this] def provisionMetaProviders(metaUrl: String, kongGatewayUrl: String, apiKey: GestaltAPIKey): Seq[Future[UUID]] = {
     // TODO: this potentially has the unfortunate effect of creating the providers multiple times; check before adding
     val initUrl = s"http://${metaUrl}/root/providers"
     val marathonProviderJson = Json.parse(
@@ -421,9 +421,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
          |  "name": "base-marathon"
          |}
             """.stripMargin)
-    val kongExternalAccess = TLD.map("https://kong." + _)
-      .orElse(config.marathon.marathonLbUrl.map(_ + ":" + "1234"))
-      .getOrElse(s"http://${kongGatewayUrl}") // assume local
+    // TODO: this needs testing, almost certainly not correct as-is
+    val kongExternalAccess = nextStateData.statuses(KONG).vhosts.headOption.getOrElse(s"http://${kongGatewayUrl}") // assume local
     val kongProviderJson = Json.parse(
       s"""
          |{
@@ -443,34 +442,200 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
          |  "name": "base-kong"
          |}
             """.stripMargin)
-
     log.info(s"provisioning providers in meta at {}",initUrl)
-    val marathonAttempt = ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(marathonProviderJson) flatMap { resp =>
-      log.info("meta.provision(marathonProvider) response: {}",resp.status)
-      log.debug("meta.provision(marathonProvider) response body: {}",resp.body)
-      resp.status match {
-        case 201 =>
-          Future.successful(MetaProvisioned)
-        case not201 =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-          Future.failed(new RuntimeException("Error provisioning marathon provider: " + mesg))
+    Seq(marathonProviderJson, kongProviderJson).map { json =>
+      ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(marathonProviderJson) flatMap { resp =>
+        log.info("meta.provision(provider) response: {}",resp.status)
+        log.debug("meta.provision(provider) response body: {}",resp.body)
+        resp.status match {
+          case 201 =>
+            Future.fromTry(Try{
+              (resp.json \ "id").as[UUID]
+            })
+          case not201 =>
+            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+            Future.failed(new RuntimeException("Error provisioning provider: " + mesg))
+        }
       }
     }
-    val kongAttempt = ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(kongProviderJson) flatMap { resp =>
-      log.info("meta.provision(kongProvider) response: {}",resp.status)
-      log.debug("meta.provision(kongProvider) response body: {}",resp.body)
-      resp.status match {
-        case 201 =>
-          Future.successful(MetaProvisioned)
-        case not201 =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-          Future.failed(new RuntimeException("Error provisioning kong provider: " + mesg))
-      }
-    }
-    Future.sequence(Seq(marathonAttempt,kongAttempt))
   }
 
-  private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey) = {
+  private[this] def provisionMetaDemoWorkspace(metaUrl: String, apiKey: GestaltAPIKey): Future[UUID] = {
+    ws.url(s"http://${metaUrl}/root/workspaces")
+      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
+      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+      .post(Json.obj(
+        "name" -> "demo",
+        "description" -> "Demo workspace"
+      ))
+      .flatMap { resp =>
+        log.info("meta.workspace response: {}",resp.status)
+        log.debug("meta.workspace response body: {}",resp.body)
+        resp.status match {
+          case 201 =>
+            Future.fromTry(Try{
+              (resp.json \ "id").as[UUID]
+            })
+          case not200 =>
+            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+            Future.failed(new RuntimeException(mesg))
+        }
+      }
+  }
+
+  private[this] def provisionMetaDemoEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentWorkspace: UUID): Future[UUID] = {
+    ws.url(s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments")
+      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
+      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+      .post(Json.obj(
+        "name" -> "demo",
+        "description" -> "Demo environment"
+      ))
+      .flatMap { resp =>
+        log.info("meta.environment response: {}",resp.status)
+        log.debug("meta.environment response body: {}",resp.body)
+        resp.status match {
+          case 201 =>
+            Future.fromTry(Try{
+              (resp.json \ "id").as[UUID]
+            })
+          case not200 =>
+            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+            Future.failed(new RuntimeException(mesg))
+        }
+      }
+  }
+
+  private[this] def provisionDemoLambdas(metaUrl: String, metaApiUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, providerId: UUID): Seq[Future[UUID]] = {
+    val url = s"http://${metaUrl}/root/environments/$parentEnv/lambdas"
+    val env = Map(
+      "API_KEY"    -> apiKey.apiKey,
+      "API_SECRET" -> apiKey.apiSecret.getOrElse(""),
+      "META_URL"   -> metaApiUrl
+    )
+    val setupLambda = Json.obj(
+      "name" -> "demo-setup",
+      "description" -> "Lambda to setup demo environment",
+      "properties" -> Json.obj(
+        "runtime" -> "nodejs",
+        "code_type" -> "package",
+        "package_url" -> "https ->//raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-setup.js",
+        "handler" -> "demo-setup.js;run",
+        "synchronous" -> true,
+        "compressed" -> false,
+        "public" -> true,
+        "cpus" -> 0.2,
+        "memory" -> 512,
+        "timeout" -> 120,
+        "env" -> env,
+        "headers" -> Json.obj(),
+        "providers" -> Json.arr(Json.obj(
+          "id" -> providerId,
+          "locations" -> Json.arr(Json.obj(
+            "enabled" -> true,
+            "selected" -> true,
+            "name" -> "dcos"
+          ))
+        ))
+      )
+    )
+    val teardownLambda = Json.obj(
+      "name" -> "demo-teardown",
+      "description" -> "Lambda to tear down demo environment",
+      "properties" -> Json.obj(
+        "runtime" -> "nodejs",
+        "code_type" -> "package",
+        "package_url" -> "https ->//raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-teardown.js",
+        "handler" -> "demo-teardown.js;run",
+        "synchronous" -> true,
+        "compressed" -> false,
+        "public" -> true,
+        "cpus" -> 0.2,
+        "memory" -> 512,
+        "timeout" -> 120,
+        "env" -> env,
+        "headers" -> Json.obj(),
+        "providers" -> Json.arr(Json.obj(
+          "id" -> providerId,
+          "locations" -> Json.arr(Json.obj(
+            "enabled" -> true,
+            "selected" -> true,
+            "name" -> "dcos"
+          ))
+        ))
+      )
+    )
+    Seq(setupLambda,teardownLambda).map(
+      lambda =>
+        ws.url(url)
+          .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
+          .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+          .post(lambda)
+          .flatMap { resp =>
+            log.info("meta.lambda response: {}",resp.status)
+            log.debug("meta.lambda response body: {}",resp.body)
+            resp.status match {
+              case 201 =>
+                Future.fromTry(Try{
+                  (resp.json \ "id").as[UUID]
+                })
+              case not200 =>
+                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+                Future.failed(new RuntimeException(mesg))
+            }
+          }
+    )
+  }
+
+  private[this] def provisionEndpoint(metaUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, name: String, lambdaId: UUID, handler: String): Future[UUID] = {
+    val url = s"http://${metaUrl}/root/environments/$parentEnv/apiendpoints"
+    ws.url(url)
+      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
+      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+      .post(Json.obj(
+          "name" -> name,
+          "properties" -> Json.obj(
+            "auth_type" -> Json.obj(
+              "type" -> "None"
+            ),
+            "http_method" -> "GET",
+            "implementation" -> Json.obj(
+              "function" -> handler,
+              "id" -> lambdaId,
+              "type" -> "Lambda"
+            ),
+            "resource" -> "/run"
+          )
+      ))
+      .flatMap { resp =>
+        log.info("meta.apiendpoint response: {}",resp.status)
+        log.debug("meta.apiendpoint response body: {}",resp.body)
+        resp.status match {
+          case 201 =>
+            Future.fromTry(Try{
+              (resp.json \ "id").as[UUID]
+            })
+          case not200 =>
+            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+            Future.failed(new RuntimeException(mesg))
+        }
+      }
+  }
+
+  private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, kongProvider: UUID): Future[MetaProvisioned.type] = {
+    val metaApiUrl = "http://" + config.vipHostname(META) + ":" + META.port
+    for {
+      wrkId <- provisionMetaDemoWorkspace(metaUrl, apiKey)
+      envId <- provisionMetaDemoEnvironment(metaUrl, apiKey, wrkId)
+      Seq(setupLambdaId,teardownLambaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, kongProvider)
+      _ <- Future.sequence(Seq(
+        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-setup", lid, "demo-setup.js;run")),
+        teardownLambaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-teardown", lid, "demo-teardown.js;run"))
+      ))
+    } yield MetaProvisioned
+  }
+
+  private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
     val licenseBody = Json.obj(
       "name" -> "Default-License-1",
       "description" -> "Default GF license",
@@ -637,30 +802,26 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         }
       }
     case _ -> ProvisioningMeta =>
-//      (nextStateData.getUrl(META), nextStateData.getUrl(KONG), nextStateData.adminKey) match {
-//        case (Seq(metaUrl),Seq(kongGatewayUrl,kongServiceUrl),Some(apiKey)) =>
-//          provisionMetaProviders(metaUrl,kongGatewayUrl,apiKey) onComplete {
-//            case Success(msg) => self ! msg.head // both are MetaProvidersProvisioned
-//            case Failure(ex) =>
-//              log.warning("error provisioning providers in meta service: {}",ex.getMessage)
-//              // keep retrying until our time runs out and we leave this state
-//              sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
-//          }
-//        case (Seq(),_,_)  => self ! ErrorEvent("while provisioning providers, missing meta URL after launching meta", Some(SyncingMeta.toString))
-//        case (_,_,None)   => self ! ErrorEvent("while provisioning providers, missing admin API key after initializing security", Some(SyncingMeta.toString))
-//        case _ => self ! ErrorEvent("while provisioning providers, missing kong URL after launching kong", Some(SyncingMeta.toString))
-//      }
-//      (nextStateData.getUrl(META), nextStateData.adminKey) match {
-//        case (Seq(),_) => self ! ErrorEvent("while provisioning meta license, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
-//        case (_,None) => self ! ErrorEvent("while provisioning meta license, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
-//        case (Seq(metaUrl),Some(apiKey)) => provisionMetaLicense(metaUrl,apiKey) onComplete {
-//          case Success(msg) => self ! msg
-//          case Failure(ex) =>
-//            log.warning("error licensing meta service: {}",ex.getMessage)
-//            // keep retrying until our time runs out and we leave this state
-//            sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
-//        }
-//      }
+      (nextStateData.getUrl(META), nextStateData.getUrl(KONG), nextStateData.adminKey) match {
+        case (Seq(metaUrl),Seq(kongGatewayUrl,kongServiceUrl),Some(apiKey)) =>
+          val provSteps = for {
+            Seq(dcosProviderId, kongProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,kongGatewayUrl,apiKey))
+            stageTwo <- Future.sequence(Seq(
+              provisionDemo(metaUrl,apiKey,kongProviderId),
+              provisionMetaLicense(metaUrl,apiKey)
+            ))
+          } yield stageTwo
+          provSteps onComplete {
+            case Success(msg) => self ! msg.head // all are MetaProvidersProvisioned
+            case Failure(ex) =>
+              log.warning("error provisioning resources in meta service: {}",ex.getMessage)
+              // keep retrying until our time runs out and we leave this state
+              sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
+          }
+        case (Seq(),_,_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (_,_,None)   => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
+        case _ => self ! ErrorEvent("while provisioning resources in meta, missing kong URL after launching kong", Some(SyncingMeta.toString))
+      }
   }
 
   private[this] def standardWhen(state: LaunchingState) = when(state) {
@@ -900,11 +1061,13 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         d.statuses.get(service).filter(_.status != NOT_FOUND).map(_.copy(status = DELETING)).toSeq
       )
 
-    case Event(ErrorEvent(message,errorStage),d) =>
+    case Event(ErrorEvent(message,errorStage),d) => {
+      log.error(message)
       goto(Error) using d.copy(
         error = Some(message),
         errorStage = errorStage
       )
+    }
 
     case Event(LaunchServicesRequest,d) =>
       // we only recognize this request while in Uninitialized or ShuttingDown
