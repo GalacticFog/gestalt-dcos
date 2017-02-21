@@ -190,12 +190,11 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     val metaProvisionDemoEnv = Route({
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWkspId/environments" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
-          case Some("demo") => Created(Json.obj(
-            "id" -> demoEnvId
-          ))
-          case _ => BadRequest("")
-        }
+        if ( (request.body \ "name").asOpt[String].contains("demo") &&
+             (request.body \ "properties" \ "environment_type").asOpt[String].contains("production") )
+          Created(Json.obj("id" -> demoEnvId))
+        else
+          BadRequest("")
       }
     })
 

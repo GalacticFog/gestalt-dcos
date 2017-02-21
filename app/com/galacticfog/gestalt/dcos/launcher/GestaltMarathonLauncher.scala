@@ -489,7 +489,10 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
       .post(Json.obj(
         "name" -> "demo",
-        "description" -> "Demo environment"
+        "description" -> "Demo environment",
+        "properties" -> Json.obj(
+          "environment_type" -> "production"
+        )
       ))
       .flatMap { resp =>
         log.info("meta.environment response: {}",resp.status)
