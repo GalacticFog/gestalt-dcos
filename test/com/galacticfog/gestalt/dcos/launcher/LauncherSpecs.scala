@@ -1,6 +1,7 @@
 package com.galacticfog.gestalt.dcos.launcher
 
 import java.util.UUID
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 
 import akka.actor.ActorSystem
 import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
@@ -26,8 +27,8 @@ import play.api.libs.ws.WSClient
 import play.api.mvc._
 import play.api.mvc.Results._
 import play.api.test._
-import scala.concurrent.duration._
 
+import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.Success
 
@@ -161,15 +162,27 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val demoEnvId  = UUID.randomUUID()
     val kongProvId = UUID.randomUUID()
     val demoLambdaSetupId = UUID.randomUUID()
-    val demoLambdaTeardownId = UUID.randomUUID()
+    val demoLambdaTdownId = UUID.randomUUID()
+
+    val createdBaseDCOS = new AtomicInteger(0)
+    val createdBaseKong = new AtomicInteger(0)
+    val createdSetupLambda = new AtomicInteger(0)
+    val createdTdownLambda = new AtomicInteger(0)
+    val createdSetupLambdaEndpoint = new AtomicInteger(0)
+    val createdTdownLambdaEndpoint = new AtomicInteger(0)
 
     val metaProvisionProviders = Route({
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
-          case Some("base-marathon")  => Created(Json.obj(
-            "id" -> UUID.randomUUID()
-          ))
-          case Some("base-kong")      => Created(Json.obj(
+          case Some("base-marathon")  =>
+            createdBaseDCOS.getAndIncrement()
+            Created(Json.obj(
+              "id" -> UUID.randomUUID()
+            ))
+          case Some("base-kong")      =>
+            createdBaseKong.getAndIncrement()
+            Created(Json.obj(
             "id" -> kongProvId
           ))
           case _ => BadRequest("")
@@ -201,12 +214,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val metaProvisionDemoLambdas = Route({
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
-          case Some("demo-setup")    => Created(Json.obj(
-            "id" -> demoLambdaSetupId
-          ))
-          case Some("demo-teardown") => Created(Json.obj(
-            "id" -> demoLambdaTeardownId
-          ))
+          case Some("demo-setup")    =>
+            createdSetupLambda.getAndIncrement()
+            Created(Json.obj(
+              "id" -> demoLambdaSetupId
+            ))
+          case Some("demo-teardown") =>
+            createdTdownLambda.getAndIncrement()
+            Created(Json.obj(
+              "id" -> demoLambdaTdownId
+            ))
           case _ => BadRequest("")
         }
       }
@@ -215,12 +232,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val metaProvisionDemoEndpoints = Route({
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apiendpoints" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
-          case Some("demo-setup")    => Created(Json.obj(
-            "id" -> UUID.randomUUID()
-          ))
-          case Some("demo-teardown") => Created(Json.obj(
-            "id" -> UUID.randomUUID()
-          ))
+          case Some("demo-setup")    =>
+            createdSetupLambdaEndpoint.getAndIncrement()
+            Created(Json.obj(
+              "id" -> UUID.randomUUID()
+            ))
+          case Some("demo-teardown") =>
+            createdTdownLambdaEndpoint.getAndIncrement()
+            Created(Json.obj(
+              "id" -> UUID.randomUUID()
+            ))
           case _ => BadRequest("")
         }
       }
@@ -275,12 +296,18 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
       expectMsg(Transition(launcher, ProvisioningMeta, launcher.underlyingActor.nextState(ProvisioningMeta)))
 
-      metaProvisionProviders.timeCalled     must_== 2
+      metaProvisionProviders.timeCalled     must_== 4 // two existence checks, two creations
+      createdBaseDCOS.get() must_== 1
+      createdBaseKong.get() must_== 1
       metaProvisionLicense.timeCalled       must_== 1
       metaProvisionDemoWrk.timeCalled       must_== 1
       metaProvisionDemoEnv.timeCalled       must_== 1
       metaProvisionDemoLambdas.timeCalled   must_== 2
+      createdSetupLambda.get() must_== 1
+      createdTdownLambda.get() must_== 1
       metaProvisionDemoEndpoints.timeCalled must_== 2
+      createdSetupLambdaEndpoint.get() must_== 1
+      createdTdownLambdaEndpoint.get() must_== 1
     }
 
   }

@@ -13,7 +13,7 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.libs.json.{JsObject, Json}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
-import play.api.libs.ws.{WSAuthScheme, WSClient}
+import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -356,10 +356,10 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     val initUrl = s"http://${metaUrl}/bootstrap"
     val rootUrl = s"http://${metaUrl}/root"
     for {
-      check <- ws.url(rootUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).get()
+      check <- genRequest(rootUrl, apiKey).get()
       done <- if (check.status == 500) {
         log.info("attempting to bootstrap meta")
-        ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey, apiKey.apiSecret.get, WSAuthScheme.BASIC).post("") flatMap { resp =>
+        genRequest(initUrl, apiKey).post("") flatMap { resp =>
           log.info("meta.bootstrap response: {}",resp.status)
           log.debug("meta.bootstrap response body: {}",resp.body)
           resp.status match {
@@ -382,7 +382,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   private[this] def syncMeta(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaSyncFinished.type] = {
     val initUrl = s"http://${metaUrl}/sync"
     log.info(s"syncing meta at {}",initUrl)
-    ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post("") flatMap { resp =>
+    genRequest(initUrl, apiKey).post("") flatMap { resp =>
       log.info("meta.sync response: {}",resp.status)
       log.debug("meta.sync response body: {}",resp.body)
       resp.status match {
@@ -395,9 +395,29 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
+  private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, p: (JsValue) => Boolean): Future[Option[JsValue]] = {
+    genRequest(url, apiKey).get() map { resp =>
+      log.info(s"meta.get($url) response: {}",resp.status)
+      log.debug(s"meta.get($url) response body: {}",resp.body)
+      resp.status match {
+        case 200 => resp.json match {
+          case arr: JsArray => arr.as[Seq[JsValue]].find(p)
+          case v: JsValue => if (p(v)) Some(v) else None
+        }
+        case not200 =>
+          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          log.debug(mesg)
+          None
+      }
+    }
+  }
+
+  private[this] def genRequest(url: String, apiKey: GestaltAPIKey): WSRequest = {
+    ws.url(url).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+  }
+
   private[this] def provisionMetaProviders(metaUrl: String, kongGatewayUrl: String, apiKey: GestaltAPIKey): Seq[Future[UUID]] = {
-    // TODO: this potentially has the unfortunate effect of creating the providers multiple times; check before adding
-    val initUrl = s"http://${metaUrl}/root/providers"
+    val providerUrl = s"http://${metaUrl}/root/providers"
     val marathonProviderJson = Json.parse(
       s"""
          |{
@@ -442,35 +462,40 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
          |  "name": "base-kong"
          |}
             """.stripMargin)
-    log.info(s"provisioning providers in meta at {}",initUrl)
-    Seq(marathonProviderJson, kongProviderJson).map { json =>
-      ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(marathonProviderJson) flatMap { resp =>
-        log.info("meta.provision(provider) response: {}",resp.status)
-        log.debug("meta.provision(provider) response body: {}",resp.body)
-        resp.status match {
-          case 201 =>
-            Future.fromTry(Try{
-              (resp.json \ "id").as[UUID]
-            })
-          case not201 =>
-            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-            Future.failed(new RuntimeException("Error provisioning provider: " + mesg))
+    log.info(s"provisioning providers in meta at {}",providerUrl)
+    Seq(marathonProviderJson, kongProviderJson).map { providerJson =>
+      val name = (providerJson \ "name").as[String]
+      val existenceCheck = resourceExistsInList(providerUrl, apiKey,
+        (js: JsValue) => (js \ "name").asOpt[String].contains(name)
+      )
+      existenceCheck flatMap {
+        case Some(js) => Future.fromTry(Try{(js \ "id").as[UUID]})
+        case None =>  genRequest(providerUrl, apiKey).post(providerJson) flatMap { resp =>
+          log.info(s"meta.provision(provider $name) response: {}",resp.status)
+          log.debug(s"meta.provision(provider $name) response body: {}",resp.body)
+          resp.status match {
+            case 201 =>
+              Future.fromTry(Try{
+                (resp.json \ "id").as[UUID]
+              })
+            case not201 =>
+              val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+              Future.failed(new RuntimeException("Error provisioning provider: " + mesg))
+          }
         }
       }
     }
   }
 
   private[this] def provisionMetaDemoWorkspace(metaUrl: String, apiKey: GestaltAPIKey): Future[UUID] = {
-    ws.url(s"http://${metaUrl}/root/workspaces")
-      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
-      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+    genRequest(s"http://${metaUrl}/root/workspaces", apiKey)
       .post(Json.obj(
         "name" -> "demo",
         "description" -> "Demo workspace"
       ))
       .flatMap { resp =>
-        log.info("meta.workspace response: {}",resp.status)
-        log.debug("meta.workspace response body: {}",resp.body)
+        log.info("meta.provision(workspace demo) response: {}",resp.status)
+        log.debug("meta.provision(workspace demo) response body: {}",resp.body)
         resp.status match {
           case 201 =>
             Future.fromTry(Try{
@@ -484,9 +509,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   }
 
   private[this] def provisionMetaDemoEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentWorkspace: UUID): Future[UUID] = {
-    ws.url(s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments")
-      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
-      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+    genRequest(s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments", apiKey)
       .post(Json.obj(
         "name" -> "demo",
         "description" -> "Demo environment",
@@ -495,8 +518,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         )
       ))
       .flatMap { resp =>
-        log.info("meta.environment response: {}",resp.status)
-        log.debug("meta.environment response body: {}",resp.body)
+        log.info("meta.provision(environment demo) response: {}",resp.status)
+        log.debug("meta.provision(environment demo) response body: {}",resp.body)
         resp.status match {
           case 201 =>
             Future.fromTry(Try{
@@ -568,15 +591,13 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         ))
       )
     )
-    Seq(setupLambda,teardownLambda).map(
-      lambda =>
-        ws.url(url)
-          .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
-          .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
-          .post(lambda)
+    Seq(setupLambda,teardownLambda).map{ lambdaJson =>
+        val name = (lambdaJson \ "name").as[String]
+        genRequest(url, apiKey)
+          .post(lambdaJson)
           .flatMap { resp =>
-            log.info("meta.lambda response: {}",resp.status)
-            log.debug("meta.lambda response body: {}",resp.body)
+            log.info(s"meta.provision(lambda $name) response: {}",resp.status)
+            log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
             resp.status match {
               case 201 =>
                 Future.fromTry(Try{
@@ -587,14 +608,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
                 Future.failed(new RuntimeException(mesg))
             }
           }
-    )
+    }
   }
 
   private[this] def provisionEndpoint(metaUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, name: String, lambdaId: UUID, handler: String): Future[UUID] = {
     val url = s"http://${metaUrl}/root/environments/$parentEnv/apiendpoints"
-    ws.url(url)
-      .withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT)
-      .withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+    genRequest(url, apiKey)
       .post(Json.obj(
           "name" -> name,
           "properties" -> Json.obj(
@@ -611,8 +630,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           )
       ))
       .flatMap { resp =>
-        log.info("meta.apiendpoint response: {}",resp.status)
-        log.debug("meta.apiendpoint response body: {}",resp.body)
+        log.info(s"meta.provision(apiendpoint $name) response: {}",resp.status)
+        log.debug(s"meta.provision(apiendpoint $name) response body: {}",resp.body)
         resp.status match {
           case 201 =>
             Future.fromTry(Try{
@@ -647,7 +666,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
-    ws.url(licenseUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC).post(licenseBody) flatMap { resp =>
+    genRequest(licenseUrl, apiKey).post(licenseBody) flatMap { resp =>
       log.info("meta.license response: {}",resp.status)
       log.debug("meta.license response body: {}",resp.body)
       resp.status match {
@@ -686,11 +705,11 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     stay
   }
 
-  def active(si: ServiceInfo) = {si.status == RUNNING || si.status == HEALTHY}
+  def isServiceActive(si: ServiceInfo) = {si.status == RUNNING || si.status == HEALTHY}
 
   def advanceState(newData: ServiceData): State = {
     stateName match {
-      case state: LaunchingState if newData.statuses.get(state.targetService).exists(active) => {
+      case state: LaunchingState if newData.statuses.get(state.targetService).exists(isServiceActive) => {
         goto(nextState(state)) using newData
       }
       case _ =>
@@ -753,7 +772,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     case (_, stage: LaunchingState) =>
       log.info(s"transitioning to ${stage}")
       log.info(s"current service status is ${nextStateData.statuses.get(stage.targetService)}")
-      if (nextStateData.statuses.get(stage.targetService).exists(active)) {
+      if (nextStateData.statuses.get(stage.targetService).exists(isServiceActive)) {
         log.info(s"${stage.targetService} is already active, will not relaunch and will attempt to advance stage")
         self ! AdvanceStage
       } else {
