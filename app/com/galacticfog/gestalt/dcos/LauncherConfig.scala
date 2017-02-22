@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon._
+import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher
 import javax.inject.{Inject, Singleton}
 
 import play.api.Configuration
@@ -69,7 +69,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     LaunchingSecurity, RetrievingAPIKeys,
     LaunchingKong, LaunchingApiGateway,
     LaunchingLaser,
-    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMetaProviders, ProvisioningMetaLicense,
+    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
     LaunchingPolicy,
     LaunchingApiProxy, LaunchingUI,
     AllServicesLaunched
