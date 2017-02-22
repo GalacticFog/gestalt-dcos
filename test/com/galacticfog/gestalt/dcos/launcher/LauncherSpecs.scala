@@ -234,14 +234,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         (request.body \ "name").asOpt[String] match {
           case Some("demo-setup")    =>
             createdSetupLambdaEndpoint.getAndIncrement()
-            Created(Json.obj(
+            Created(Json.arr(Json.obj(
               "id" -> UUID.randomUUID()
-            ))
+            )))
           case Some("demo-teardown") =>
             createdTdownLambdaEndpoint.getAndIncrement()
-            Created(Json.obj(
+            Created(Json.arr(Json.obj(
               "id" -> UUID.randomUUID()
-            ))
+            )))
           case _ => BadRequest("")
         }
       }
