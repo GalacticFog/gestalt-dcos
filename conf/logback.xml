@@ -42,7 +42,7 @@
 
   <logger name="akka.actor.LoggingFSM" level="INFO" />
 
-  <logger name="com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher" level="INFO" />
+  <logger name="com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher" level="INFO" />
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient" level="INFO" />
 
