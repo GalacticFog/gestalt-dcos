@@ -13,7 +13,7 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.libs.json.{JsObject, Json}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
-import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest}
+import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest, WSResponse}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -395,7 +395,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
-  private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, p: (JsValue) => Boolean): Future[Option[JsValue]] = {
+  private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, name: String): Future[Option[JsValue]] = {
+    val p = (js: JsValue) => (js \ "name").asOpt[String].contains(name)
     genRequest(url, apiKey).get() map { resp =>
       log.info(s"meta.get($url) response: {}",resp.status)
       log.debug(s"meta.get($url) response body: {}",resp.body)
@@ -465,19 +466,14 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     log.info(s"provisioning providers in meta at {}",providerUrl)
     Seq(marathonProviderJson, kongProviderJson).map { providerJson =>
       val name = (providerJson \ "name").as[String]
-      val existenceCheck = resourceExistsInList(providerUrl, apiKey,
-        (js: JsValue) => (js \ "name").asOpt[String].contains(name)
-      )
-      existenceCheck flatMap {
-        case Some(js) => Future.fromTry(Try{(js \ "id").as[UUID]})
+      resourceExistsInList(providerUrl, apiKey, name) flatMap {
+        case Some(js) => Future.fromTry(getId(js))
         case None =>  genRequest(providerUrl, apiKey).post(providerJson) flatMap { resp =>
           log.info(s"meta.provision(provider $name) response: {}",resp.status)
           log.debug(s"meta.provision(provider $name) response body: {}",resp.body)
           resp.status match {
             case 201 =>
-              Future.fromTry(Try{
-                (resp.json \ "id").as[UUID]
-              })
+              Future.fromTry(getId(resp.json))
             case not201 =>
               val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
               Future.failed(new RuntimeException("Error provisioning provider: " + mesg))
@@ -487,49 +483,59 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
+  private[this] def getId(js: JsValue): Try[UUID] = Try{ (js \ "id").as[UUID] }
+
   private[this] def provisionMetaDemoWorkspace(metaUrl: String, apiKey: GestaltAPIKey): Future[UUID] = {
-    genRequest(s"http://${metaUrl}/root/workspaces", apiKey)
-      .post(Json.obj(
-        "name" -> "demo",
-        "description" -> "Demo workspace"
-      ))
-      .flatMap { resp =>
-        log.info("meta.provision(workspace demo) response: {}",resp.status)
-        log.debug("meta.provision(workspace demo) response body: {}",resp.body)
-        resp.status match {
-          case 201 =>
-            Future.fromTry(Try{
-              (resp.json \ "id").as[UUID]
-            })
-          case not200 =>
-            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-            Future.failed(new RuntimeException(mesg))
-        }
-      }
+    val wrkUrl = s"http://${metaUrl}/root/workspaces"
+    resourceExistsInList(wrkUrl, apiKey, "demo") flatMap {
+      case Some(js) =>
+        Future.fromTry(getId(js))
+      case None =>
+        genRequest(wrkUrl, apiKey)
+          .post(Json.obj(
+            "name" -> "demo",
+            "description" -> "Demo workspace"
+          ))
+          .flatMap { resp =>
+            log.info("meta.provision(workspace demo) response: {}",resp.status)
+            log.debug("meta.provision(workspace demo) response body: {}",resp.body)
+            resp.status match {
+              case 201 =>
+                Future.fromTry(getId(resp.json))
+              case not200 =>
+                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+                Future.failed(new RuntimeException(mesg))
+            }
+          }
+    }
   }
 
   private[this] def provisionMetaDemoEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentWorkspace: UUID): Future[UUID] = {
-    genRequest(s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments", apiKey)
-      .post(Json.obj(
-        "name" -> "demo",
-        "description" -> "Demo environment",
-        "properties" -> Json.obj(
-          "environment_type" -> "production"
-        )
-      ))
-      .flatMap { resp =>
-        log.info("meta.provision(environment demo) response: {}",resp.status)
-        log.debug("meta.provision(environment demo) response body: {}",resp.body)
-        resp.status match {
-          case 201 =>
-            Future.fromTry(Try{
-              (resp.json \ "id").as[UUID]
-            })
-          case not200 =>
-            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-            Future.failed(new RuntimeException(mesg))
-        }
-      }
+    val envUrl = s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments"
+    resourceExistsInList(envUrl, apiKey, "demo") flatMap {
+      case Some(js) =>
+        Future.fromTry(getId(js))
+      case None =>
+        genRequest(envUrl, apiKey)
+          .post(Json.obj(
+            "name" -> "demo",
+            "description" -> "Demo environment",
+            "properties" -> Json.obj(
+              "environment_type" -> "production"
+            )
+          ))
+          .flatMap { resp =>
+            log.info("meta.provision(environment demo) response: {}",resp.status)
+            log.debug("meta.provision(environment demo) response body: {}",resp.body)
+            resp.status match {
+              case 201 =>
+                Future.fromTry(getId(resp.json))
+              case not200 =>
+                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+                Future.failed(new RuntimeException(mesg))
+            }
+          }
+    }
   }
 
   private[this] def provisionDemoLambdas(metaUrl: String, metaApiUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, providerId: UUID): Seq[Future[UUID]] = {
@@ -593,55 +599,61 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     )
     Seq(setupLambda,teardownLambda).map{ lambdaJson =>
         val name = (lambdaJson \ "name").as[String]
-        genRequest(url, apiKey)
-          .post(lambdaJson)
-          .flatMap { resp =>
-            log.info(s"meta.provision(lambda $name) response: {}",resp.status)
-            log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
-            resp.status match {
-              case 201 =>
-                Future.fromTry(Try{
-                  (resp.json \ "id").as[UUID]
-                })
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
-            }
-          }
+        resourceExistsInList(url, apiKey, name) flatMap {
+          case Some(js) => Future.fromTry(getId(js))
+          case None =>
+            genRequest(url, apiKey)
+              .post(lambdaJson)
+              .flatMap { resp =>
+                log.info(s"meta.provision(lambda $name) response: {}",resp.status)
+                log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
+                resp.status match {
+                  case 201 =>
+                    Future.fromTry(getId(resp.json))
+                  case not200 =>
+                    val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+                    Future.failed(new RuntimeException(mesg))
+                }
+              }
+        }
     }
   }
 
   private[this] def provisionEndpoint(metaUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, name: String, lambdaId: UUID, handler: String): Future[UUID] = {
     val url = s"http://${metaUrl}/root/environments/$parentEnv/apiendpoints"
-    genRequest(url, apiKey)
-      .post(Json.obj(
-          "name" -> name,
-          "properties" -> Json.obj(
-            "auth_type" -> Json.obj(
-              "type" -> "None"
-            ),
-            "http_method" -> "GET",
-            "implementation" -> Json.obj(
-              "function" -> handler,
-              "id" -> lambdaId,
-              "type" -> "Lambda"
-            ),
-            "resource" -> "/run"
-          )
-      ))
-      .flatMap { resp =>
-        log.info(s"meta.provision(apiendpoint $name) response: {}",resp.status)
-        log.debug(s"meta.provision(apiendpoint $name) response body: {}",resp.body)
-        resp.status match {
-          case 201 =>
-            Future.fromTry(Try{
-              (resp.json \ "id").as[UUID]
-            })
-          case not200 =>
-            val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-            Future.failed(new RuntimeException(mesg))
-        }
-      }
+    resourceExistsInList(url, apiKey, name) flatMap {
+      case Some(js) => Future.fromTry(getId(js))
+      case None =>
+        genRequest(url, apiKey)
+          .post(Json.obj(
+            "name" -> name,
+            "properties" -> Json.obj(
+              "auth_type" -> Json.obj(
+                "type" -> "None"
+              ),
+              "http_method" -> "GET",
+              "implementation" -> Json.obj(
+                "function" -> handler,
+                "id" -> lambdaId,
+                "type" -> "Lambda"
+              ),
+              "resource" -> "/run"
+            )
+          ))
+          .flatMap { resp =>
+            log.info(s"meta.provision(apiendpoint $name) response: {}", resp.status)
+            log.debug(s"meta.provision(apiendpoint $name) response body: {}", resp.body)
+            resp.status match {
+              case 201 =>
+                Future.fromTry(getId(resp.json))
+              case not200 =>
+                val mesg = Try {
+                  (resp.json \ "message").as[String]
+                }.getOrElse(resp.body)
+                Future.failed(new RuntimeException(mesg))
+            }
+          }
+    }
   }
 
   private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, kongProvider: UUID): Future[MetaProvisioned.type] = {
