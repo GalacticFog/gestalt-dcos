@@ -325,6 +325,17 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
     }
 
+    "not expose kong service endpoint via marathon-lb" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(KONG, testGlobalVars)
+      laserPayload.labels must havePair(
+        "HAPROXY_1_ENABLED" -> "false"
+      )
+    }
+
     "set database container residency and grace period along with persistent storage" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

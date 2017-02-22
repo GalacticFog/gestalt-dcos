@@ -235,7 +235,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       healthChecks = Seq(HealthCheck(portIndex = 1, protocol = "HTTP", path = "/cluster")),
       readinessCheck = None,
       labels = getVhostLabels(KONG) ++ Map(
-        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n"
+        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n",
+        "HAPROXY_1_ENABLED" -> "false"
       )
     )
   }
