@@ -645,7 +645,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
             log.debug(s"meta.provision(apiendpoint $name) response body: {}", resp.body)
             resp.status match {
               case 201 =>
-                Future.fromTry(getId(resp.json))
+                Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
               case not200 =>
                 val mesg = Try {
                   (resp.json \ "message").as[String]
