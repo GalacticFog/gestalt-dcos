@@ -551,7 +551,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       "properties" -> Json.obj(
         "runtime" -> "nodejs",
         "code_type" -> "package",
-        "package_url" -> "https ->//raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-setup.js",
+        "package_url" -> "https://raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-setup.js",
         "handler" -> "demo-setup.js;run",
         "synchronous" -> true,
         "compressed" -> false,
@@ -577,7 +577,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       "properties" -> Json.obj(
         "runtime" -> "nodejs",
         "code_type" -> "package",
-        "package_url" -> "https ->//raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-teardown.js",
+        "package_url" -> "https://raw.githubusercontent.com/GalacticFog/lambda-examples/master/js_lambda/demo-teardown.js",
         "handler" -> "demo-teardown.js;run",
         "synchronous" -> true,
         "compressed" -> false,
@@ -661,10 +661,10 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     for {
       wrkId <- provisionMetaDemoWorkspace(metaUrl, apiKey)
       envId <- provisionMetaDemoEnvironment(metaUrl, apiKey, wrkId)
-      Seq(setupLambdaId,teardownLambaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, kongProvider)
+      Seq(setupLambdaId,tdownLambdaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, kongProvider)
       _ <- Future.sequence(Seq(
-        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-setup", lid, "demo-setup.js;run")),
-        teardownLambaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-teardown", lid, "demo-teardown.js;run"))
+        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-setup",    lid, "demo-setup.js;run")),
+        tdownLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-teardown", lid, "demo-teardown.js;run"))
       ))
     } yield MetaProvisioned
   }
