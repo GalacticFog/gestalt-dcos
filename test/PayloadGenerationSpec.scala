@@ -314,6 +314,17 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
     }
 
+    "support marathon-lb long-lived sockets for kong" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getMarathonPayload(KONG, testGlobalVars)
+      laserPayload.labels must havePair(
+        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n"
+      )
+    }
+
     "set database container residency and grace period along with persistent storage" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
