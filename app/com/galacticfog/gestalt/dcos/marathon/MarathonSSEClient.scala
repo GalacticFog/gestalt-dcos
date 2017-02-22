@@ -32,7 +32,6 @@ object BiggerUnmarshalling extends EventStreamUnmarshalling {
 
 @Singleton
 class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
-                                   @Named("scheduler-actor") schedulerActor: ActorRef,
                                    ws: WSClient )
                                   ( implicit system: ActorSystem ) {
 
@@ -117,7 +116,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
       }
   }
 
-  private def toServiceInfo(service: FrameworkService, app: MarathonAppPayload): ServiceInfo = {
+  private[marathon] def toServiceInfo(service: FrameworkService, app: MarathonAppPayload): ServiceInfo = {
     val staged  = app.tasksStaged.get
     val running = app.tasksRunning.get
     val healthy = app.tasksHealthy.get
@@ -133,17 +132,21 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
     val lbExposed = app.labels.filterKeys(_.matches("HAPROXY_GROUP")).nonEmpty
 
+    val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
+    val lbDisabledPortIndices = app.labels.collect({
+      case (HAPROXY_N_ENABLED(portNumber),v) if v == "false" => portNumber.toInt
+    }).toSet
+
     val serviceEndpoints = launcherConfig.marathon.marathonLbUrl match {
       case Some(lbUrl) if lbExposed =>
-        val servicePorts = if (app.container.docker.exists(_.network == "BRIDGE")) {
-          for {
-            d <- app.container.docker
-            pms <- d.portMappings
-          } yield pms.flatMap(_.servicePort)
-        } else {
-          app.portDefinitions.map(_.map(_.port))
-        }
-        servicePorts.toSeq.flatten.map(lbUrl + ":" + _)
+        app.portDefinitions
+          .getOrElse(Seq.empty)
+          .map(_.port)
+          .zipWithIndex
+          .collect({
+            case (portNumber, index) if !lbDisabledPortIndices.contains(index) => portNumber
+          })
+          .map(lbUrl + ":" + _)
       case _ => Seq.empty
     }
 
@@ -196,7 +199,15 @@ object MarathonSSEClient {
 
   case object Connected
 
-  def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq.map("https://" + _)
+  def getVHosts(app: MarathonAppPayload): Seq[String] = {
+    lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
+    if ( app.labels.get("HAPROXY_GROUP").contains("external") ) {
+      app.labels.collect({
+        case (HAPROXY_N_VHOST(_), vhost) => vhost
+      }).map("https://" + _).toSeq
+    }
+    else Seq.empty
+  }
 
   val logger: Logger = Logger(this.getClass())
 
