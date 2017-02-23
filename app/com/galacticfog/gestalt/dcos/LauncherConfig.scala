@@ -50,6 +50,10 @@ class LauncherConfig @Inject()(config: Configuration) {
     maxPortRange     = getInt("laser.max-port-range", LaserConfig.DEFAULT_MAX_PORT_RANGE)
   )
 
+  val meta = MetaConfig(
+    companyName = getString("meta.company-name", MetaConfig.DEFAULT_COMPANY_NAME)
+  )
+
   val security = SecurityConfig(
     username = getString("security.username", "gestalt-admin"),
     password = config.getString("security.password"),
@@ -75,7 +79,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     AllServicesLaunched
   )
 
-  val provisionedServices = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
+  val provisionedServices: Seq[FrameworkService] = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
 
   protected[this] def vipBase(service: ServiceEndpoint): String = service match {
     case DATA(0) =>
@@ -96,7 +100,7 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipHostname(service: ServiceEndpoint): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
 
-  def dockerImage(service: Dockerable) = {
+  def dockerImage(service: Dockerable): String = {
     val name = service match {
       case DATA(_) => "data"
       case _ => service.name
@@ -122,11 +126,11 @@ object LauncherConfig {
 
   val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
 
-  val MARATHON_RECONNECT_DELAY = 10 seconds
+  val MARATHON_RECONNECT_DELAY: FiniteDuration = 10 seconds
 
-  val EXTERNAL_API_CALL_TIMEOUT = 30 seconds
+  val EXTERNAL_API_CALL_TIMEOUT: FiniteDuration = 30 seconds
 
-  val EXTERNAL_API_RETRY_INTERVAL = 5 seconds
+  val EXTERNAL_API_RETRY_INTERVAL: FiniteDuration = 5 seconds
 
   sealed trait Dockerable {
     def name: String
@@ -163,10 +167,10 @@ object LauncherConfig {
       }
     }
 
-    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 5672}
-    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name = RABBIT.name;                                   val port = 15672}
-    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8000}
-    case object KONG_SERVICE     extends ServiceEndpoint                        {val name = KONG.name;                                     val port = 8001}
+    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
+    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
+    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
+    case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
 
     val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, API_PROXY, UI )
 
@@ -182,7 +186,7 @@ object LauncherConfig {
     case object EXECUTOR_RUBY   extends Dockerable {val name = "laser-executor-ruby"}
   }
 
-  def defaultDockerImages(service: Dockerable) = service match {
+  def defaultDockerImages(service: Dockerable): String = service match {
     case Services.DATA(_)             => s"galacticfog/postgres_repl:dcos-${BuildInfo.version}"
     case Services.RABBIT              => s"galacticfog/rabbit:dcos-${BuildInfo.version}"
     case Services.KONG                => s"galacticfog/kong:dcos-${BuildInfo.version}"
@@ -241,6 +245,12 @@ object LauncherConfig {
     val DEFAULT_MAX_PORT_RANGE = 60500
     val DEFAULT_MIN_COOL_EXECS = 1
     val DEFAULT_SCALE_DOWN_TIMEOUT = 15
+  }
+
+  case class MetaConfig( companyName: String )
+
+  object MetaConfig {
+    val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
   }
 
 }

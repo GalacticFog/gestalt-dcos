@@ -15,6 +15,7 @@ import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.States._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppPayload, MarathonSSEClient}
+import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.google.inject.AbstractModule
 import mockws.{MockWS, Route}
@@ -160,6 +161,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val metaPort = "14374"
     val demoWkspId = UUID.randomUUID()
     val demoEnvId  = UUID.randomUUID()
+    val dcosProvId = UUID.randomUUID()
     val kongProvId = UUID.randomUUID()
     val demoLambdaSetupId = UUID.randomUUID()
     val demoLambdaTdownId = UUID.randomUUID()
@@ -170,6 +172,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val createdTdownLambda = new AtomicInteger(0)
     val createdSetupLambdaEndpoint = new AtomicInteger(0)
     val createdTdownLambdaEndpoint = new AtomicInteger(0)
+    val renamedRootOrg = new AtomicInteger(0)
+
+    val newCompanyDescription = "MyCompany.com!"
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
@@ -185,6 +190,17 @@ class LauncherSpecs extends PlaySpecification with Mockito {
             Created(Json.obj(
             "id" -> kongProvId
           ))
+          case _ => BadRequest("")
+        }
+      }
+    })
+
+    val metaRenameRoot = Route({
+      case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action(BodyParsers.parse.json) { request =>
+        (request.body).asOpt[Seq[PatchOp]] match {
+          case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(newCompanyDescription)))) =>
+            renamedRootOrg.getAndIncrement()
+            Ok(Json.obj())
           case _ => BadRequest("")
         }
       }
@@ -260,13 +276,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       case (_,_) => Action(NotFound(""))
     })
 
-    "provision meta with all expected components" in new WithRoutesAndConfig(
+    "provision meta with all expected components and configured company name" in new WithRoutesAndConfig(
       metaProvisionProviders orElse metaProvisionLicense
         orElse metaProvisionDemoWrk orElse metaProvisionDemoEnv
         orElse metaProvisionDemoLambdas orElse metaProvisionDemoEndpoints
-        orElse notFoundRoute
+        orElse metaRenameRoot
+        orElse notFoundRoute,
+      "meta.company-name" -> newCompanyDescription
     ) {
-
       mockSSEClient.launchApp(any[MarathonAppPayload]) returns Future.failed(new RuntimeException("i don't care whether i can launch apps"))
 
       val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
@@ -308,6 +325,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       metaProvisionDemoEndpoints.timeCalled must_== 2
       createdSetupLambdaEndpoint.get() must_== 1
       createdTdownLambdaEndpoint.get() must_== 1
+      metaRenameRoot.timeCalled must_== 1
+      renamedRootOrg.get()      must_== 1
     }
 
   }
