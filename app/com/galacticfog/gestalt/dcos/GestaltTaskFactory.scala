@@ -54,11 +54,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   val RABBIT_EXCHANGE = "policy-exchange"
 
-  val TLD = launcherConfig.marathon.tld
+  val TLD: Option[String] = launcherConfig.marathon.tld
 
-  val appGroup = launcherConfig.marathon.appGroup
+  val appGroup: String = launcherConfig.marathon.appGroup
 
-  val gestaltFrameworkEnsembleVersion = launcherConfig.gestaltFrameworkVersion
+  val gestaltFrameworkEnsembleVersion: Option[String] = launcherConfig.gestaltFrameworkVersion
 
   Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
 
@@ -87,13 +87,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     }
   }
 
-  def serviceHostname = launcherConfig.vipHostname(_)
+  def serviceHostname: (ServiceEndpoint) => String = launcherConfig.vipHostname(_)
 
   def vipDestination(service: ServiceEndpoint) = s"${serviceHostname(service)}:${service.port}"
 
-  def vipLabel = launcherConfig.vipLabel(_)
+  def vipLabel: (ServiceEndpoint) => String = launcherConfig.vipLabel(_)
 
-  def vipPort(service: ServiceEndpoint) = service.port.toString
+  def vipPort(service: ServiceEndpoint): String = service.port.toString
 
   def getAppSpec(service: FrameworkService, globals: JsValue): AppSpec = {
     service match {

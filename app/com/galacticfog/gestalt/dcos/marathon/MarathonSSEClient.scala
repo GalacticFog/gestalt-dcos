@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import javax.inject.{Inject, Named, Singleton}
+import javax.inject.{Inject, Singleton}
 
 import scala.language.postfixOps
 import akka.NotUsed
@@ -48,7 +48,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
-  def connectToBus(actorRef: ActorRef) = {
+  def connectToBus(actorRef: ActorRef): Unit = {
     implicit val mat = ActorMaterializer()
     val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
     Http(system)
@@ -169,8 +169,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
             } map { case (service,app) => toServiceInfo(service,app) }
           })
         case 404 => Future.successful(Seq.empty)
-        case not200 =>
-          Future.failed(new RuntimeException(response.statusText))
+        case _ => Future.failed(new RuntimeException(response.statusText))
       }
     }
   }
@@ -189,7 +188,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
+      case _ => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
     }
   }
 
@@ -230,7 +229,7 @@ object MarathonSSEClient {
     }
   }
 
-  implicit val formatSSE = Json.format[ServerSentEvent]
+  implicit val formatSSE: OFormat[ServerSentEvent] = Json.format[ServerSentEvent]
 
 }
 

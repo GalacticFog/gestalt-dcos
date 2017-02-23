@@ -24,6 +24,7 @@ import play.api.libs.json.Reads._
 import LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
+import com.galacticfog.gestalt.patch.PatchOp
 
 object GestaltMarathonLauncher {
 
@@ -41,7 +42,7 @@ object GestaltMarathonLauncher {
     final case class StatusResponse(launcherStage: String, error: Option[String], services: Seq[ServiceInfo], isConnectedToMarathon: Boolean)
 
     case object StatusResponse {
-      implicit val statusResponseWrites = Json.writes[StatusResponse]
+      implicit val statusResponseWrites: OWrites[StatusResponse] = Json.writes[StatusResponse]
     }
 
     // private messages: internal only
@@ -228,14 +229,14 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     this.context.system.scheduler.scheduleOnce(delay, self, message)
   }
 
-  implicit val apiKeyReads = Json.format[GestaltAPIKey]
+  implicit val apiKeyReads: OFormat[GestaltAPIKey] = Json.format[GestaltAPIKey]
 
-  val marathonBaseUrl = config.marathon.baseUrl
+  val marathonBaseUrl: String = config.marathon.baseUrl
 
-  val TLD    = config.marathon.tld
-  val tldObj = TLD.map(tld => Json.obj("tld" -> tld))
+  val TLD: Option[String] = config.marathon.tld
+  val tldObj: Option[JsObject] = TLD.map(tld => Json.obj("tld" -> tld))
 
-  val marathonConfig = Json.obj(
+  val marathonConfig: JsObject = Json.obj(
     "marathon" -> tldObj.foldLeft(Json.obj(
     ))( _ ++ _ )
   )
@@ -273,20 +274,20 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     "prefix" -> config.database.prefix
   )
 
-  val databaseConfig = if (config.database.provision) Json.obj(
+  val databaseConfig: JsObject = if (config.database.provision) Json.obj(
     "database" -> provisionedDB
   ) else Json.obj(
     "database" -> configuredDB
   )
 
-  val globals = marathonConfig ++ databaseConfig
+  val globals: JsObject = marathonConfig ++ databaseConfig
 
   val securityInitCredentials = JsObject(
     Seq("username" -> JsString(config.security.username)) ++
       config.security.password.map("password" -> JsString(_))
   )
 
-  val securityProvidedApiKey = for {
+  val securityProvidedApiKey: Option[GestaltAPIKey] = for {
     key <- config.security.key
     secret <- config.security.secret
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
@@ -318,7 +319,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   private[this] def initSecurity(secUrl: String): Future[SecurityInitializationComplete] = {
     val initUrl = s"http://${secUrl}/init"
     log.info(s"initializing security at {}",initUrl)
-    ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).post(securityInitCredentials) flatMap { resp =>
+    ws.url(initUrl).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).post(securityInitCredentials) flatMap { implicit resp =>
       log.info("security.init response: {}",resp.status)
       log.debug("security.init response body: {}",resp.body)
       resp.status match {
@@ -326,7 +327,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           Try{resp.json.as[Seq[GestaltAPIKey]].head} match {
             case Success(key) =>
               Future.successful(SecurityInitializationComplete(key))
-            case Failure(e) =>
+            case Failure(_) =>
               Future.failed(new RuntimeException("while initializing security, error extracting API key form security initialization response"))
           }
         case 400 =>
@@ -334,7 +335,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           securityProvidedApiKey match {
             case Some(key) =>
               log.info("continuing with API keys from configuration")
-              Future.successful(SecurityInitializationComplete(securityProvidedApiKey.get))
+              Future.successful(SecurityInitializationComplete(key))
             case None =>
               log.warning("attempting to clear init flag from security database")
               val databaseConfig = if (config.database.provision) Json.obj(
@@ -359,17 +360,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       check <- genRequest(rootUrl, apiKey).get()
       done <- if (check.status == 500) {
         log.info("attempting to bootstrap meta")
-        genRequest(initUrl, apiKey).post("") flatMap { resp =>
+        genRequest(initUrl, apiKey).post("") flatMap { implicit resp =>
           log.info("meta.bootstrap response: {}",resp.status)
           log.debug("meta.bootstrap response body: {}",resp.body)
           resp.status match {
-            case 204 =>
-              Future.successful(MetaBootstrapFinished)
-            case not204 =>
-              val mesg = Try {
-                (resp.json \ "message").as[String]
-              }.getOrElse(resp.body)
-              Future.failed(new RuntimeException(mesg))
+            case 204 => Future.successful(MetaBootstrapFinished)
+            case _ => futureFailureWithMessage
           }
         }
       } else {
@@ -382,22 +378,19 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   private[this] def syncMeta(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaSyncFinished.type] = {
     val initUrl = s"http://${metaUrl}/sync"
     log.info(s"syncing meta at {}",initUrl)
-    genRequest(initUrl, apiKey).post("") flatMap { resp =>
+    genRequest(initUrl, apiKey).post("") flatMap { implicit resp =>
       log.info("meta.sync response: {}",resp.status)
       log.debug("meta.sync response body: {}",resp.body)
       resp.status match {
-        case 204 =>
-          Future.successful(MetaSyncFinished)
-        case not200 =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-          Future.failed(new RuntimeException(mesg))
+        case 204 => Future.successful(MetaSyncFinished)
+        case _ => futureFailureWithMessage
       }
     }
   }
 
   private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, name: String): Future[Option[JsValue]] = {
     val p = (js: JsValue) => (js \ "name").asOpt[String].contains(name)
-    genRequest(url, apiKey).get() map { resp =>
+    genRequest(url, apiKey).get() map { implicit resp =>
       log.info(s"meta.get($url) response: {}",resp.status)
       log.debug(s"meta.get($url) response body: {}",resp.body)
       resp.status match {
@@ -405,8 +398,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           case arr: JsArray => arr.as[Seq[JsValue]].find(p)
           case v: JsValue => if (p(v)) Some(v) else None
         }
-        case not200 =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+        case _ =>
+          val mesg = getMessageFromResponse
           log.debug(mesg)
           None
       }
@@ -468,15 +461,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       val name = (providerJson \ "name").as[String]
       resourceExistsInList(providerUrl, apiKey, name) flatMap {
         case Some(js) => Future.fromTry(getId(js))
-        case None =>  genRequest(providerUrl, apiKey).post(providerJson) flatMap { resp =>
+        case None =>  genRequest(providerUrl, apiKey).post(providerJson) flatMap { implicit resp =>
           log.info(s"meta.provision(provider $name) response: {}",resp.status)
           log.debug(s"meta.provision(provider $name) response body: {}",resp.body)
           resp.status match {
-            case 201 =>
-              Future.fromTry(getId(resp.json))
-            case not201 =>
-              val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-              Future.failed(new RuntimeException("Error provisioning provider: " + mesg))
+            case 201 => Future.fromTry(getId(resp.json))
+            case _ => futureFailureWithMessage
           }
         }
       }
@@ -496,15 +486,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
             "name" -> "demo",
             "description" -> "Demo workspace"
           ))
-          .flatMap { resp =>
+          .flatMap { implicit resp =>
             log.info("meta.provision(workspace demo) response: {}",resp.status)
             log.debug("meta.provision(workspace demo) response body: {}",resp.body)
             resp.status match {
-              case 201 =>
-                Future.fromTry(getId(resp.json))
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
+              case 201 => Future.fromTry(getId(resp.json))
+              case _ => futureFailureWithMessage
             }
           }
     }
@@ -524,15 +511,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
               "environment_type" -> "production"
             )
           ))
-          .flatMap { resp =>
+          .flatMap { implicit resp =>
             log.info("meta.provision(environment demo) response: {}",resp.status)
             log.debug("meta.provision(environment demo) response body: {}",resp.body)
             resp.status match {
-              case 201 =>
-                Future.fromTry(getId(resp.json))
-              case not200 =>
-                val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
+              case 201 => Future.fromTry(getId(resp.json))
+              case _ => futureFailureWithMessage
             }
           }
     }
@@ -604,15 +588,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           case None =>
             genRequest(url, apiKey)
               .post(lambdaJson)
-              .flatMap { resp =>
+              .flatMap { implicit resp =>
                 log.info(s"meta.provision(lambda $name) response: {}",resp.status)
                 log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
                 resp.status match {
-                  case 201 =>
-                    Future.fromTry(getId(resp.json))
-                  case not200 =>
-                    val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-                    Future.failed(new RuntimeException(mesg))
+                  case 201 => Future.fromTry(getId(resp.json))
+                  case _ => futureFailureWithMessage
                 }
               }
         }
@@ -640,17 +621,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
               "resource" -> "/run"
             )
           ))
-          .flatMap { resp =>
+          .flatMap { implicit resp =>
             log.info(s"meta.provision(apiendpoint $name) response: {}", resp.status)
             log.debug(s"meta.provision(apiendpoint $name) response body: {}", resp.body)
             resp.status match {
-              case 201 =>
-                Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
-              case not200 =>
-                val mesg = Try {
-                  (resp.json \ "message").as[String]
-                }.getOrElse(resp.body)
-                Future.failed(new RuntimeException(mesg))
+              case 201 => Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
+              case _ => futureFailureWithMessage
             }
           }
     }
@@ -669,6 +645,31 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     } yield MetaProvisioned
   }
 
+  private[this] def getMessageFromResponse(implicit response: WSResponse) = {
+    Try{(response.json \ "message").as[String]}.getOrElse(response.body)
+  }
+
+  private[this] def futureFailureWithMessage(implicit response: WSResponse) = {
+    val mesg = getMessageFromResponse
+    Future.failed(new RuntimeException(mesg))
+  }
+
+  private[this] def renameMetaRootOrg(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
+    genRequest(s"http://$metaUrl/root", apiKey)
+      .patch(Json.toJson(Seq(PatchOp.Replace(
+        path = "/description",
+        value = config.meta.companyName
+      ))))
+      .flatMap { implicit resp =>
+        log.info("meta.root rename response: {}",resp.status)
+        log.debug("meta.root rename response body: {}", resp.body)
+        resp.status match {
+          case 200 => Future.successful(MetaProvisioned)
+          case _ => futureFailureWithMessage
+        }
+      }
+  }
+
   private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
     val licenseBody = Json.obj(
       "name" -> "Default-License-1",
@@ -678,15 +679,12 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
-    genRequest(licenseUrl, apiKey).post(licenseBody) flatMap { resp =>
+    genRequest(licenseUrl, apiKey).post(licenseBody) flatMap { implicit resp =>
       log.info("meta.license response: {}",resp.status)
       log.debug("meta.license response body: {}",resp.body)
       resp.status match {
-        case 201 =>
-          Future.successful(MetaProvisioned)
-        case not200 =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-          Future.failed(new RuntimeException(mesg))
+        case 201 => Future.successful(MetaProvisioned)
+        case _ => futureFailureWithMessage
       }
     }
   }
@@ -717,7 +715,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     stay
   }
 
-  def isServiceActive(si: ServiceInfo) = {si.status == RUNNING || si.status == HEALTHY}
+  def isServiceActive(si: ServiceInfo): Boolean = {si.status == RUNNING || si.status == HEALTHY}
 
   def advanceState(newData: ServiceData): State = {
     stateName match {
@@ -841,6 +839,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
           val provSteps = for {
             Seq(dcosProviderId, kongProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,kongGatewayUrl,apiKey))
             stageTwo <- Future.sequence(Seq(
+              renameMetaRootOrg(metaUrl,apiKey),
               provisionDemo(metaUrl,apiKey,kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
@@ -1044,9 +1043,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       val updatedStatus = d.statuses.get(service).map(
         _.copy(status = if (alive) HEALTHY else UNHEALTHY)
       )
-      updatedStatus.foreach {
-        case info => log.info(s"marking ${info.service} as ${info.status}")
-      }
+      updatedStatus.foreach(info => log.info(s"marking ${info.service} as ${info.status}"))
       stay using d.update(updatedStatus.toSeq)
 
     case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _, _) , d) =>
@@ -1112,7 +1109,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       val s = self
       val deleteApps = config.LAUNCH_ORDER
         .collect({case s: LaunchingState => s.targetService})
-        .filter { svc => (shutdownDB || !svc.isInstanceOf[DATA]) }
+        .filter { svc => shutdownDB || !svc.isInstanceOf[DATA] }
         .reverse
       deleteApps.foreach {
         service => marClient.killApp(service) onComplete {
@@ -1124,7 +1121,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       goto(ShuttingDown) using d.copy(
         error = None,
         errorStage = None
-      ) replying(ShutdownAcceptedResponse)
+      ) replying ShutdownAcceptedResponse
 
     case Event(StatusRequest,d) =>
       val stage = stateName match {
