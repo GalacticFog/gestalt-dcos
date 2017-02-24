@@ -42,10 +42,10 @@ case class GlobalDBConfig(hostname: String,
 case object GlobalDBConfig {
   def apply(global: JsValue): GlobalDBConfig = GlobalDBConfig(
     hostname = (global \ "database" \ "hostname").asOpt[String].getOrElse("data.gestalt.marathon.mesos"),
-    port = (global \ "database" \ "port").asOpt[Int].getOrElse(5432),
+    port =     (global \ "database" \ "port").asOpt[Int].getOrElse(5432),
     username = (global \ "database" \ "username").asOpt[String].getOrElse("gestaltdev"),
     password = (global \ "database" \ "password").asOpt[String].getOrElse("letmein"),
-    prefix = (global \ "database" \ "prefix").asOpt[String].getOrElse("gestalt-")
+    prefix =   (global \ "database" \ "prefix").asOpt[String].getOrElse("gestalt-")
   )
 }
 
@@ -62,9 +62,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
 
-  import launcherConfig.dockerImage
   import LauncherConfig.Services._
-  import LauncherConfig.Executors._
 
   def appSpec(service: FrameworkService) = AppSpec(
     name = service.name,
@@ -290,10 +288,21 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     }
     val dbConfig = GlobalDBConfig(globals)
     val secConfig = (globals \ "security")
+
+
+    val enabledRuntimes = launcherConfig.laser.enabledRuntimes.zipWithIndex.foldLeft(Map.empty[String,String]){
+      case (vars, (runtime,i)) => vars ++ Map(
+        s"EXECUTOR_${i}_NAME"    -> runtime.name,
+        s"EXECUTOR_${i}_RUNTIME" -> runtime.runtime,
+        s"EXECUTOR_${i}_IMAGE"   -> runtime.image,
+        s"EXECUTOR_${i}_CMD"     -> runtime.cmd
+      )
+    }
+
     appSpec(LASER).copy(
       args = None,
       cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-laser -Dhttp.port=$PORT0 -J-Xmx" + (LASER.mem / launcherConfig.marathon.jvmOverheadFactor).toInt + "m"),
-      env = gestaltSecurityEnvVars(globals) ++ Map(
+      env = gestaltSecurityEnvVars(globals) ++ enabledRuntimes ++ Map(
         "LAMBDA_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "LAMBDA_DATABASE_PORT"     -> s"${dbConfig.port}",
         "LAMBDA_DATABASE_NAME"     -> s"${dbConfig.prefix}laser",
@@ -333,32 +342,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "EXECUTOR_HEARTBEAT_MILLIS" -> "1000",
         "EXECUTOR_HEARTBEAT_TIMEOUT" -> "5000",
         "CACHE_CHECK_SECONDS" -> "30",
-        "CACHE_EXPIRE_SECONDS" -> "900",
-        //
-        "EXECUTOR_0_CMD"     -> "bin/gestalt-laser-executor-js",
-        "EXECUTOR_0_IMAGE"   -> dockerImage(EXECUTOR_JS),
-        "EXECUTOR_0_NAME"    -> "js-executor",
-        "EXECUTOR_0_RUNTIME" -> "nodejs",
-        "EXECUTOR_1_CMD"     -> "bin/gestalt-laser-executor-jvm",
-        "EXECUTOR_1_IMAGE"   -> dockerImage(EXECUTOR_JVM),
-        "EXECUTOR_1_NAME"    -> "jvm-executor",
-        "EXECUTOR_1_RUNTIME" -> "java;scala",
-        "EXECUTOR_2_CMD"     -> "bin/gestalt-laser-executor-dotnet",
-        "EXECUTOR_2_IMAGE"   -> dockerImage(EXECUTOR_DOTNET),
-        "EXECUTOR_2_NAME"    -> "dotnet-executor",
-        "EXECUTOR_2_RUNTIME" -> "csharp;dotnet",
-        "EXECUTOR_3_CMD"     -> "bin/gestalt-laser-executor-python",
-        "EXECUTOR_3_IMAGE"   -> dockerImage(EXECUTOR_PYTHON),
-        "EXECUTOR_3_NAME"    -> "python-executor",
-        "EXECUTOR_3_RUNTIME" -> "python",
-        "EXECUTOR_4_CMD"     -> "bin/gestalt-laser-executor-ruby",
-        "EXECUTOR_4_IMAGE"   -> dockerImage(EXECUTOR_RUBY),
-        "EXECUTOR_4_NAME"    -> "ruby-executor",
-        "EXECUTOR_4_RUNTIME" -> "ruby",
-        "EXECUTOR_5_CMD"     -> "bin/gestalt-laser-executor-golang",
-        "EXECUTOR_5_IMAGE"   -> dockerImage(EXECUTOR_GOLANG),
-        "EXECUTOR_5_NAME"    -> "golang-executor",
-        "EXECUTOR_5_RUNTIME" -> "golang"
+        "CACHE_EXPIRE_SECONDS" -> "900"
       ),
       network = ContainerInfo.DockerInfo.Network.HOST,
       ports = Some(Seq(
