@@ -143,10 +143,10 @@ class TaskFactorySpec extends Specification {
         val laser = gtf.getAppSpec(LASER, Json.obj())
         runtime ! {
           val theseNames = runtimeNames(runtime)
-          val missingDisabled = Result.foreach(theseNames){
+          val missingDisabled = Result.foreach(theseNames) {
             name => laser must not be haveLaserRuntime(name)
           }
-          val presentEnabled = Result.foreach(allNames.diff(theseNames)){
+          val presentEnabled = Result.foreach(allNames.diff(theseNames)) {
             name => laser must haveLaserRuntime(name)
           }
           missingDisabled and presentEnabled
@@ -154,7 +154,7 @@ class TaskFactorySpec extends Specification {
       }
     }
 
-    "only provision mesos health checks" in {
+    "only provision marathon health checks" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -162,13 +162,13 @@ class TaskFactorySpec extends Specification {
       Result.foreach(Seq(
         RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY, DATA(0), DATA(1)
       )) {
-        svc => gtf.getAppSpec(svc, Json.obj()).healthChecks must contain(mesosHealthCheck)
+        svc => gtf.getAppSpec(svc, Json.obj()).healthChecks must contain(marathonHealthChecks)
       }
     }
 
   }
 
-  def mesosHealthCheck = ((_:HealthCheck).protocol.toUpperCase) ^^ beOneOf("COMMAND", "MESOS_HTTPS", "MESOS_HTTP", "MESOS_TCP")
+  def marathonHealthChecks = ((_:HealthCheck).protocol.toString) ^^ beOneOf("COMMAND", "HTTPS", "HTTP", "TCP")
 
   def haveLaserRuntime(name: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_RUNTIME")).values.flatMap(_.split(";"))) ^^ contain(name)
 
