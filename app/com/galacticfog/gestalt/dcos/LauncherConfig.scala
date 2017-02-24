@@ -282,7 +282,11 @@ object LauncherConfig {
   case class MetaConfig( companyName: String )
 
   object MetaConfig {
+
     val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
+
+    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-setup.js"
+    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-teardown.js"
   }
 
 }
