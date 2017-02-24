@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory}
+import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory, HealthCheck}
 import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
@@ -154,7 +154,21 @@ class TaskFactorySpec extends Specification {
       }
     }
 
+    "only provision mesos health checks" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      Result.foreach(Seq(
+        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY, DATA(0), DATA(1)
+      )) {
+        svc => gtf.getAppSpec(svc, Json.obj()).healthChecks must contain(mesosHealthCheck)
+      }
+    }
+
   }
+
+  def mesosHealthCheck = ((_:HealthCheck).protocol.toUpperCase) ^^ beOneOf("COMMAND", "MESOS_HTTPS", "MESOS_HTTP", "MESOS_TCP")
 
   def haveLaserRuntime(name: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_RUNTIME")).values.flatMap(_.split(";"))) ^^ contain(name)
 

@@ -100,7 +100,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_GROUP" -> "external"),
         healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
-          protocol = "HTTP",
+          protocol = "MESOS_HTTP",
           portIndex = 0,
           gracePeriodSeconds = 300,
           intervalSeconds = 30,

@@ -52,6 +52,9 @@ case object GlobalDBConfig {
 @Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
+  val HTTP_HEALTH = "MESOS_HTTP"
+  val TCP_HEALTH  = "MESOS_TCP"
+
   val RABBIT_EXCHANGE = "policy-exchange"
 
   val TLD: Option[String] = launcherConfig.marathon.tld
@@ -149,7 +152,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
       ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index)))))),
       healthChecks = Seq(HealthCheck(
-        portIndex = 0, protocol = "TCP", path = ""
+        portIndex = 0, protocol = TCP_HEALTH, path = ""
       ))
     )
   }
@@ -170,7 +173,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       ),
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(SECURITY))))),
       healthChecks = Seq(HealthCheck(
-        portIndex = 0, protocol = "HTTP", path = "/health"
+        portIndex = 0, protocol = HTTP_HEALTH, path = "/health"
       )),
       readinessCheck = Some(MarathonReadinessCheck(
         path = "/init",
@@ -204,7 +207,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_ROUTE"     -> "policy"
       ),
       ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))))),
-      healthChecks = Seq(HealthCheck(portIndex = 0, protocol = "HTTP", path = "/health")),
+      healthChecks = Seq(HealthCheck(portIndex = 0, protocol = HTTP_HEALTH, path = "/health")),
       readinessCheck = Some(MarathonReadinessCheck(
         path = "/health",
         portName = "http-api",
@@ -230,7 +233,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> vipLabel(KONG_GATEWAY))),
         PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> vipLabel(KONG_SERVICE)))
       )),
-      healthChecks = Seq(HealthCheck(portIndex = 1, protocol = "HTTP", path = "/cluster")),
+      healthChecks = Seq(HealthCheck(portIndex = 1, protocol = HTTP_HEALTH, path = "/cluster")),
       readinessCheck = None,
       labels = getVhostLabels(KONG) ++ Map(
         "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n",
@@ -270,11 +273,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = "/health",
-        protocol = "HTTP",
+        protocol = HTTP_HEALTH,
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        protocol = "HTTP",
         path = "/health",
         portName = "http-api",
         intervalSeconds = 5
@@ -351,11 +353,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = "/health",
-        protocol = "HTTP",
+        protocol = HTTP_HEALTH,
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        protocol = "HTTP",
         path = "/health",
         portName = "http-api",
         intervalSeconds = 5
@@ -384,11 +385,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = "/health",
-        protocol = "HTTP",
+        protocol = HTTP_HEALTH,
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        protocol = "HTTP",
         path = "/health",
         portName = "http-api",
         intervalSeconds = 5
@@ -407,11 +407,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = "/service-status",
-        protocol = "HTTP",
+        protocol = HTTP_HEALTH,
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        protocol = "HTTP",
         path = "/service-status",
         portName = "http",
         intervalSeconds = 5
@@ -429,11 +428,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = "/#/login",
-        protocol = "HTTP",
+        protocol = HTTP_HEALTH,
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        protocol = "HTTP",
         path = "/#/login",
         portName = "http",
         intervalSeconds = 5
@@ -449,7 +447,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
       )),
       healthChecks = Seq(HealthCheck(
-        portIndex = 1, protocol = "HTTP", path = "/"
+        portIndex = 1, protocol = HTTP_HEALTH, path = "/"
       )),
       readinessCheck = Some(MarathonReadinessCheck(
         path = "/",
