@@ -1,6 +1,6 @@
 name := """gestalt-dcos"""
 
-version := "1.0.1"
+version := "1.1.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala).
@@ -57,6 +57,7 @@ libraryDependencies ++= Seq(
   cache,
   ws,
   specs2 % Test,
+  "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
   "org.webjars" %% "webjars-play" % "2.5.0",
   "org.webjars" % "bootstrap" % "3.1.1-2",
   "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
