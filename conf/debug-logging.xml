@@ -12,7 +12,7 @@
 
   <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-      <pattern>%coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+      <pattern>%date [%level] from %logger in %thread - %message%n%xException</pattern>
     </encoder>
   </appender>
 
@@ -42,7 +42,7 @@
 
   <logger name="akka.actor.LoggingFSM" level="DEBUG" />
 
-  <logger name="com.galacticfog.gestalt.dcos.marathon.GestaltMarathonLauncher" level="DEBUG" />
+  <logger name="com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher" level="DEBUG" />
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient" level="DEBUG" />
 

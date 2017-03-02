@@ -4,13 +4,13 @@ import javax.inject._
 
 import akka.actor.ActorRef
 import com.galacticfog.gestalt.dcos.{BuildInfo, LauncherConfig}
-import com.galacticfog.gestalt.dcos.marathon._
 import play.api._
 import play.api.libs.json.Json
 import play.api.mvc._
 import views.html.index
 import akka.pattern.ask
 import akka.util.Timeout
+import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher
 import play.api.http.HeaderNames
 
 import scala.concurrent.duration._

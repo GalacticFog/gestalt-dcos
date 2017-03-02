@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import javax.inject.{Inject, Named, Singleton}
+import javax.inject.{Inject, Singleton}
 
 import scala.language.postfixOps
 import akka.NotUsed
@@ -10,7 +10,7 @@ import akka.http.scaladsl.model.headers.Accept
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import com.galacticfog.gestalt.dcos.LauncherConfig
+import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
 import play.api.libs.ws.WSClient
 import play.api.Logger
 import play.api.libs.json._
@@ -22,40 +22,8 @@ import scala.util.{Failure, Success, Try}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import com.galacticfog.gestalt.dcos.ServiceStatus._
 import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
-
-sealed trait ServiceStatus
-final case object LAUNCHING extends ServiceStatus
-final case object DELETING  extends ServiceStatus
-final case object WAITING   extends ServiceStatus
-final case object STAGING   extends ServiceStatus
-final case object STOPPED   extends ServiceStatus
-final case object UNHEALTHY extends ServiceStatus
-final case object HEALTHY   extends ServiceStatus
-final case object RUNNING   extends ServiceStatus
-final case object NOT_FOUND extends ServiceStatus
-
-case class ServiceInfo(service: FrameworkService, vhosts: Seq[String], hostname: Option[String], ports: Seq[String], status: ServiceStatus)
-
-case object ServiceInfo {
-  implicit val statusFmt = new Writes[ServiceStatus] {
-    override def writes(o: ServiceStatus): JsValue = JsString(o.toString)
-  }
-  implicit val serviceWrites = new Writes[FrameworkService] {
-    override def writes(o: FrameworkService): JsValue = Json.obj(
-      "serviceName" -> o.name
-    )
-  }
-  implicit val serviceInfoWrites = new Writes[ServiceInfo] {
-    override def writes(si: ServiceInfo): JsValue = Json.obj(
-      "serviceName" -> si.service.name,
-      "vhosts" -> Json.toJson(si.vhosts),
-      "hostname" -> Json.toJson(si.hostname),
-      "ports" -> Json.toJson(si.ports),
-      "status" -> Json.toJson(si.status)
-    )
-  }
-}
 
 object BiggerUnmarshalling extends EventStreamUnmarshalling {
   override protected def maxLineSize: Int = 524288
@@ -63,9 +31,8 @@ object BiggerUnmarshalling extends EventStreamUnmarshalling {
 }
 
 @Singleton
-class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
-                                    @Named("scheduler-actor") schedulerActor: ActorRef,
-                                    wsclient: WSClient )
+class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
+                                   ws: WSClient )
                                   ( implicit system: ActorSystem ) {
 
   import system.dispatcher
@@ -81,7 +48,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
-  def connectToBus(actorRef: ActorRef) = {
+  def connectToBus(actorRef: ActorRef): Unit = {
     implicit val mat = ActorMaterializer()
     val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
     Http(system)
@@ -105,7 +72,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
-    wsclient.url(s"${marathonBaseUrl}/v2/apps/${appId}")
+    ws.url(s"${marathonBaseUrl}/v2/apps/${appId}")
       .withQueryString("force" -> "true")
       .put(
         Json.toJson(appPayload)
@@ -125,7 +92,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   def killApp(service: FrameworkService): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${service.name}")
     val appId = s"/${appGroup}/${service.name}"
-    wsclient.url(s"${marathonBaseUrl}/v2/apps${appId}")
+    ws.url(s"${marathonBaseUrl}/v2/apps${appId}")
       .withQueryString("force" -> "true")
       .delete()
       .flatMap { resp =>
@@ -140,7 +107,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   def stopApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
-    wsclient.url(s"${marathonBaseUrl}/v2/apps/${appGroup}/${svcName}")
+    ws.url(s"${marathonBaseUrl}/v2/apps/${appGroup}/${svcName}")
       .withQueryString("force" -> "true")
       .put(Json.obj("instances" -> 0))
       .map { resp =>
@@ -149,7 +116,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       }
   }
 
-  private def toServiceInfo(service: FrameworkService, app: MarathonAppPayload): ServiceInfo = {
+  private[marathon] def toServiceInfo(service: FrameworkService, app: MarathonAppPayload): ServiceInfo = {
     val staged  = app.tasksStaged.get
     val running = app.tasksRunning.get
     val healthy = app.tasksHealthy.get
@@ -165,17 +132,21 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
     val lbExposed = app.labels.filterKeys(_.matches("HAPROXY_GROUP")).nonEmpty
 
+    val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
+    val lbDisabledPortIndices = app.labels.collect({
+      case (HAPROXY_N_ENABLED(portNumber),v) if v == "false" => portNumber.toInt
+    }).toSet
+
     val serviceEndpoints = launcherConfig.marathon.marathonLbUrl match {
       case Some(lbUrl) if lbExposed =>
-        val servicePorts = if (app.container.docker.exists(_.network == "BRIDGE")) {
-          for {
-            d <- app.container.docker
-            pms <- d.portMappings
-          } yield pms.flatMap(_.servicePort)
-        } else {
-          app.portDefinitions.map(_.map(_.port))
-        }
-        servicePorts.toSeq.flatten.map(lbUrl + ":" + _)
+        app.portDefinitions
+          .getOrElse(Seq.empty)
+          .map(_.port)
+          .zipWithIndex
+          .collect({
+            case (portNumber, index) if !lbDisabledPortIndices.contains(index) => portNumber
+          })
+          .map(lbUrl + ":" + _)
       case _ => Seq.empty
     }
 
@@ -189,7 +160,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   def getServices(): Future[Seq[ServiceInfo]] = {
     val url = marathonBaseUrl.stripSuffix("/")
-    wsclient.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+    ws.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
         case 200 =>
           Future.fromTry(Try {
@@ -198,15 +169,14 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
             } map { case (service,app) => toServiceInfo(service,app) }
           })
         case 404 => Future.successful(Seq.empty)
-        case not200 =>
-          Future.failed(new RuntimeException(response.statusText))
+        case _ => Future.failed(new RuntimeException(response.statusText))
       }
     }
   }
 
   def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
     val url = marathonBaseUrl.stripSuffix("/")
-    wsclient.url(s"${url}/v2/apps/${appGroup}/${service.name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+    ws.url(s"${url}/v2/apps/${appGroup}/${service.name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
         case 200 =>
           Future.fromTry(Try{
@@ -218,7 +188,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
+      case _ => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
     }
   }
 
@@ -228,7 +198,15 @@ object MarathonSSEClient {
 
   case object Connected
 
-  def getVHosts(app: MarathonAppPayload): Seq[String] = app.labels.filterKeys(_.matches("HAPROXY_[0-9]+_VHOST")).values.toSeq.map("https://" + _)
+  def getVHosts(app: MarathonAppPayload): Seq[String] = {
+    lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
+    if ( app.labels.get("HAPROXY_GROUP").contains("external") ) {
+      app.labels.collect({
+        case (HAPROXY_N_VHOST(_), vhost) => vhost
+      }).map("https://" + _).toSeq
+    }
+    else Seq.empty
+  }
 
   val logger: Logger = Logger(this.getClass())
 
@@ -251,7 +229,7 @@ object MarathonSSEClient {
     }
   }
 
-  implicit val formatSSE = Json.format[ServerSentEvent]
+  implicit val formatSSE: OFormat[ServerSentEvent] = Json.format[ServerSentEvent]
 
 }
 

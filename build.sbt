@@ -57,11 +57,12 @@ libraryDependencies ++= Seq(
   cache,
   ws,
   specs2 % Test,
-  "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
   "org.webjars" %% "webjars-play" % "2.5.0",
   "org.webjars" % "bootstrap" % "3.1.1-2",
   "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
-  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4"
+  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
+  "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
+  "de.leanovate.play-mockws" %% "play-mockws" % "2.5.1" % Test
 )
 
 libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.6.6" % "test")

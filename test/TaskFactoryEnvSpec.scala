@@ -34,12 +34,12 @@ class TaskFactoryEnvSpec extends Specification {
 
       val laserSpec = gtf.getAppSpec(LASER, globals)
       laserSpec must haveImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_0_IMAGE" -> env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_1_IMAGE" -> env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_2_IMAGE" -> env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_3_IMAGE" -> env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_4_IMAGE" -> env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:dcos-${ensver}"))
-      laserSpec must haveEnvVar("EXECUTOR_5_IMAGE" -> env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:dcos-${ensver}"))
+      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:dcos-${ensver}"))
 
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:dcos-${ensver}"))
       gtf.getAppSpec(API_PROXY, globals)   must haveImage(env("GESTALT_API_PROXY_IMG").getOrElse(s"galacticfog/gestalt-api-proxy:dcos-${ensver}"))
@@ -47,6 +47,8 @@ class TaskFactoryEnvSpec extends Specification {
     }
 
   }
+
+  def haveLaserRuntimeImage(img: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_IMAGE")).values) ^^ contain(img)
 
   def haveImage(name: => String) = ((_: AppSpec).image) ^^ be_==(name)
 

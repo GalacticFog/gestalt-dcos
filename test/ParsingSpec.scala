@@ -32,7 +32,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           |  "healthChecks": [
           |    {
           |      "path": "/health",
-          |      "protocol": "HTTP",
+          |      "protocol": "MESOS_HTTP",
           |      "portIndex": 0,
           |      "gracePeriodSeconds": 300,
           |      "intervalSeconds": 60,
@@ -130,7 +130,7 @@ class ParsingSpec extends Specification with JsonMatchers {
         ),
         healthChecks = Seq(MarathonHealthCheck(
           path = "/health",
-          protocol = "HTTP",
+          protocol = "MESOS_HTTP",
           portIndex = 0,
           gracePeriodSeconds = 300,
           intervalSeconds = 60,

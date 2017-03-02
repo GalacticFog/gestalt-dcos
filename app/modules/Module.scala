@@ -4,14 +4,14 @@ import javax.inject.{Inject, Named}
 
 import akka.actor.ActorRef
 import com.galacticfog.gestalt.dcos.GestaltTaskFactory
-import com.galacticfog.gestalt.dcos.marathon.{GestaltMarathonLauncher, MarathonSSEClient}
+import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher
 import com.google.inject.AbstractModule
 import play.api.Logger
 import play.api.libs.concurrent.AkkaGuiceSupport
 
 class Module extends AbstractModule with AkkaGuiceSupport {
 
-  override def configure() = {
+  override def configure(): Unit = {
     bind(classOf[GestaltTaskFactory]).asEagerSingleton()
     bindActor[GestaltMarathonLauncher]("scheduler-actor")
     bind(classOf[Kickstart]).asEagerSingleton()
