@@ -675,7 +675,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       "name" -> "Default-License-1",
       "description" -> "Default GF license",
       "properties" -> Json.obj(
-        "data" -> "ABwwGgQU0yrowwdZqokCoV+gsama8FPom7gCAgQANZ0VCWktNu7ACEokBT2hTHLu+ZDhGWZCeANF1klgMvRSoQmerkWTED1hCrTw3H0A0UC/TyU/9B0kjs9aT11H5uTQticJZnJ3GCn4/DLawLJ+JDwktF0pA9ATTVieJcqW1VDE3vgpgU6HllQOfBGmsmASPEOtYBte+gbKn5msKpUvbooLW5xyNKKe9U7vmmtvI2Th3wgb354k2imi8LJaVxywKd9BRe78mWhsKa9d57V+n9NAlQfN24wcyxzc23VuMK/v3fFl6YT3ro9ddXlIoRMl7mJ3nWN2HtYlfHTULsAsbIwHUsY44WZI926RDunstC03dm+mfT9jDTIciJ38jX0lGvbAY1X3ovl9v3EoroIjXwz4JKg5FbEH2vdoFwdy1UznCxSq10537hwmmnEfC16JUFySfe0o"
+        "data" -> "ABwwGgQU9EaKhQRbQ4DHDk+LQKqEUXDXCAQCAgQATrYKW+1dp9TnB+BNbk9PnCNvYhHe2rtVI+gnMZKt3age1m9+u3KYJZaYqKMicdDxqx9jYIM1ChNqBVNj66hR84wvpeRVyTcMxxxrPtkHUbZU8m6MnTJzx4FSKENfi60ALccJjQTrgEKBaBcuGjnXdn2J+IkwRd5iaZ3t3rJb+OnG9v8qpyI9kCHf4oPYnyHt74OqHwyrQ8G2zXbilSwFNo/aEyYNqlclXbkgQ2eZ8Dq8f05wuBLiyr96767/Sox8dU39X7Od53AdumuRmR+NCyYx9EEagKTz/9/B9MR9kC1R2MLFEcr/RAcPaZ8vjBMSCjbS8QXTsDfz/M2t6bFxIZ1C84zREpwRVxuI6fdmtVhzwQRV/UMoUddK48hKXBESF22uGoAzrfJPJ3agSlP+1Adju2/VcPiQ"
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
