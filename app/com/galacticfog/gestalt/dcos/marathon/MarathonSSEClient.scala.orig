@@ -218,9 +218,15 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           Future.failed(new RuntimeException(response.statusText))
       }
     } recover {
-      case e: Throwable =>
+<<<<<<< HEAD
+      case e: Throwable => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
+||||||| parent of 985db6e... fixes for marathon 1.9 api changes
+      case _ => ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
+=======
+      case e =>
         logger.error("error retrieving app from Marathon API",e)
         ServiceInfo(service, Seq(),None,Seq.empty, NOT_FOUND)
+>>>>>>> 985db6e... fixes for marathon 1.9 api changes
     }
   }
 

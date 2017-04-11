@@ -31,7 +31,7 @@ case class MarathonDockerContainer(image: String,
                                    forcePullImage: Boolean,
                                    portMappings: Option[Seq[DockerPortMapping]])
 
-case class MarathonHealthCheck(path: String,
+case class MarathonHealthCheck(path: Option[String],
                                protocol: String,
                                portIndex: Int,
                                gracePeriodSeconds: Int,

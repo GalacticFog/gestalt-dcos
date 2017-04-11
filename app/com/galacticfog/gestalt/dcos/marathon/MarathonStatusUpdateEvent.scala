@@ -25,7 +25,8 @@ case class MarathonDeploymentFailure( eventType: String,
 case class MarathonHealthStatusChange( eventType: String,
                                        timestamp: String,
                                        appId: String,
-                                       taskId: String,
+                                       taskId: Option[String],
+                                       instanceId: Option[String],
                                        version: String,
                                        alive: Boolean) extends MarathonEvent
 
