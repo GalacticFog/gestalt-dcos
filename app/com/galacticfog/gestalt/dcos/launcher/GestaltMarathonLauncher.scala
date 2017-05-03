@@ -1038,8 +1038,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     //   log.info(s"ignoring MarathonDeploymentFailure for deployment ${deploymentId}")
     //   stay
 
-    case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), taskId, _, alive), d) =>
-      log.info(s"received MarathonHealthStatusChange(${taskId}.alive == ${alive}) for task belonging to ${service.name}")
+    case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), maybeTaskId, maybeInstanceId, _, alive), d) =>
+      log.info(s"received MarathonHealthStatusChange(${maybeTaskId orElse maybeInstanceId}.alive == ${alive}) for task belonging to ${service.name}")
       val updatedStatus = d.statuses.get(service).map(
         _.copy(status = if (alive) HEALTHY else UNHEALTHY)
       )

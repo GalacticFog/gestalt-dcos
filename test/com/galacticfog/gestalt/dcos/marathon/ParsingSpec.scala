@@ -1,11 +1,10 @@
-import com.galacticfog.gestalt.dcos.marathon._
-import play.api.libs.json.Json
-import play.api.test.Helpers._
-import play.api.test._
-import org.specs2.mutable._
-import org.specs2.mutable.Specification
+package com.galacticfog.gestalt.dcos.marathon
+
 import org.specs2.matcher.JsonMatchers
-import org.specs2.runner._
+import org.specs2.mutable.Specification
+import play.api.libs.json.Json
+
+import scala.util.Try
 
 class ParsingSpec extends Specification with JsonMatchers {
 
@@ -129,7 +128,7 @@ class ParsingSpec extends Specification with JsonMatchers {
           "HAPROXY_GROUP" -> "external,internal"
         ),
         healthChecks = Seq(MarathonHealthCheck(
-          path = "/health",
+          path = Some("/health"),
           protocol = "MESOS_HTTP",
           portIndex = 0,
           gracePeriodSeconds = 300,
@@ -142,6 +141,7 @@ class ParsingSpec extends Specification with JsonMatchers {
       json.as[MarathonAppPayload] must_== expectedApp
       Json.toJson(expectedApp) must_== json
     }
+
 
   }
 
