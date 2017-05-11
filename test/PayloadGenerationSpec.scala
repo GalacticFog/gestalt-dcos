@@ -97,7 +97,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
             )))
           ))
         ),
-        labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_0_GROUP" -> "external"),
+        labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_GROUP" -> "external"),
         healthChecks = Seq(MarathonHealthCheck(
           path = Some("/health"),
           protocol = "HTTP",
@@ -117,10 +117,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val security = gtf.getMarathonPayload(SECURITY, global)
       security must_== expected
     }
-
-    "request appropriate host port for database and rabbit" in {
-      ko("write me")
-    }.pendingUntilFixed
 
     "appropriately set realm override for security consumer services (TLD)" in {
       val injector = new GuiceApplicationBuilder()
@@ -294,6 +290,34 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 //      )
     }.pendingUntilFixed
 
+    "request appropriate host port for database" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+      val data = gtf.getMarathonPayload(DATA(0), Json.obj())
+      data.container.docker must beSome
+      val Some(docker) = data.container.docker
+      docker.portMappings.get must haveSize(1)
+      val Some(Seq(pd)) = docker.portMappings
+      pd.hostPort must beSome(5432)
+    }
+
+    "request appropriate host port for rabbit" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+      val data = gtf.getMarathonPayload(RABBIT, Json.obj())
+      data.container.docker must beSome
+      val Some(docker) = data.container.docker
+      docker.portMappings.get must haveSize(2)
+      val Some(Seq(pd1,_)) = docker.portMappings
+      pd1.hostPort must beSome(5672)
+    }
+
     "set database container residency and grace period along with persistent storage" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -384,7 +408,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val standbyvars = Seq(
         "PGREPL_ROLE" -> "STANDBY",
-        "PGREPL_MASTER_IP" -> "gestalt-data-primary.marathon.l4lb.thisdcos.directory",
+        "PGREPL_MASTER_IP" -> "data-0.gestalt.marathon.mesos",
         "PGREPL_MASTER_PORT" -> "5432"
       )
       val p1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)

@@ -12,7 +12,7 @@ import org.apache.mesos.Protos._
 import play.api.Logger
 import play.api.libs.json.JsValue
 
-case class PortSpec(number: Int, name: String, labels: Map[String,String])
+case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
 case object HealthCheck {
   sealed trait HealthCheckProtocol
@@ -155,9 +155,28 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "PGREPL_TOKEN" -> launcherConfig.database.pgreplToken
       ),
       network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index)))))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index))), hostPort = if (index == 0) Some(5432) else None))),
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = MARATHON_TCP, path = None
+      ))
+    )
+  }
+
+  private[this] def getRabbit(globals: JsValue): AppSpec = {
+    appSpec(RABBIT).copy(
+      ports = Some(Seq(
+        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = Some(5672)),
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
+      )),
+      healthChecks = Seq(HealthCheck(
+        portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
+      )),
+      readinessCheck = Some(MarathonReadinessCheck(
+        path = "/",
+        portName = "http-api",
+        httpStatusCodesForReady = Seq(200),
+        intervalSeconds = 5,
+        timeoutSeconds = 10
       ))
     )
   }
@@ -244,25 +263,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         intervalSeconds = 5
       )),
       labels = getVhostLabels(UI)
-    )
-  }
-
-  private[this] def getRabbit(globals: JsValue): AppSpec = {
-    appSpec(RABBIT).copy(
-      ports = Some(Seq(
-        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP))),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
-      )),
-      healthChecks = Seq(HealthCheck(
-        portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
-      )),
-      readinessCheck = Some(MarathonReadinessCheck(
-        path = "/",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
-      ))
     )
   }
 
@@ -478,7 +478,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           parameters = Seq(),
           forcePullImage = true,
           portMappings = if (isBridged) app.ports.map {_.map(
-            p => DockerPortMapping(containerPort = p.number, name = Some(p.name), protocol = "tcp", labels = Some(p.labels))
+            p => DockerPortMapping(containerPort = p.number, name = Some(p.name), protocol = "tcp", labels = Some(p.labels), hostPort = p.hostPort)
           ) } else None
         ))
       ),

@@ -2,7 +2,7 @@ package test
 
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, SECURITY}
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, RABBIT_AMQP, SECURITY}
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.test._
@@ -57,6 +57,13 @@ class ConfigSpecs extends PlaySpecification with Mockito {
 
     "generated VIP hostname from default app" in new WithAppGroup {
       launcherConfig.vipHostname(SECURITY) must_== s"${LauncherConfig.DEFAULT_APP_GROUP}-security.marathon.l4lb.thisdcos.directory"
+    }
+
+    "generate VIP hostname for DATA and RABBIT using mesos-dns with nested application group" in new WithAppGroup( "/gestalt-tasks-in-test/dev/" ) {
+      launcherConfig.vipHostname(DATA(0)) must_== "data-0.dev.gestalt-tasks-in-test.marathon.mesos"
+      launcherConfig.vipHostname(DATA(1)) must_== "data-1.dev.gestalt-tasks-in-test.marathon.mesos"
+      launcherConfig.vipHostname(DATA(8)) must_== "data-8.dev.gestalt-tasks-in-test.marathon.mesos"
+      launcherConfig.vipHostname(RABBIT_AMQP) must_== "rabbit.dev.gestalt-tasks-in-test.marathon.mesos"
     }
 
     "exclude database provisioning based on config" in new WithConfig("database.provision" -> false) {

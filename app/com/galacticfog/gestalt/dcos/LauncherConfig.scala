@@ -97,7 +97,14 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipLabel(service: ServiceEndpoint): String = "/" + vipBase(service) + ":" + service.port
 
-  def vipHostname(service: ServiceEndpoint): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+  def vipHostname(service: ServiceEndpoint): String = {
+    service match {
+      case DATA(_) | RABBIT_AMQP =>
+        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + ".marathon.mesos"
+      case _ =>
+        vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+    }
+  }
 
   def dockerImage(service: Dockerable): String = {
     val name = service match {
