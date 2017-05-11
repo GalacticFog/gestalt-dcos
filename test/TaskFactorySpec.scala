@@ -24,8 +24,7 @@ class TaskFactorySpec extends Specification {
           "containers.policy" -> "test-policy:tag",
           "containers.laser" -> "test-laser:tag",
           "containers.api-gateway" -> "test-api-gateway:tag",
-          "containers.api-proxy" -> "test-api-proxy:tag",
-          "containers.ui" -> "test-ui:tag",
+          "containers.ui-react" -> "test-react-ui:tag",
           "containers.laser-executor-js"     -> "test-js-executor:tag",
           "containers.laser-executor-jvm"    -> "test-jvm-executor:tag",
           "containers.laser-executor-dotnet" -> "test-dotnet-executor:tag",
@@ -47,7 +46,7 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals) must haveImage("test-meta:tag")
       gtf.getAppSpec(POLICY, globals) must haveImage("test-policy:tag")
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage("test-api-gateway:tag")
-      gtf.getAppSpec(UI, globals) must haveImage("test-ui:tag")
+      gtf.getAppSpec(UI, globals) must haveImage("test-react-ui:tag")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage("test-laser:tag")
       laser must haveLaserRuntimeImage("test-js-executor:tag")
@@ -79,7 +78,7 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
       gtf.getAppSpec(POLICY, globals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
-      gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui:dcos-9.10.11.12")
+      gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui-react:dcos-9.10.11.12")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
       laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-js:dcos-9.10.11.12")
@@ -110,7 +109,7 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
       gtf.getAppSpec(POLICY, globals)       must haveImage(s"galacticfog/gestalt-policy:dcos-${ver}")
       gtf.getAppSpec(API_GATEWAY, globals)  must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
-      gtf.getAppSpec(UI, globals)           must haveImage(s"galacticfog/gestalt-ui:dcos-${ver}")
+      gtf.getAppSpec(UI, globals)           must haveImage(s"galacticfog/gestalt-ui-react:dcos-${ver}")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage(s"galacticfog/gestalt-laser:dcos-${ver}")
       laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-js:dcos-${ver}")

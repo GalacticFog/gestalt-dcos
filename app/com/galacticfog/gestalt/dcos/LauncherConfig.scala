@@ -177,7 +177,7 @@ object LauncherConfig {
     case object POLICY           extends FrameworkService with ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
     case object API_GATEWAY      extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
 
-    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui";             val cpu = 0.25; val mem = 128;  val port = 80}
+    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object DataFromName {
       private[this] val dataRegex = "data-([0-9]+)".r
@@ -215,7 +215,7 @@ object LauncherConfig {
     case Services.POLICY              => s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}"
     case Services.LASER               => s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}"
     case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}"
-    case Services.UI                  => s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}"
+    case Services.UI                  => s"galacticfog/gestalt-ui-react:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}"
