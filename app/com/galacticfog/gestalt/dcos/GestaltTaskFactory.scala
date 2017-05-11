@@ -86,8 +86,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
      TLD match {
       case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> s"${service.name}.${tld}",
-        "HAPROXY_GROUP" -> "external"
+        "HAPROXY_0_VHOST" -> {service match {
+          case UI => tld
+          case _  => service.name + "." + tld
+        }},
+        "HAPROXY_0_GROUP" -> "external"
       )
       case None => Map(
         "HAPROXY_GROUP" -> "external"
@@ -110,10 +113,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case SECURITY    => getSecurity(globals)
       case META        => getMeta(globals)
       case UI          => getUI(globals)
-      case KONG        => getKong(globals)
-      case API_GATEWAY => getApiGateway(globals)
-      case LASER       => getLaser(globals)
-      case POLICY      => getPolicy(globals)
     }
   }
 
@@ -225,183 +224,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getKong(globals: JsValue): AppSpec = {
-    val dbConfig = GlobalDBConfig(globals)
-    appSpec(KONG).copy(
-      env = Map(
-        "POSTGRES_HOST"     -> s"${dbConfig.hostname}",
-        "POSTGRES_PORT"     -> s"${dbConfig.port}",
-        "POSTGRES_DATABASE" -> s"${dbConfig.prefix}kong",
-        "POSTGRES_USER"     -> s"${dbConfig.username}",
-        "POSTGRES_PASSWORD" -> s"${dbConfig.password}"
-      ),
-      ports = Some(Seq(
-        PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> vipLabel(KONG_GATEWAY))),
-        PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> vipLabel(KONG_SERVICE)))
-      )),
-      healthChecks = Seq(HealthCheck(portIndex = 1, protocol = MARATHON_HTTP, path = Some("/cluster"))),
-      readinessCheck = None,
-      labels = getVhostLabels(KONG) ++ Map(
-        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n",
-        "HAPROXY_1_ENABLED" -> "false"
-      )
-    )
-  }
-
-  private[this] def getPolicy(globals: JsValue): AppSpec = {
-    val secConfig = (globals \ "security")
-    appSpec(POLICY).copy(
-      args = Some(Seq(s"-J-Xmx${(POLICY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
-      env = Map(
-        "LAMBDA_HOST"     -> serviceHostname(LASER),
-        "LAMBDA_PORT"     -> vipPort(LASER),
-        "LAMBDA_USER"     -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-        "LAMBDA_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-        //
-        "META_PROTOCOL" -> "http",
-        "META_HOST" -> serviceHostname(META),
-        "META_PORT" -> vipPort(META),
-        "META_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-        //
-        "BINDING_UPDATE_SECONDS" -> "20",
-        "CONNECTION_CHECK_TIME_SECONDS" -> "60",
-        "POLICY_MAX_WORKERS" -> "20",
-        "POLICY_MIN_WORKERS" -> "5",
-        //
-        "RABBIT_HOST" -> serviceHostname(RABBIT_AMQP),
-        "RABBIT_PORT" -> vipPort(RABBIT_AMQP),
-        "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
-        "RABBIT_ROUTE" -> "policy"
-      ),
-      ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(POLICY)))
-      )),
-      healthChecks = Seq(HealthCheck(
-        path = Some("/health"),
-        protocol = MARATHON_HTTP,
-        portIndex = 0
-      )),
-      readinessCheck = Some(MarathonReadinessCheck(
-        path = "/health",
-        portName = "http-api",
-        intervalSeconds = 5
-      ))
-    )
-  }
-
-  private[this] def getLaser(globals: JsValue): AppSpec = {
-    val laserSchedulerFrameworkName = {
-      launcherConfig.marathon.appGroup.replaceAll("[/]","-") + "-" + "laser"
-    }
-    val dbConfig = GlobalDBConfig(globals)
-    val secConfig = (globals \ "security")
-
-
-    val enabledRuntimes = launcherConfig.laser.enabledRuntimes.zipWithIndex.foldLeft(Map.empty[String,String]){
-      case (vars, (runtime,i)) => vars ++ Map(
-        s"EXECUTOR_${i}_NAME"    -> runtime.name,
-        s"EXECUTOR_${i}_RUNTIME" -> runtime.runtime,
-        s"EXECUTOR_${i}_IMAGE"   -> runtime.image,
-        s"EXECUTOR_${i}_CMD"     -> runtime.cmd
-      )
-    }
-
-    appSpec(LASER).copy(
-      args = None,
-      cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-laser -Dhttp.port=$PORT0 -J-Xmx" + (LASER.mem / launcherConfig.marathon.jvmOverheadFactor).toInt + "m"),
-      env = gestaltSecurityEnvVars(globals) ++ enabledRuntimes ++ Map(
-        "LAMBDA_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
-        "LAMBDA_DATABASE_PORT"     -> s"${dbConfig.port}",
-        "LAMBDA_DATABASE_NAME"     -> s"${dbConfig.prefix}laser",
-        "LAMBDA_DATABASE_USER"     -> s"${dbConfig.username}",
-        "LAMBDA_DATABASE_PASSWORD" -> s"${dbConfig.password}",
-        "LAMBDA_FLYWAY_MIGRATE"    -> "true",
-        //
-        "META_PROTOCOL" -> "http",
-        "META_HOSTNAME" -> serviceHostname(META),
-        "META_PORT"     -> vipPort(META),
-        "META_USER"     -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-        //
-        "RABBIT_HOST" -> serviceHostname(RABBIT_AMQP),
-        "RABBIT_PORT" -> vipPort(RABBIT_AMQP),
-        "RABBIT_MONITOR_EXCHANGE" -> "lambda-monitor-exchange",
-        "RABBIT_MONITOR_TOPIC" -> "monitor",
-        "RABBIT_RESPONSE_EXCHANGE" -> "response",
-        "RABBIT_RESPONSE_TOPIC" -> "response",
-        "RABBIT_LISTEN_ROUTE" -> "lambda-input",
-        "RABBIT_EXCHANGE" -> "lambda-executor-exchange",
-        //
-        "MANAGEMENT_PROTOCOL" -> "ws",
-        "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
-        "SCALE_DOWN_TIME_SECONDS" -> launcherConfig.laser.scaleDownTimeout.toString,
-        "MIN_PORT_RANGE" -> launcherConfig.laser.minPortRange.toString,
-        "MAX_PORT_RANGE" -> launcherConfig.laser.maxPortRange.toString,
-        //
-        "MAX_LAMBDAS_PER_OFFER" -> "6",
-        "MESOS_MASTER_CONNECTION" -> "zk://master.mesos:2181/mesos",
-        "MESOS_NATIVE_JAVA_LIBRARY" -> "/usr/lib/libmesos.so",
-        "MESOS_NATIVE_LIBRARY" -> "/usr/lib/libmesos.so",
-        "MESOS_ROLE" -> "*",
-        "SCHEDULER_NAME" -> laserSchedulerFrameworkName,
-        "OFFER_TTL" -> "5",
-        //
-        "EXECUTOR_HEARTBEAT_MILLIS" -> "1000",
-        "EXECUTOR_HEARTBEAT_TIMEOUT" -> "5000",
-        "CACHE_CHECK_SECONDS" -> "30",
-        "CACHE_EXPIRE_SECONDS" -> "900"
-      ),
-      network = ContainerInfo.DockerInfo.Network.HOST,
-      ports = Some(Seq(
-        PortSpec(number = 0, name = "http-api", labels = Map("VIP_0" -> vipLabel(LASER))),
-        PortSpec(number = 0, name = "libprocess", labels = Map())
-      )),
-      healthChecks = Seq(HealthCheck(
-        path = Some("/health"),
-        protocol = MARATHON_HTTP,
-        portIndex = 0
-      )),
-      readinessCheck = Some(MarathonReadinessCheck(
-        path = "/health",
-        portName = "http-api",
-        intervalSeconds = 5
-      )),
-      labels = getVhostLabels(LASER) ++ Map(
-        "DCOS_PACKAGE_FRAMEWORK_NAME" -> laserSchedulerFrameworkName,
-        "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
-      )
-    )
-  }
-
-  private[this] def getApiGateway(globals: JsValue): AppSpec = {
-    val dbConfig = GlobalDBConfig(globals)
-    appSpec(API_GATEWAY).copy(
-      args = Some(Seq(s"-J-Xmx${(API_GATEWAY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
-      env = gestaltSecurityEnvVars(globals) ++ Map(
-        "GATEWAY_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
-        "GATEWAY_DATABASE_PORT"     -> s"${dbConfig.port}",
-        "GATEWAY_DATABASE_NAME"     -> s"${dbConfig.prefix}apigateway",
-        "GATEWAY_DATABASE_PASSWORD" -> s"${dbConfig.password}",
-        "GATEWAY_DATABASE_USER"     -> s"${dbConfig.username}",
-        "GATEWAY_DATABASE_MIGRATE"  -> "true"
-      ),
-      ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(API_GATEWAY)))
-      )),
-      healthChecks = Seq(HealthCheck(
-        path = Some("/health"),
-        protocol = MARATHON_HTTP,
-        portIndex = 0
-      )),
-      readinessCheck = Some(MarathonReadinessCheck(
-        path = "/health",
-        portName = "http-api",
-        intervalSeconds = 5
-      ))
-    )
-  }
-
   private[this] def getUI(globals: JsValue): AppSpec = {
     appSpec(UI).copy(
       env = Map(
@@ -443,6 +265,182 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       ))
     )
   }
+
+//  private[this] def getKong(globals: JsValue): AppSpec = {
+//    val dbConfig = GlobalDBConfig(globals)
+//    appSpec(KONG).copy(
+//      env = Map(
+//        "POSTGRES_HOST"     -> s"${dbConfig.hostname}",
+//        "POSTGRES_PORT"     -> s"${dbConfig.port}",
+//        "POSTGRES_DATABASE" -> s"${dbConfig.prefix}kong",
+//        "POSTGRES_USER"     -> s"${dbConfig.username}",
+//        "POSTGRES_PASSWORD" -> s"${dbConfig.password}"
+//      ),
+//      ports = Some(Seq(
+//        PortSpec(number = 8000, name = "gateway-api", labels = Map("VIP_0" -> vipLabel(KONG_GATEWAY))),
+//        PortSpec(number = 8001, name = "service-api", labels = Map("VIP_0" -> vipLabel(KONG_SERVICE)))
+//      )),
+//      healthChecks = Seq(HealthCheck(portIndex = 1, protocol = MARATHON_HTTP, path = Some("/cluster"))),
+//      readinessCheck = None,
+//      labels = getVhostLabels(KONG) ++ Map(
+//        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n",
+//        "HAPROXY_1_ENABLED" -> "false"
+//      )
+//    )
+//  }
+
+//  private[this] def getPolicy(globals: JsValue): AppSpec = {
+//    val secConfig = (globals \ "security")
+//    appSpec(POLICY).copy(
+//      args = Some(Seq(s"-J-Xmx${(POLICY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+//      env = Map(
+//        "LAMBDA_HOST"     -> serviceHostname(LASER),
+//        "LAMBDA_PORT"     -> vipPort(LASER),
+//        "LAMBDA_USER"     -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+//        "LAMBDA_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+//        //
+//        "META_PROTOCOL" -> "http",
+//        "META_HOST" -> serviceHostname(META),
+//        "META_PORT" -> vipPort(META),
+//        "META_USER" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+//        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+//        //
+//        "BINDING_UPDATE_SECONDS" -> "20",
+//        "CONNECTION_CHECK_TIME_SECONDS" -> "60",
+//        "POLICY_MAX_WORKERS" -> "20",
+//        "POLICY_MIN_WORKERS" -> "5",
+//        //
+//        "RABBIT_HOST" -> serviceHostname(RABBIT_AMQP),
+//        "RABBIT_PORT" -> vipPort(RABBIT_AMQP),
+//        "RABBIT_EXCHANGE" -> RABBIT_EXCHANGE,
+//        "RABBIT_ROUTE" -> "policy"
+//      ),
+//      ports = Some(Seq(
+//        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(POLICY)))
+//      )),
+//      healthChecks = Seq(HealthCheck(
+//        path = Some("/health"),
+//        protocol = MARATHON_HTTP,
+//        portIndex = 0
+//      )),
+//      readinessCheck = Some(MarathonReadinessCheck(
+//        path = "/health",
+//        portName = "http-api",
+//        intervalSeconds = 5
+//      ))
+//    )
+//  }
+
+//  private[this] def getLaser(globals: JsValue): AppSpec = {
+//    val laserSchedulerFrameworkName = {
+//      launcherConfig.marathon.appGroup.replaceAll("[/]","-") + "-" + "laser"
+//    }
+//    val dbConfig = GlobalDBConfig(globals)
+//    val secConfig = (globals \ "security")
+//
+//    val enabledRuntimes = launcherConfig.laser.enabledRuntimes.zipWithIndex.foldLeft(Map.empty[String,String]){
+//      case (vars, (runtime,i)) => vars ++ Map(
+//        s"EXECUTOR_${i}_NAME"    -> runtime.name,
+//        s"EXECUTOR_${i}_RUNTIME" -> runtime.runtime,
+//        s"EXECUTOR_${i}_IMAGE"   -> runtime.image,
+//        s"EXECUTOR_${i}_CMD"     -> runtime.cmd
+//      )
+//    }
+//
+//    appSpec(LASER).copy(
+//      args = None,
+//      cmd = Some("LIBPROCESS_PORT=$PORT1 ./bin/gestalt-laser -Dhttp.port=$PORT0 -J-Xmx" + (LASER.mem / launcherConfig.marathon.jvmOverheadFactor).toInt + "m"),
+//      env = gestaltSecurityEnvVars(globals) ++ enabledRuntimes ++ Map(
+//        "LAMBDA_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
+//        "LAMBDA_DATABASE_PORT"     -> s"${dbConfig.port}",
+//        "LAMBDA_DATABASE_NAME"     -> s"${dbConfig.prefix}laser",
+//        "LAMBDA_DATABASE_USER"     -> s"${dbConfig.username}",
+//        "LAMBDA_DATABASE_PASSWORD" -> s"${dbConfig.password}",
+//        "LAMBDA_FLYWAY_MIGRATE"    -> "true",
+//        //
+//        "META_PROTOCOL" -> "http",
+//        "META_HOSTNAME" -> serviceHostname(META),
+//        "META_PORT"     -> vipPort(META),
+//        "META_USER"     -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+//        "META_PASSWORD" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+//        //
+//        "RABBIT_HOST" -> serviceHostname(RABBIT_AMQP),
+//        "RABBIT_PORT" -> vipPort(RABBIT_AMQP),
+//        "RABBIT_MONITOR_EXCHANGE" -> "lambda-monitor-exchange",
+//        "RABBIT_MONITOR_TOPIC" -> "monitor",
+//        "RABBIT_RESPONSE_EXCHANGE" -> "response",
+//        "RABBIT_RESPONSE_TOPIC" -> "response",
+//        "RABBIT_LISTEN_ROUTE" -> "lambda-input",
+//        "RABBIT_EXCHANGE" -> "lambda-executor-exchange",
+//        //
+//        "MANAGEMENT_PROTOCOL" -> "ws",
+//        "MIN_COOL_EXECUTORS" -> launcherConfig.laser.minCoolExecutors.toString,
+//        "SCALE_DOWN_TIME_SECONDS" -> launcherConfig.laser.scaleDownTimeout.toString,
+//        "MIN_PORT_RANGE" -> launcherConfig.laser.minPortRange.toString,
+//        "MAX_PORT_RANGE" -> launcherConfig.laser.maxPortRange.toString,
+//        //
+//        "MAX_LAMBDAS_PER_OFFER" -> "6",
+//        "MESOS_MASTER_CONNECTION" -> "zk://master.mesos:2181/mesos",
+//        "MESOS_NATIVE_JAVA_LIBRARY" -> "/usr/lib/libmesos.so",
+//        "MESOS_NATIVE_LIBRARY" -> "/usr/lib/libmesos.so",
+//        "MESOS_ROLE" -> "*",
+//        "SCHEDULER_NAME" -> laserSchedulerFrameworkName,
+//        "OFFER_TTL" -> "5",
+//        //
+//        "EXECUTOR_HEARTBEAT_MILLIS" -> "1000",
+//        "EXECUTOR_HEARTBEAT_TIMEOUT" -> "5000",
+//        "CACHE_CHECK_SECONDS" -> "30",
+//        "CACHE_EXPIRE_SECONDS" -> "900"
+//      ),
+//      network = ContainerInfo.DockerInfo.Network.HOST,
+//      ports = Some(Seq(
+//        PortSpec(number = 0, name = "http-api", labels = Map("VIP_0" -> vipLabel(LASER))),
+//        PortSpec(number = 0, name = "libprocess", labels = Map())
+//      )),
+//      healthChecks = Seq(HealthCheck(
+//        path = Some("/health"),
+//        protocol = MARATHON_HTTP,
+//        portIndex = 0
+//      )),
+//      readinessCheck = Some(MarathonReadinessCheck(
+//        path = "/health",
+//        portName = "http-api",
+//        intervalSeconds = 5
+//      )),
+//      labels = getVhostLabels(LASER) ++ Map(
+//        "DCOS_PACKAGE_FRAMEWORK_NAME" -> laserSchedulerFrameworkName,
+//        "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
+//      )
+//    )
+//  }
+
+//  private[this] def getApiGateway(globals: JsValue): AppSpec = {
+//    val dbConfig = GlobalDBConfig(globals)
+//    appSpec(API_GATEWAY).copy(
+//      args = Some(Seq(s"-J-Xmx${(API_GATEWAY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+//      env = gestaltSecurityEnvVars(globals) ++ Map(
+//        "GATEWAY_DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
+//        "GATEWAY_DATABASE_PORT"     -> s"${dbConfig.port}",
+//        "GATEWAY_DATABASE_NAME"     -> s"${dbConfig.prefix}apigateway",
+//        "GATEWAY_DATABASE_PASSWORD" -> s"${dbConfig.password}",
+//        "GATEWAY_DATABASE_USER"     -> s"${dbConfig.username}",
+//        "GATEWAY_DATABASE_MIGRATE"  -> "true"
+//      ),
+//      ports = Some(Seq(
+//        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(API_GATEWAY)))
+//      )),
+//      healthChecks = Seq(HealthCheck(
+//        path = Some("/health"),
+//        protocol = MARATHON_HTTP,
+//        portIndex = 0
+//      )),
+//      readinessCheck = Some(MarathonReadinessCheck(
+//        path = "/health",
+//        portName = "http-api",
+//        intervalSeconds = 5
+//      ))
+//    )
+//  }
 
   implicit private[this] def getVariables(env: Map[String,String]): Environment = {
     val builder = Environment.newBuilder()

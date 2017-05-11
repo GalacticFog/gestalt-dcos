@@ -107,18 +107,6 @@ object GestaltMarathonLauncher {
 
     case object RetrievingAPIKeys extends LauncherState
 
-    case object LaunchingKong extends LaunchingState {
-      val targetService = KONG
-    }
-
-    case object LaunchingApiGateway extends LaunchingState {
-      val targetService = API_GATEWAY
-    }
-
-    case object LaunchingLaser extends LaunchingState {
-      val targetService = LASER
-    }
-
     case object LaunchingMeta extends LaunchingState {
       val targetService = META
     }
@@ -129,14 +117,8 @@ object GestaltMarathonLauncher {
 
     case object ProvisioningMeta extends LauncherState
 
-
-
     case object LaunchingUI extends LaunchingState {
       val targetService = UI
-    }
-
-    case object LaunchingPolicy extends LaunchingState {
-      val targetService = POLICY
     }
 
     case object AllServicesLaunched extends LauncherState
@@ -408,54 +390,43 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     ws.url(url).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
   }
 
-  private[this] def provisionMetaProviders(metaUrl: String, kongGatewayUrl: String, apiKey: GestaltAPIKey): Seq[Future[UUID]] = {
+  private[this] def provisionMetaProviders(metaUrl: String, apiKey: GestaltAPIKey): Seq[Future[UUID]] = {
     val providerUrl = s"http://${metaUrl}/root/providers"
     val marathonProviderJson = Json.parse(
       s"""
          |{
-         |  "description": "",
-         |  "resource_type": "Gestalt::Configuration::Provider::Marathon",
+         |  "description": "Base DC/OS cluster for the gestalt-framework deployment",
+         |  "name": "default-dcos",
          |  "properties": {
-         |    "environments": [],
          |    "config": {
-         |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
-         |      "url": "${marathonBaseUrl}",
+         |      "auth": {
+         |        "scheme": "Basic",
+         |        "username": "none",
+         |        "password": "none"
+         |      },
+         |      "env": {
+         |        "private": {},
+         |        "public": {}
+         |      },
+         |      "external_protocol": "http",
          |      "networks": [
-         |        { "name": "HOST" },
-         |        { "name": "BRIDGE" }
+         |        {
+         |          "name": "HOST"
+         |        },
+         |        {
+         |          "name": "BRIDGE"
+         |        }
          |      ],
-         |      "extra": {}
+         |      "url": "${marathonBaseUrl}"
          |    },
-         |    "locations": [
-         |      { "name": "dcos", "enabled": true }
-         |    ]
+         |    "locations": [],
+         |    "services": []
          |  },
-         |  "name": "base-marathon"
-         |}
-            """.stripMargin)
-    // TODO: this needs testing, almost certainly not correct as-is
-    val kongExternalAccess = nextStateData.statuses(KONG).vhosts.headOption.getOrElse(s"http://${kongGatewayUrl}") // assume local
-    val kongProviderJson = Json.parse(
-      s"""
-         |{
-         |  "description": "",
-         |  "resource_type": "Gestalt::Configuration::Provider::ApiGateway",
-         |  "properties": {
-         |    "environments": [],
-         |    "config": {
-         |      "auth": { "scheme": "Basic", "username": "username", "password": "password" },
-         |      "url": "${gtf.vipDestination(KONG_SERVICE)}",
-         |      "extra": "${kongExternalAccess}"
-         |    },
-         |    "locations": [
-         |      { "name": "dcos", "enabled": true }
-         |    ]
-         |  },
-         |  "name": "base-kong"
+         |  "resource_type": "Gestalt::Configuration::Provider::CaaS::DCOS"
          |}
             """.stripMargin)
     log.info(s"provisioning providers in meta at {}",providerUrl)
-    Seq(marathonProviderJson, kongProviderJson).map { providerJson =>
+    Seq(marathonProviderJson).map { providerJson =>
       val name = (providerJson \ "name").as[String]
       resourceExistsInList(providerUrl, apiKey, name) flatMap {
         case Some(js) => Future.fromTry(getId(js))
@@ -598,7 +569,14 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
-  private[this] def provisionEndpoint(metaUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, name: String, lambdaId: UUID, handler: String): Future[UUID] = {
+  private[this] def provisionEndpoint( metaUrl: String,
+                                       apiKey: GestaltAPIKey,
+                                       parentEnv: UUID,
+                                       gatewayProvider: UUID,
+                                       kongProvider: UUID,
+                                       name: String,
+                                       lambdaId: UUID,
+                                       handler: String ): Future[UUID] = {
     val url = s"http://${metaUrl}/root/environments/$parentEnv/apiendpoints"
     resourceExistsInList(url, apiKey, name) flatMap {
       case Some(js) => Future.fromTry(getId(js))
@@ -630,15 +608,15 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
-  private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, kongProvider: UUID): Future[MetaProvisioned.type] = {
+  private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, laserProvider: UUID, gatewayProvider: UUID, kongProvider: UUID): Future[MetaProvisioned.type] = {
     val metaApiUrl = "http://" + config.vipHostname(META) + ":" + META.port
     for {
       wrkId <- provisionMetaDemoWorkspace(metaUrl, apiKey)
       envId <- provisionMetaDemoEnvironment(metaUrl, apiKey, wrkId)
-      Seq(setupLambdaId,tdownLambdaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, kongProvider)
+      Seq(setupLambdaId,tdownLambdaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, laserProvider)
       _ <- Future.sequence(Seq(
-        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-setup",    lid, "demo-setup.js;run")),
-        tdownLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, "demo-teardown", lid, "demo-teardown.js;run"))
+        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo-setup",    lid, "demo-setup.js;run")),
+        tdownLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo-teardown", lid, "demo-teardown.js;run"))
       ))
     } yield MetaProvisioned
   }
@@ -832,13 +810,13 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         }
       }
     case _ -> ProvisioningMeta =>
-      (nextStateData.getUrl(META), nextStateData.getUrl(KONG), nextStateData.adminKey) match {
-        case (Seq(metaUrl),Seq(kongGatewayUrl,kongServiceUrl),Some(apiKey)) =>
+      (nextStateData.getUrl(META), nextStateData.adminKey) match {
+        case (Seq(metaUrl),Some(apiKey)) =>
           val provSteps = for {
-            Seq(dcosProviderId, kongProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,kongGatewayUrl,apiKey))
+            Seq(dcosProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,apiKey))
             stageTwo <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
-              provisionDemo(metaUrl,apiKey,kongProviderId),
+//              provisionDemo(metaUrl,apiKey,???,???,???),
               provisionMetaLicense(metaUrl,apiKey)
             ))
           } yield stageTwo
@@ -849,9 +827,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
               // keep retrying until our time runs out and we leave this state
               sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
           }
-        case (Seq(),_,_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
-        case (_,_,None)   => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
-        case _ => self ! ErrorEvent("while provisioning resources in meta, missing kong URL after launching kong", Some(SyncingMeta.toString))
+        case (Seq(),_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (_,None)   => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
   }
 

@@ -86,7 +86,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY
+        RABBIT, SECURITY, META, UI
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }
@@ -113,7 +113,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = false)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY
+        RABBIT, SECURITY, META, UI
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }
@@ -140,7 +140,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY, DATA(0), DATA(1), DATA(2), DATA(3)
+        RABBIT, SECURITY, META, UI, DATA(0), DATA(1), DATA(2), DATA(3)
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }
@@ -180,16 +180,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
-          case Some("base-marathon")  =>
+          case Some("default-dcos")  =>
             createdBaseDCOS.getAndIncrement()
             Created(Json.obj(
               "id" -> UUID.randomUUID()
             ))
-          case Some("base-kong")      =>
-            createdBaseKong.getAndIncrement()
-            Created(Json.obj(
-            "id" -> kongProvId
-          ))
+//          case Some("base-kong")      =>
+//            createdBaseKong.getAndIncrement()
+//            Created(Json.obj(
+//            "id" -> kongProvId
+//          ))
           case _ => BadRequest("")
         }
       }
@@ -299,8 +299,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         stateData = ServiceData(
           statuses = Map(
             SECURITY -> ServiceInfo(SECURITY, Seq.empty, Some("security.test"), Seq("9455"), RUNNING),
-            META     -> ServiceInfo(META, Seq.empty, Some(metaHost), Seq(metaPort), RUNNING),
-            KONG     -> ServiceInfo(KONG, Seq.empty, Some("kong.test"), Seq("8000", "8001"), RUNNING)
+            META     -> ServiceInfo(META, Seq.empty, Some(metaHost), Seq(metaPort), RUNNING)
           ),
           adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
           error = None,
@@ -313,18 +312,18 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
       expectMsg(Transition(launcher, ProvisioningMeta, launcher.underlyingActor.nextState(ProvisioningMeta)))
 
-      metaProvisionProviders.timeCalled     must_== 4 // two existence checks, two creations
+      metaProvisionProviders.timeCalled     must_== 2 // two existence checks, two creations
       createdBaseDCOS.get() must_== 1
-      createdBaseKong.get() must_== 1
+      createdBaseKong.get() must_== 0
       metaProvisionLicense.timeCalled       must_== 1
-      metaProvisionDemoWrk.timeCalled       must_== 1
-      metaProvisionDemoEnv.timeCalled       must_== 1
-      metaProvisionDemoLambdas.timeCalled   must_== 2
-      createdSetupLambda.get() must_== 1
-      createdTdownLambda.get() must_== 1
-      metaProvisionDemoEndpoints.timeCalled must_== 2
-      createdSetupLambdaEndpoint.get() must_== 1
-      createdTdownLambdaEndpoint.get() must_== 1
+      metaProvisionDemoWrk.timeCalled       must_== 0
+      metaProvisionDemoEnv.timeCalled       must_== 0
+      metaProvisionDemoLambdas.timeCalled   must_== 0
+      createdSetupLambda.get() must_== 0
+      createdTdownLambda.get() must_== 0
+      metaProvisionDemoEndpoints.timeCalled must_== 0
+      createdSetupLambdaEndpoint.get() must_== 0
+      createdTdownLambdaEndpoint.get() must_== 0
       metaRenameRoot.timeCalled must_== 1
       renamedRootOrg.get()      must_== 1
     }

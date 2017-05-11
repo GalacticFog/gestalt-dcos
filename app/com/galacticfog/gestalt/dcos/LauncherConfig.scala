@@ -62,18 +62,21 @@ class LauncherConfig @Inject()(config: Configuration) {
   import GestaltMarathonLauncher._
   import GestaltMarathonLauncher.States._
 
-  val LAUNCH_ORDER: Seq[LauncherState] = (if (database.provision) {
-    Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
-  } else Seq.empty) ++ Seq(
-    LaunchingRabbit,
-    LaunchingSecurity, RetrievingAPIKeys,
-    LaunchingKong, LaunchingApiGateway,
-    LaunchingLaser,
-    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
-    LaunchingPolicy,
-    LaunchingUI,
-    AllServicesLaunched
-  )
+  val LAUNCH_ORDER: Seq[LauncherState] = {
+    val dbs = if (database.provision) {
+      Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
+    } else Seq.empty
+    dbs ++ Seq(
+      LaunchingRabbit,
+      LaunchingSecurity, RetrievingAPIKeys,
+//      LaunchingKong, LaunchingApiGateway,
+//      LaunchingLaser,
+      LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
+//      LaunchingPolicy,
+      LaunchingUI,
+      AllServicesLaunched
+    )
+  }
 
   val provisionedServices: Seq[FrameworkService] = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
 
@@ -107,7 +110,7 @@ class LauncherConfig @Inject()(config: Configuration) {
         ensVer => service match {
           case DATA(_) =>
             s"galacticfog/postgres_repl:dcos-${ensVer}"
-          case RABBIT | KONG =>
+          case RABBIT =>
             s"galacticfog/${name}:dcos-${ensVer}"
           case _ =>
             s"galacticfog/gestalt-${name}:dcos-${ensVer}"
@@ -157,7 +160,6 @@ object LauncherConfig {
   }
 
   sealed trait FrameworkService extends Dockerable {
-
     def cpu: Double
     def mem: Int
   }
@@ -169,14 +171,13 @@ object LauncherConfig {
 
   object Services {
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
-    case object KONG             extends FrameworkService                      with Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
+    case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 1.00; val mem = 512;  val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
     case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 1.50; val mem = 1536; val port = 14374}
-    case object LASER            extends FrameworkService with ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
-    case object POLICY           extends FrameworkService with ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
-    case object API_GATEWAY      extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
-
+    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
+    case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
+    case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
     case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object DataFromName {
@@ -192,7 +193,7 @@ object LauncherConfig {
     case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
     case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
 
-    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, UI )
+    val allServices: Seq[FrameworkService] = Seq( RABBIT, SECURITY, META, UI )
 
     def fromName(serviceName: String): Option[FrameworkService] = allServices.find(_.name == serviceName) orElse DataFromName.unapply(serviceName)
   }
