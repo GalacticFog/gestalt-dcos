@@ -90,7 +90,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           case UI => tld
           case _  => service.name + "." + tld
         }},
-        "HAPROXY_0_GROUP" -> "external"
+        "HAPROXY_GROUP" -> "external"
       )
       case None => Map(
         "HAPROXY_GROUP" -> "external"
