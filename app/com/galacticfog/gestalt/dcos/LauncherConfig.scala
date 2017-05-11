@@ -71,7 +71,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     LaunchingLaser,
     LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
     LaunchingPolicy,
-    LaunchingApiProxy, LaunchingUI,
+    LaunchingUI,
     AllServicesLaunched
   )
 
@@ -176,7 +176,7 @@ object LauncherConfig {
     case object LASER            extends FrameworkService with ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
     case object POLICY           extends FrameworkService with ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
     case object API_GATEWAY      extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
-    case object API_PROXY        extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-proxy";      val cpu = 0.50; val mem = 128;  val port = 81}
+
     case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui";             val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object DataFromName {
@@ -192,7 +192,7 @@ object LauncherConfig {
     case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
     case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
 
-    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, API_PROXY, UI )
+    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, UI )
 
     def fromName(serviceName: String): Option[FrameworkService] = allServices.find(_.name == serviceName) orElse DataFromName.unapply(serviceName)
   }
@@ -215,7 +215,6 @@ object LauncherConfig {
     case Services.POLICY              => s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}"
     case Services.LASER               => s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}"
     case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}"
-    case Services.API_PROXY           => s"galacticfog/gestalt-api-proxy:dcos-${BuildInfo.version}"
     case Services.UI                  => s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}"

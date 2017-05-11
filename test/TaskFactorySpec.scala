@@ -47,7 +47,6 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals) must haveImage("test-meta:tag")
       gtf.getAppSpec(POLICY, globals) must haveImage("test-policy:tag")
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage("test-api-gateway:tag")
-      gtf.getAppSpec(API_PROXY, globals) must haveImage("test-api-proxy:tag")
       gtf.getAppSpec(UI, globals) must haveImage("test-ui:tag")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage("test-laser:tag")
@@ -80,7 +79,6 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
       gtf.getAppSpec(POLICY, globals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
-      gtf.getAppSpec(API_PROXY, globals) must haveImage("galacticfog/gestalt-api-proxy:dcos-9.10.11.12")
       gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui:dcos-9.10.11.12")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
@@ -112,7 +110,6 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(META, globals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
       gtf.getAppSpec(POLICY, globals)       must haveImage(s"galacticfog/gestalt-policy:dcos-${ver}")
       gtf.getAppSpec(API_GATEWAY, globals)  must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
-      gtf.getAppSpec(API_PROXY, globals)    must haveImage(s"galacticfog/gestalt-api-proxy:dcos-${ver}")
       gtf.getAppSpec(UI, globals)           must haveImage(s"galacticfog/gestalt-ui:dcos-${ver}")
       val laser = gtf.getAppSpec(LASER, globals)
       laser must haveImage(s"galacticfog/gestalt-laser:dcos-${ver}")
@@ -160,7 +157,7 @@ class TaskFactorySpec extends Specification {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY, DATA(0), DATA(1)
+        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY, DATA(0), DATA(1)
       )) {
         svc => gtf.getAppSpec(svc, Json.obj()).healthChecks must contain(marathonHealthChecks)
       }

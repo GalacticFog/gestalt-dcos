@@ -109,7 +109,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case RABBIT      => getRabbit(globals)
       case SECURITY    => getSecurity(globals)
       case META        => getMeta(globals)
-      case API_PROXY   => getApiProxy(globals)
       case UI          => getUI(globals)
       case KONG        => getKong(globals)
       case API_GATEWAY => getApiGateway(globals)
@@ -403,32 +402,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getApiProxy(globals: JsValue): AppSpec = {
-    appSpec(API_PROXY).copy(
-      env = Map(
-        "API_URL" -> s"http://${vipDestination(META)}",
-        "SEC_URL" -> s"http://${vipDestination(SECURITY)}"
-      ),
-      ports = Some(Seq(
-        PortSpec(number = 8888, name = "http", labels = Map("VIP_0" -> vipLabel(API_PROXY)))
-      )),
-      healthChecks = Seq(HealthCheck(
-        path = Some("/service-status"),
-        protocol = MARATHON_HTTP,
-        portIndex = 0
-      )),
-      readinessCheck = Some(MarathonReadinessCheck(
-        path = "/service-status",
-        portName = "http",
-        intervalSeconds = 5
-      ))
-    )
-  }
-
   private[this] def getUI(globals: JsValue): AppSpec = {
     appSpec(UI).copy(
       env = Map(
-        "API_URL" -> s"http://${vipDestination(API_PROXY)}"
+        "META_API_URL" -> s"http://${vipDestination(META)}",
+        "SEC_API_URL"  -> s"http://${vipDestination(SECURITY)}"
       ),
       ports = Some(Seq(
         PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> vipLabel(UI)))

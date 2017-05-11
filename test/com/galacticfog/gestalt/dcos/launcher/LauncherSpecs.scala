@@ -86,7 +86,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY
+        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }
@@ -113,7 +113,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = false)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY
+        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }
@@ -140,7 +140,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
       Result.foreach(Seq(
-        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, API_PROXY, UI, POLICY, DATA(0), DATA(1), DATA(2), DATA(3)
+        RABBIT, SECURITY, KONG, API_GATEWAY, LASER, META, UI, POLICY, DATA(0), DATA(1), DATA(2), DATA(3)
       )) {
         svc => there was one(mockSSEClient).killApp(svc)
       }

@@ -129,9 +129,7 @@ object GestaltMarathonLauncher {
 
     case object ProvisioningMeta extends LauncherState
 
-    case object LaunchingApiProxy extends LaunchingState {
-      val targetService = API_PROXY
-    }
+
 
     case object LaunchingUI extends LaunchingState {
       val targetService = UI

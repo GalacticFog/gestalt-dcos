@@ -42,7 +42,6 @@ class TaskFactoryEnvSpec extends Specification {
       laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:dcos-${ensver}"))
 
       gtf.getAppSpec(API_GATEWAY, globals) must haveImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:dcos-${ensver}"))
-      gtf.getAppSpec(API_PROXY, globals)   must haveImage(env("GESTALT_API_PROXY_IMG").getOrElse(s"galacticfog/gestalt-api-proxy:dcos-${ensver}"))
       gtf.getAppSpec(UI, globals)          must haveImage(env("GESTALT_UI_IMG").getOrElse(s"galacticfog/gestalt-ui:dcos-${ensver}"))
     }
 
