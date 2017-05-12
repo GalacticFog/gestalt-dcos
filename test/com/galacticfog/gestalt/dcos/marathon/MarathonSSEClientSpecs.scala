@@ -99,23 +99,73 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
       ))
     }
 
+    def mockMarVhostApp(lbls: (String,String)*): MarathonAppPayload = {
+      val mockApp = mock[MarathonAppPayload]
+      mockApp.labels returns Map(lbls:_*) ++ Map("HAPROXY_GROUP" -> "external")
+      mockApp
+    }
+
+    "appropriately gather vhosts and vpaths" in {
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_PATH"  -> "/blerg"
+      )) must containTheSameElementsAs(Seq("https://foo.bar/blerg"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_3_VHOST" -> "foo.org",
+        "HAPROXY_1_VHOST" -> "bar.com"
+      )) must containTheSameElementsAs(Seq("https://bar.com","https://foo.org"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_7_VHOST" -> "bloop.io",
+        "HAPROXY_1_PATH" -> "nope"
+      )) must containTheSameElementsAs(Seq("https://bloop.io"))
+
+    }
+
     "not gather service ports with HAPROXY_n_ENABLED false" in new WithConfig("marathon.lb-url" -> "https://lb.cluster.myco.com") {
-      val client = injector.instanceOf[MarathonSSEClient]
-//      val info = client.toServiceInfo(
-//        service = KONG,
-//        app = baseFakeSec.copy(
-//          labels = Map(
-//            "HAPROXY_GROUP" -> "external",
-//            "HAPROXY_1_ENABLED" -> "false"
-//          )
-//        )
-//      )
-//      info.vhosts must containAllOf(Seq(
-//        "https://lb.cluster.myco.com:8001"
-//      ))
-//      info.vhosts must not contain("https://lb.cluster.myco.com:8002")
-      ko("may not need this anymore")
-    }.pendingUntilFixed
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "t"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "true"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "TRUE"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "T"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "y"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "yes"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "Y"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "YES"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> ""
+      )) must beEmpty
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "anything"
+      )) must beEmpty
+    }
 
     "parse 1.9 marathon response payload and convert to ServiceInfo" in new WithConfig {
       val client = injector.instanceOf[MarathonSSEClient]

@@ -84,18 +84,22 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   )
 
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
-     TLD match {
-      case Some(tld) => Map(
-        "HAPROXY_0_VHOST" -> {service match {
-          case UI => tld
-          case _  => service.name + "." + tld
-        }},
-        "HAPROXY_GROUP" -> "external"
-      )
-      case None => Map(
-        "HAPROXY_GROUP" -> "external"
-      )
+    val vhosts = TLD match {
+      case Some(tld) => service match {
+        case UI => Map(
+          "HAPROXY_0_VHOST" -> tld
+        )
+        case SECURITY | META => Map(
+          "HAPROXY_0_VHOST" -> s"${service.name}.$tld",
+          "HAPROXY_1_VHOST" -> s"$tld",
+          "HAPROXY_1_PATH"  -> s"/${service.name}",
+          "HAPROXY_1_HTTP_BACKEND_PROXYPASS_PATH" -> s"/${service.name}"
+        )
+        case _ => Map.empty
+      }
+      case None => Map.empty
     }
+    Map("HAPROXY_GROUP" -> "external") ++ vhosts
   }
 
   def serviceHostname: (ServiceEndpoint) => String = launcherConfig.vipHostname(_)
@@ -166,7 +170,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     appSpec(RABBIT).copy(
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = Some(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = Some(15672))
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
@@ -195,7 +199,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "OAUTH_RATE_LIMITING_AMOUNT" -> (secConfig \ "oauth" \ "rateLimitingAmount").asOpt[Int].map(_.toString).getOrElse("100"),
         "OAUTH_RATE_LIMITING_PERIOD" -> (secConfig \ "oauth" \ "rateLimitingPeriod").asOpt[Int].map(_.toString).getOrElse("1")
       ),
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(SECURITY))))),
+      ports = Some(Seq(
+        PortSpec(number = 9000, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
+        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+      )),
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health")
       )),
@@ -230,7 +237,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_EXCHANGE"  -> RABBIT_EXCHANGE,
         "RABBIT_ROUTE"     -> "policy"
       ),
-      ports = Some(Seq(PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))))),
+      ports = Some(Seq(
+        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
+        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+      )),
       healthChecks = Seq(HealthCheck(portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health"))),
       readinessCheck = Some(MarathonReadinessCheck(
         path = "/health",
@@ -250,7 +260,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "SEC_API_URL"  -> s"http://${vipDestination(SECURITY)}"
       ),
       ports = Some(Seq(
-        PortSpec(number = 80, name = "http", labels = Map("VIP_0" -> vipLabel(UI)))
+        PortSpec(number = 80, name = "http", labels = Map())
       )),
       healthChecks = Seq(HealthCheck(
         path = Some("/#/login"),
@@ -407,10 +417,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 //        portName = "http-api",
 //        intervalSeconds = 5
 //      )),
-//      labels = getVhostLabels(LASER) ++ Map(
-//        "DCOS_PACKAGE_FRAMEWORK_NAME" -> laserSchedulerFrameworkName,
-//        "DCOS_PACKAGE_IS_FRAMEWORK" -> "true"
-//      )
+//      labels = getVhostLabels(LASER) ++ Map()
 //    )
 //  }
 

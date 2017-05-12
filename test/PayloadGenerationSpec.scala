@@ -89,15 +89,29 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
             privileged = false,
             parameters = Seq.empty,
             forcePullImage = true,
-            portMappings = Some(Seq(DockerPortMapping(
-              containerPort = 9000,
-              protocol = "tcp",
-              name = Some("http-api"),
-              labels = Some(Map("VIP_0" -> "/gestalt-framework-tasks-security:9455"))
-            )))
+            portMappings = Some(Seq(
+              DockerPortMapping(
+                containerPort = 9000,
+                protocol = "tcp",
+                name = Some("http-api"),
+                labels = Some(Map("VIP_0" -> "/gestalt-framework-tasks-security:9455"))
+              ),
+              DockerPortMapping(
+                containerPort = 9000,
+                protocol = "tcp",
+                name = Some("http-api-dupe"),
+                labels = Some(Map())
+              )
+            ))
           ))
         ),
-        labels = Map("HAPROXY_0_VHOST" -> "security.galacticfog.com", "HAPROXY_GROUP" -> "external"),
+        labels = Map(
+          "HAPROXY_GROUP" -> "external",
+          "HAPROXY_0_VHOST" -> "security.galacticfog.com",
+          "HAPROXY_1_VHOST" -> "galacticfog.com",
+          "HAPROXY_1_PATH" -> "/security",
+          "HAPROXY_1_HTTP_BACKEND_PROXYPASS_PATH" -> "/security"
+        ),
         healthChecks = Seq(MarathonHealthCheck(
           path = Some("/health"),
           protocol = "HTTP",

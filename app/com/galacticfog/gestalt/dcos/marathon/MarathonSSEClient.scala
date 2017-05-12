@@ -202,10 +202,22 @@ object MarathonSSEClient {
 
   def getVHosts(app: MarathonAppPayload): Seq[String] = {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
+    lazy val HAPROXY_N_VPATH = "HAPROXY_([0-9]+)_PATH".r
+    lazy val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
     if ( app.labels.get("HAPROXY_GROUP").contains("external") ) {
-      app.labels.collect({
-        case (HAPROXY_N_VHOST(_), vhost) => vhost
-      }).map("https://" + _).toSeq
+      val vhosts = app.labels.collect({
+        case (HAPROXY_N_VHOST(index), vhost) => (index.toInt -> vhost)
+      })
+      val vpaths = app.labels.collect({
+        case (HAPROXY_N_VPATH(index), vpath) => (index.toInt -> vpath)
+      })
+      val disabled = app.labels.collect({
+        case (HAPROXY_N_ENABLED(index), enabled) if ! Set("t","true","yes","y").contains(enabled.toLowerCase) => index.toInt
+      }).toSet
+      // don't care about vpaths for which there is no corresponding vhost
+      vhosts.collect({
+        case (portIndex, vhost) if !disabled(portIndex) => s"https://$vhost" + vpaths.getOrElse(portIndex,"")
+      }).toSeq
     }
     else Seq.empty
   }

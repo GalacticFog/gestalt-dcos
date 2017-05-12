@@ -135,11 +135,11 @@ object GestaltMarathonLauncher {
                                error: Option[String],
                                errorStage: Option[String],
                                connected: Boolean) {
-    def getUrl(service: FrameworkService): Seq[String] = {
+    def getUrl(service: FrameworkService): Option[String] = {
       statuses.get(service)
         .filter(_.hostname.isDefined)
         .map({ case ServiceInfo(_, _, hostname, ports, _) => ports.map(p => hostname.get + ":" + p.toString) })
-        .getOrElse(Seq.empty)
+        .flatMap(_.headOption)
     }
 
     def update(update: ServiceInfo): ServiceData = this.update(Seq(update))
@@ -231,7 +231,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
 
   def provisionedDBHostIP: JsObject = {
     val js = for {
-      url <- stateData.getUrl(DATA(0)).headOption
+      url <- stateData.getUrl(DATA(0))
       parts = url.split(":")
       if parts.length == 2
       host = parts(0)
@@ -763,7 +763,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         self ! AdvanceStage
       } else {
         log.info(s"${stage.targetService} is not active, will launch")
-        launchApp(stage.targetService, nextStateData.adminKey, nextStateData.getUrl(SECURITY).headOption)
+        launchApp(stage.targetService, nextStateData.adminKey, nextStateData.getUrl(SECURITY))
       }
   }
 
@@ -776,8 +776,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   onTransition {
     case _ -> RetrievingAPIKeys =>
       nextStateData.getUrl(SECURITY) match {
-        case Seq() => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
-        case Seq(secUrl) => initSecurity(secUrl) onComplete {
+        case None => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
+        case Some(secUrl) => initSecurity(secUrl) onComplete {
           case Success(msg) => self ! msg
           case Failure(ex) =>
             log.warning("error initializing security service: {}",ex.getMessage)
@@ -787,9 +787,9 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       }
     case _ -> BootstrappingMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
-        case (Seq(),_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
+        case (None,_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
-        case (Seq(metaUrl),Some(apiKey)) => bootstrapMeta(metaUrl, apiKey) onComplete {
+        case (Some(metaUrl),Some(apiKey)) => bootstrapMeta(metaUrl, apiKey) onComplete {
           case Success(msg) => self ! msg
           case Failure(ex) =>
             log.warning("error bootstrapping meta service: {}",ex.getMessage)
@@ -799,9 +799,9 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       }
     case _ -> SyncingMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
-        case (Seq(),_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (None,_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
         case (_,None) => self ! ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
-        case (Seq(metaUrl),Some(apiKey)) => syncMeta(metaUrl, apiKey) onComplete {
+        case (Some(metaUrl),Some(apiKey)) => syncMeta(metaUrl, apiKey) onComplete {
           case Success(msg) => self ! msg
           case Failure(ex) =>
             log.warning("error syncing meta service: {}",ex.getMessage)
@@ -811,7 +811,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       }
     case _ -> ProvisioningMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
-        case (Seq(metaUrl),Some(apiKey)) =>
+        case (Some(metaUrl),Some(apiKey)) =>
           val provSteps = for {
             Seq(dcosProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,apiKey))
             stageTwo <- Future.sequence(Seq(
@@ -827,7 +827,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
               // keep retrying until our time runs out and we leave this state
               sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
           }
-        case (Seq(),_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (None,_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
         case (_,None)   => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
   }
