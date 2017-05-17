@@ -10,7 +10,7 @@ import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
-import play.api.libs.json.JsValue
+import play.api.libs.json.{JsObject, JsValue, Json}
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
@@ -43,21 +43,33 @@ case class AppSpec(name: String,
                    taskKillGracePeriodSeconds: Option[Int] = None,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
 
-case class GlobalDBConfig(hostname: String,
-                          port: Int,
-                          username: String,
-                          password: String,
-                          prefix: String)
+case class GlobalConfig( dbConfig: Option[GlobalDBConfig],
+                         secConfig: Option[GlobalSecConfig] ) {
+  def withDb(dbConfig: GlobalDBConfig): GlobalConfig = this.copy(
+    dbConfig = Some(dbConfig)
+  )
 
-case object GlobalDBConfig {
-  def apply(global: JsValue): GlobalDBConfig = GlobalDBConfig(
-    hostname = (global \ "database" \ "hostname").asOpt[String].getOrElse("data.gestalt.marathon.mesos"),
-    port =     (global \ "database" \ "port").asOpt[Int].getOrElse(5432),
-    username = (global \ "database" \ "username").asOpt[String].getOrElse("gestaltdev"),
-    password = (global \ "database" \ "password").asOpt[String].getOrElse("letmein"),
-    prefix =   (global \ "database" \ "prefix").asOpt[String].getOrElse("gestalt-")
+  def withSec(secConfig: GlobalSecConfig): GlobalConfig = this.copy(
+    secConfig = Some(secConfig)
   )
 }
+
+object GlobalConfig {
+  def empty: GlobalConfig = GlobalConfig(None,None)
+  def apply(): GlobalConfig = GlobalConfig.empty
+}
+
+case class GlobalDBConfig( hostname: String,
+                           port: Int,
+                           username: String,
+                           password: String,
+                           prefix: String )
+
+case class GlobalSecConfig( hostname: String,
+                            port: Int,
+                            apiKey: String,
+                            apiSecret: String,
+                            realm: String )
 
 @Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
@@ -110,33 +122,40 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   def vipPort(service: ServiceEndpoint): String = service.port.toString
 
-  def getAppSpec(service: FrameworkService, globals: JsValue): AppSpec = {
+  def getAppSpec(service: FrameworkService, globalConfig: GlobalConfig): AppSpec = {
     service match {
-      case DATA(index) => getData(globals, index)
-      case RABBIT      => getRabbit(globals)
-      case SECURITY    => getSecurity(globals)
-      case META        => getMeta(globals)
-      case UI          => getUI(globals)
+      case DATA(index) => getData(globalConfig.dbConfig.get, index)
+      case RABBIT      => getRabbit
+      case SECURITY    => getSecurity(globalConfig.dbConfig.get)
+      case META        => getMeta(globalConfig.dbConfig.get, globalConfig.secConfig.get)
+      case UI          => getUI
     }
   }
 
-  private[this] def gestaltSecurityEnvVars(globals: JsValue): Map[String, String] = {
-    val secConfig = (globals \ "security")
-    Map(
-      "GESTALT_SECURITY_PROTOCOL" -> "http",
-      "GESTALT_SECURITY_HOSTNAME" -> serviceHostname(SECURITY),
-      "GESTALT_SECURITY_PORT" -> vipPort(SECURITY),
-      "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-      "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-      "GESTALT_SECURITY_REALM" ->
-        TLD.map("https://security." + _)
-          .orElse((secConfig \ "realm").asOpt[String])
-          .getOrElse(s"http://${vipDestination(SECURITY)}")
-    )
+  private[this] def gestaltSecurityEnvVars(secConfig: GlobalSecConfig): Map[String, String] = {
+    // TODO: use this wherever and then delete it
+    //    Map(
+    //      "GESTALT_SECURITY_PROTOCOL" -> "http",
+    //      "GESTALT_SECURITY_HOSTNAME" -> serviceHostname(SECURITY),
+    //      "GESTALT_SECURITY_PORT" -> vipPort(SECURITY),
+    //      "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
+    //      "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
+    //      "GESTALT_SECURITY_REALM" ->
+    //        TLD.map("https://security." + _)
+    //          .orElse((secConfig \ "realm").asOpt[String])
+    //          .getOrElse(s"http://${vipDestination(SECURITY)}")
+    //    )
+        Map(
+          "GESTALT_SECURITY_PROTOCOL" -> "http",
+          "GESTALT_SECURITY_HOSTNAME" -> secConfig.hostname,
+          "GESTALT_SECURITY_PORT" -> secConfig.port.toString,
+          "GESTALT_SECURITY_KEY" -> secConfig.apiKey,
+          "GESTALT_SECURITY_SECRET" -> secConfig.apiSecret,
+          "GESTALT_SECURITY_REALM" -> secConfig.realm
+        )
   }
 
-  private[this] def getData(globals: JsValue, index: Int): AppSpec = {
-    val dbConfig = GlobalDBConfig(globals)
+  private[this] def getData(dbConfig: GlobalDBConfig, index: Int): AppSpec = {
     val replEnv = if (index > 0) Map(
       "PGREPL_MASTER_IP" -> serviceHostname(DATA(0)),
       "PGREPL_MASTER_PORT" -> vipPort(DATA(0))
@@ -166,7 +185,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getRabbit(globals: JsValue): AppSpec = {
+  private[this] def getRabbit: AppSpec = {
     appSpec(RABBIT).copy(
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = Some(5672)),
@@ -185,9 +204,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getSecurity(globals: JsValue): AppSpec = {
-    val dbConfig = GlobalDBConfig(globals)
-    val secConfig = (globals \ "security")
+  private[this] def getSecurity(dbConfig: GlobalDBConfig): AppSpec = {
     appSpec(SECURITY).copy(
       args = Some(Seq(s"-J-Xmx${(SECURITY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
       env = Map(
@@ -196,8 +213,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "DATABASE_NAME"     -> s"${dbConfig.prefix}security",
         "DATABASE_USERNAME" -> s"${dbConfig.username}",
         "DATABASE_PASSWORD" -> s"${dbConfig.password}",
-        "OAUTH_RATE_LIMITING_AMOUNT" -> (secConfig \ "oauth" \ "rateLimitingAmount").asOpt[Int].map(_.toString).getOrElse("100"),
-        "OAUTH_RATE_LIMITING_PERIOD" -> (secConfig \ "oauth" \ "rateLimitingPeriod").asOpt[Int].map(_.toString).getOrElse("1")
+        "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
+        "OAUTH_RATE_LIMITING_PERIOD" -> "1"
       ),
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
@@ -217,19 +234,17 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getMeta(globals: JsValue): AppSpec = {
-    val dbConfig = GlobalDBConfig(globals)
+  private[this] def getMeta(dbConfig: GlobalDBConfig, secConfig: GlobalSecConfig): AppSpec = {
     appSpec(META).copy(
       args = Some(Seq(s"-J-Xmx${(META.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
-      env = gestaltSecurityEnvVars(globals) ++ Map(
+      env = gestaltSecurityEnvVars(secConfig) ++ Map(
+        "META_POLICY_CALLBACK_URL" -> s"http://${vipDestination(META)}",
+        //
         "DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "DATABASE_PORT"     -> s"${dbConfig.port}",
         "DATABASE_NAME"     -> s"${dbConfig.prefix}meta",
         "DATABASE_USERNAME" -> s"${dbConfig.username}",
         "DATABASE_PASSWORD" -> s"${dbConfig.password}",
-        //
-        "GESTALT_APIGATEWAY" -> s"http://${vipDestination(API_GATEWAY)}",
-        "GESTALT_LAMBDA"     -> s"http://${vipDestination(LASER)}",
         //
         "RABBIT_HOST"      -> serviceHostname(RABBIT_AMQP),
         "RABBIT_PORT"      -> vipPort(RABBIT_AMQP),
@@ -253,7 +268,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getUI(globals: JsValue): AppSpec = {
+  private[this] def getUI: AppSpec = {
     appSpec(UI).copy(
       env = Map(
         "META_API_URL" -> s"http://${vipDestination(META)}",
@@ -460,9 +475,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     builder.build
   }
 
-  def getMarathonPayload(service: FrameworkService, globals: JsValue): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globals), globals)
+  def getMarathonPayload( service: FrameworkService,
+                          globalConfig: GlobalConfig ): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globalConfig))
 
-  def toMarathonPayload(app: AppSpec, globals: JsValue): MarathonAppPayload = {
+  def toMarathonPayload(app: AppSpec): MarathonAppPayload = {
     val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
       id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,

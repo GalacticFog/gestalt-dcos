@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory}
+import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory, GlobalConfig}
 import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
@@ -18,7 +18,7 @@ class TaskFactoryEnvSpec extends Specification {
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
-      val globals = Json.obj()
+      val globals = GlobalConfig()
 
       println("GESTALT_FRAMEWORK_VERSION: " + env("GESTALT_FRAMEWORK_VERSION"))
 

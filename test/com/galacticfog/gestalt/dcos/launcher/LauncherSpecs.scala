@@ -9,7 +9,7 @@ import akka.pattern.ask
 import akka.testkit.{ImplicitSender, TestFSMRef, TestKit}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos.ServiceInfo
+import com.galacticfog.gestalt.dcos.{GlobalConfig, GlobalDBConfig, GlobalSecConfig, ServiceInfo}
 import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
@@ -30,7 +30,7 @@ import play.api.mvc.Results._
 import play.api.test._
 
 import scala.concurrent.duration._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
 
 class LauncherSpecs extends PlaySpecification with Mockito {
@@ -71,6 +71,97 @@ class LauncherSpecs extends PlaySpecification with Mockito {
   }
 
   "GestaltMarathonLauncher" should {
+
+    "use configured GlobalDBConfig if not provisioning a DB" in new WithConfig(
+      "database.provision" -> false,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-",
+      "database.hostname" -> "test-db.somewhere.com",
+      "database.port"     -> 5555
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
+
+      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+
+      expectMsg(CurrentState(launcher, Uninitialized))
+      launcher.stateData.globalConfig.dbConfig must beSome(
+        (dbConfig: GlobalDBConfig) =>
+          dbConfig.username == "test-username"
+            && dbConfig.password == "test-password"
+            && dbConfig.prefix == "gestalt-test-"
+            && dbConfig.hostname == "test-db.somewhere.com"
+            && dbConfig.port == 5555
+      )
+    }
+
+    "for provision db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(
+      "database.provision" -> true,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
+
+      mockSSEClient.launchApp(argThat(
+        (app: MarathonAppPayload) => app.id.endsWith("/data-0")
+      )) returns {
+        mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
+          service = DATA(0),
+          vhosts = Seq.empty,
+          hostname = Some("192.168.1.50"),
+          ports = Seq("5432"),
+          status = RUNNING
+        ))
+        Future.successful(Json.obj())
+      }
+      mockSSEClient.launchApp(argThat(
+        (app: MarathonAppPayload) => app.id.endsWith("/rabbit")
+      )) returns {
+        Future.failed(new RuntimeException("do not care what happens next"))
+      }
+
+      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+
+      expectMsg(CurrentState(launcher, Uninitialized))
+      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
+        username = "test-username",
+        password = "test-password",
+        hostname = "data-0.gestalt-framework-tasks.marathon.mesos",
+        port = 5432,
+        prefix = "gestalt-test-"
+      ))
+
+      launcher.setState(
+        stateName = LaunchingDB(0),
+        stateData = ServiceData(
+          statuses = Map(),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          error = None,
+          errorStage = None,
+          globalConfig = launcher.stateData.globalConfig,
+          connected = true
+        )
+      )
+
+      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
+
+      expectMsg(Transition(launcher, LaunchingDB(0), launcher.underlyingActor.nextState(LaunchingDB(0))))
+
+      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
+        username = "test-username",
+        password = "test-password",
+        hostname = "data-0.gestalt-framework-tasks.marathon.mesos",
+        port = 5432,
+        prefix = "gestalt-test-"
+      ))
+    }
 
     "not shutdown database containers if they were not provisioned even if asked to" in new WithConfig("database.provision" -> false) {
       val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
@@ -162,11 +253,18 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val demoWkspId = UUID.randomUUID()
     val demoEnvId  = UUID.randomUUID()
     val dcosProvId = UUID.randomUUID()
-    val kongProvId = UUID.randomUUID()
+    val dbProvId   = UUID.randomUUID()
+    val rabbitProvId = UUID.randomUUID()
+    val secProvId    = UUID.randomUUID()
+    val kongProvId   = UUID.randomUUID()
     val demoLambdaSetupId = UUID.randomUUID()
     val demoLambdaTdownId = UUID.randomUUID()
 
+    val providerCreateAttempts = new AtomicInteger(0)
     val createdBaseDCOS = new AtomicInteger(0)
+    val createdDbProvider = new AtomicInteger(0)
+    val createdRabbitProvider = new AtomicInteger(0)
+    val createdSecProvider = new AtomicInteger(0)
     val createdBaseKong = new AtomicInteger(0)
     val createdSetupLambda = new AtomicInteger(0)
     val createdTdownLambda = new AtomicInteger(0)
@@ -179,11 +277,27 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
+        providerCreateAttempts.getAndIncrement()
         (request.body \ "name").asOpt[String] match {
-          case Some("default-dcos")  =>
+          case Some("default-dcos-provider")  =>
             createdBaseDCOS.getAndIncrement()
             Created(Json.obj(
-              "id" -> UUID.randomUUID()
+              "id" -> dcosProvId
+            ))
+          case Some("default-postgres-provider") =>
+            createdDbProvider.getAndIncrement()
+            Created(Json.obj(
+              "id" -> dbProvId
+            ))
+          case Some("default-rabbit-provider") =>
+            createdRabbitProvider.getAndIncrement()
+            Created(Json.obj(
+              "id" -> rabbitProvId
+            ))
+          case Some("default-security-provider") =>
+            createdSecProvider.getAndIncrement()
+            Created(Json.obj(
+              "id" -> secProvId
             ))
 //          case Some("base-kong")      =>
 //            createdBaseKong.getAndIncrement()
@@ -304,6 +418,21 @@ class LauncherSpecs extends PlaySpecification with Mockito {
           adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
           error = None,
           errorStage = None,
+          globalConfig = GlobalConfig()
+            .withDb(GlobalDBConfig(
+              hostname = "test-db.marathon.mesos",
+              port = 5432,
+              username = "gestaltdev",
+              password = "password",
+              prefix = "gestalt-"
+            ))
+            .withSec(GlobalSecConfig(
+              hostname = "testsecurity-gestalt-tasks.marathon.l4lb.thisdcos.directory",
+              port = 9455,
+              apiKey = "key",
+              apiSecret = "secret",
+              realm = "https://security.mycompany.com"
+            )),
           connected = true
         )
       )
@@ -312,20 +441,29 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
       expectMsg(Transition(launcher, ProvisioningMeta, launcher.underlyingActor.nextState(ProvisioningMeta)))
 
-      metaProvisionProviders.timeCalled     must_== 2 // two existence checks, two creations
-      createdBaseDCOS.get() must_== 1
-      createdBaseKong.get() must_== 0
+      //
+      metaProvisionProviders.timeCalled     must beGreaterThanOrEqualTo(4)
+      providerCreateAttempts.get()          must_== 4
+      createdBaseDCOS.get()                 must_== 1
+      createdDbProvider.get()               must_== 1
+      createdRabbitProvider.get()           must_== 1
+      createdSecProvider.get()              must_== 1
+      createdBaseKong.get()                 must_== 0
+      //
       metaProvisionLicense.timeCalled       must_== 1
       metaProvisionDemoWrk.timeCalled       must_== 0
       metaProvisionDemoEnv.timeCalled       must_== 0
+      //
+      metaRenameRoot.timeCalled must_== 1
+      renamedRootOrg.get()      must_== 1
+      //
       metaProvisionDemoLambdas.timeCalled   must_== 0
       createdSetupLambda.get() must_== 0
       createdTdownLambda.get() must_== 0
+      //
       metaProvisionDemoEndpoints.timeCalled must_== 0
       createdSetupLambdaEndpoint.get() must_== 0
       createdTdownLambdaEndpoint.get() must_== 0
-      metaRenameRoot.timeCalled must_== 1
-      renamedRootOrg.get()      must_== 1
     }
 
   }

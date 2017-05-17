@@ -8,7 +8,7 @@ import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM, Status}
 import akka.event.LoggingAdapter
-import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, GlobalDBConfig, LauncherConfig, ServiceInfo}
+import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
 import play.api.libs.json.{JsObject, Json}
@@ -22,6 +22,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import LauncherConfig.Services._
+import com.galacticfog.gestalt.cli._
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
 import com.galacticfog.gestalt.patch.PatchOp
@@ -134,6 +135,7 @@ object GestaltMarathonLauncher {
                                adminKey: Option[GestaltAPIKey],
                                error: Option[String],
                                errorStage: Option[String],
+                               globalConfig: GlobalConfig,
                                connected: Boolean) {
     def getUrl(service: FrameworkService): Option[String] = {
       statuses.get(service)
@@ -154,18 +156,16 @@ object GestaltMarathonLauncher {
   }
 
   case object ServiceData {
-    def init: ServiceData = ServiceData(Map.empty, None, None, None, false)
+    def init: ServiceData = ServiceData(Map.empty, None, None, None, GlobalConfig.empty, false)
   }
 
-  case class SecurityInitReset(dbConfig: JsObject) {
+  case class SecurityInitReset(dbConfig: GlobalDBConfig) {
 
     import scalikejdbc._
 
     def clearInit()(implicit log: LoggingAdapter): Unit = {
-      val db = GlobalDBConfig(dbConfig)
-
       val driver = "org.postgresql.Driver"
-      val url = "jdbc:postgresql://%s:%d/%s".format(db.hostname, db.port, db.prefix + "security")
+      val url = "jdbc:postgresql://%s:%d/%s".format(dbConfig.hostname, dbConfig.port, dbConfig.prefix + "security")
       log.info("initializing connection pool against " + url)
 
       Class.forName(driver)
@@ -174,7 +174,7 @@ object GestaltMarathonLauncher {
         connectionTimeoutMillis = 5000
       )
 
-      ConnectionPool.singleton(url, db.username, db.password, settings)
+      ConnectionPool.singleton(url, dbConfig.username, dbConfig.password, settings)
       println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
 
       implicit val session = AutoSession
@@ -183,7 +183,7 @@ object GestaltMarathonLauncher {
         ConnectionPool.closeAll()
       } recover {
         case e: Throwable =>
-          log.warning(s"error clearing init flag on ${db.prefix}security database: {}", e.getMessage)
+          log.warning(s"error clearing init flag on ${dbConfig.prefix}security database: {}", e.getMessage)
           false
       }
 
@@ -213,54 +213,38 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
 
   val marathonBaseUrl: String = config.marathon.baseUrl
 
-  val TLD: Option[String] = config.marathon.tld
-  val tldObj: Option[JsObject] = TLD.map(tld => Json.obj("tld" -> tld))
-
-  val marathonConfig: JsObject = Json.obj(
-    "marathon" -> tldObj.foldLeft(Json.obj(
-    ))( _ ++ _ )
+  def provisionedDB: GlobalDBConfig = GlobalDBConfig(
+    hostname = config.vipHostname(DATA(0)),
+    port = DATA(0).port,
+    username = config.database.username,
+    password = config.database.password,
+    prefix = config.database.prefix
   )
 
-  def provisionedDB: JsObject = Json.obj(
-    "hostname" -> config.vipHostname(DATA(0)),
-    "port" -> 5432,
-    "username" -> config.database.username,
-    "password" -> config.database.password,
-    "prefix" -> "gestalt-"
-  )
-
-  def provisionedDBHostIP: JsObject = {
-    val js = for {
+  def provisionedDBHostIP: GlobalDBConfig = {
+    val useHostIP = for {
       url <- stateData.getUrl(DATA(0))
       parts = url.split(":")
       if parts.length == 2
       host = parts(0)
       port <- Try{parts(1).toInt}.toOption
-    } yield Json.obj(
-      "hostname" -> host,
-      "port" -> port,
-      "username" -> config.database.username,
-      "password" -> config.database.password,
-      "prefix" -> "gestalt-"
+    } yield GlobalDBConfig(
+      hostname = host,
+      port = port,
+      username = config.database.username,
+      password = config.database.password,
+      prefix = config.database.prefix
     )
-    js getOrElse provisionedDB
+    useHostIP getOrElse provisionedDB
   }
 
-  def configuredDB: JsObject = Json.obj(
-    "hostname" -> config.database.hostname,
-    "port" -> config.database.port,
-    "username" -> config.database.username,
-    "password" -> config.database.password,
-    "prefix" -> config.database.prefix
+  val configuredDB: GlobalDBConfig = GlobalDBConfig(
+    hostname = config.database.hostname,
+    port = config.database.port,
+    username = config.database.username,
+    password = config.database.password,
+    prefix = config.database.prefix
   )
-
-  val databaseConfig: JsObject = if (config.database.provision) Json.obj(
-    "database" -> provisionedDB
-  ) else Json.obj(
-    "database" -> configuredDB
-  )
-
-  val globals: JsObject = marathonConfig ++ databaseConfig
 
   val securityInitCredentials = JsObject(
     Seq("username" -> JsString(config.security.username)) ++
@@ -272,16 +256,9 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     secret <- config.security.secret
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
-  private[this] def launchApp(service: FrameworkService, apiKey: Option[GestaltAPIKey] = None, secUrl: Option[String]): Unit = {
+  private[this] def launchApp(service: FrameworkService, globalConfig: GlobalConfig): Unit = {
     val currentState = stateName.toString
-    val allConfig = apiKey.map(apiKey => Json.obj(
-      "security" -> JsObject(Seq(
-        "apiKey" -> JsString(apiKey.apiKey),
-        "apiSecret" -> JsString(apiKey.apiSecret.get)) ++ secUrl.map(
-        "realm" -> JsString(_)
-      ))
-    )).fold(globals)(_ ++ globals)
-    val payload = gtf.getMarathonPayload(service, allConfig)
+    val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
       r =>
@@ -318,11 +295,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
               Future.successful(SecurityInitializationComplete(key))
             case None =>
               log.warning("attempting to clear init flag from security database")
-              val databaseConfig = if (config.database.provision) Json.obj(
-                "database" -> provisionedDBHostIP
-              ) else Json.obj(
-                "database" -> configuredDB
-              )
+              val databaseConfig: GlobalDBConfig = if (config.database.provision) provisionedDBHostIP else configuredDB
               SecurityInitReset(databaseConfig).clearInit()(log)
               Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
           }
@@ -369,14 +342,14 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   }
 
   private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, name: String): Future[Option[JsValue]] = {
-    val p = (js: JsValue) => (js \ "name").asOpt[String].contains(name)
+    val matchesName = (js: JsValue) => (js \ "name").asOpt[String].contains(name)
     genRequest(url, apiKey).get() map { implicit resp =>
       log.info(s"meta.get($url) response: {}",resp.status)
       log.debug(s"meta.get($url) response body: {}",resp.body)
       resp.status match {
         case 200 => resp.json match {
-          case arr: JsArray => arr.as[Seq[JsValue]].find(p)
-          case v: JsValue => if (p(v)) Some(v) else None
+          case arr: JsArray => arr.as[Seq[JsValue]].find(matchesName)
+          case v: JsValue => if (matchesName(v)) Some(v) else None
         }
         case _ =>
           val mesg = getMessageFromResponse
@@ -390,43 +363,11 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     ws.url(url).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
   }
 
-  private[this] def provisionMetaProviders(metaUrl: String, apiKey: GestaltAPIKey): Seq[Future[UUID]] = {
+  private[this] def provisionMetaProviders(metaUrl: String, apiKey: GestaltAPIKey, providerPayloads: Seq[JsValue]): Seq[Future[UUID]] = {
+    // TODO: considering extracting the call to /root/providers so that it isn't repeated
     val providerUrl = s"http://${metaUrl}/root/providers"
-    val marathonProviderJson = Json.parse(
-      s"""
-         |{
-         |  "description": "Base DC/OS cluster for the gestalt-framework deployment",
-         |  "name": "default-dcos",
-         |  "properties": {
-         |    "config": {
-         |      "auth": {
-         |        "scheme": "Basic",
-         |        "username": "none",
-         |        "password": "none"
-         |      },
-         |      "env": {
-         |        "private": {},
-         |        "public": {}
-         |      },
-         |      "external_protocol": "http",
-         |      "networks": [
-         |        {
-         |          "name": "HOST"
-         |        },
-         |        {
-         |          "name": "BRIDGE"
-         |        }
-         |      ],
-         |      "url": "${marathonBaseUrl}"
-         |    },
-         |    "locations": [],
-         |    "services": []
-         |  },
-         |  "resource_type": "Gestalt::Configuration::Provider::CaaS::DCOS"
-         |}
-            """.stripMargin)
     log.info(s"provisioning providers in meta at {}",providerUrl)
-    Seq(marathonProviderJson).map { providerJson =>
+    providerPayloads.map { providerJson =>
       val name = (providerJson \ "name").as[String]
       resourceExistsInList(providerUrl, apiKey, name) flatMap {
         case Some(js) => Future.fromTry(getId(js))
@@ -709,7 +650,11 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     *
     *************************************************************************************/
 
-  startWith(Uninitialized, ServiceData.init)
+  startWith(Uninitialized, ServiceData.init.copy(
+    globalConfig = GlobalConfig().withDb(
+      if (config.database.provision) provisionedDB else configuredDB
+    )
+  ))
 
   when(Uninitialized) {
     // this is a bootstrap situation... we need to get the complete state and connect the Marathon event bus
@@ -763,7 +708,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
         self ! AdvanceStage
       } else {
         log.info(s"${stage.targetService} is not active, will launch")
-        launchApp(stage.targetService, nextStateData.adminKey, nextStateData.getUrl(SECURITY))
+        launchApp(stage.targetService, nextStateData.globalConfig)
       }
   }
 
@@ -812,11 +757,39 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     case _ -> ProvisioningMeta =>
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
         case (Some(metaUrl),Some(apiKey)) =>
+          val gc = nextStateData.globalConfig
           val provSteps = for {
-            Seq(dcosProviderId) <- Future.sequence(provisionMetaProviders(metaUrl,apiKey))
+            Seq(dcosProviderId,dbProviderId,rabbitProviderId,secProviderId) <- Future.sequence(
+              provisionMetaProviders(metaUrl,apiKey, Seq(
+                GestaltProviderBuilder.caasProvider(CaaSSecrets(
+                  url = Some(config.marathon.baseUrl),
+                  username = Some("unused"),
+                  password = Some("unused"),
+                  kubeconfig = None
+                ), GestaltProviderBuilder.CaaSTypes.DCOS),
+                GestaltProviderBuilder.dbProvider(DBSecrets(
+                  username = gc.dbConfig.get.username,
+                  password = gc.dbConfig.get.password,
+                  host     = gc.dbConfig.get.hostname,
+                  port     = gc.dbConfig.get.port,
+                  protocol = "tcp"
+                )),
+                GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
+                  host = config.vipHostname(RABBIT_AMQP),
+                  port = RABBIT_AMQP.port
+                )),
+                GestaltProviderBuilder.securityProvider(SecuritySecrets(
+                  protocol = "http",
+                  host = gc.secConfig.get.hostname,
+                  port = gc.secConfig.get.port,
+                  key = gc.secConfig.get.apiKey,
+                  secret = gc.secConfig.get.apiSecret
+                ))
+              ))
+            )
             stageTwo <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
-//              provisionDemo(metaUrl,apiKey,???,???,???),
+              // provisionDemo(metaUrl,apiKey,???,???,???),
               provisionMetaLicense(metaUrl,apiKey)
             ))
           } yield stageTwo
@@ -967,14 +940,10 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       )
 
     case Event(sse @ ServerSentEvent(Some(data), Some(eventType), _, _), d) =>
-      // import MarathonSSEClient.formatSSE
-      // log.debug(Json.prettyPrint(Json.toJson(sse)))
       val mesg = eventType match {
         case "app_terminated_event"        => MarathonSSEClient.parseEvent[MarathonAppTerminatedEvent](sse)
         case "health_status_changed_event" => MarathonSSEClient.parseEvent[MarathonHealthStatusChange](sse)
         case "status_update_event"         => MarathonSSEClient.parseEvent[MarathonStatusUpdateEvent](sse)
-        // case "deployment_failed"           => MarathonSSEClient.parseEvent[MarathonDeploymentFailure](sse)
-        // case "deployment_info"             => MarathonSSEClient.parseEvent[MarathonDeploymentInfo](sse)
         case _ => {
           log.debug(s"ignoring event ${eventType}")
           None
@@ -1001,17 +970,6 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       log.debug(s"received ${e.eventType} for non-framework service ${nonFrameworkAppId}")
       stay
 
-    // case Event(MarathonDeploymentFailure(_, _, deploymentId @ FrameworkServiceFromDeploymentId(service)), d) =>
-    //   // TODO: do something appropriate when we start storing deployment IDs
-    //   goto(Error) using d.copy(
-    //     error = Some(s"Deployment ${deploymentId} failed for service ${service}"),
-    //     errorStage = Some(stateName.toString)
-    //   )
-    //   stay
-    //
-    // case Event(e @ MarathonDeploymentFailure(_, _, deploymentId), d) =>
-    //   log.info(s"ignoring MarathonDeploymentFailure for deployment ${deploymentId}")
-    //   stay
 
     case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), maybeTaskId, maybeInstanceId, _, alive), d) =>
       log.info(s"received MarathonHealthStatusChange(${maybeTaskId orElse maybeInstanceId}.alive == ${alive}) for task belonging to ${service.name}")
@@ -1028,13 +986,6 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _, _) , d) =>
       log.debug(s"ignoring StatusUpdateEvent(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
       stay
-
-//    case Event(e @ MarathonDeploymentInfo(MarathonDeploymentInfo.Step(Seq(MarathonDeploymentInfo.Step.Action("ScaleApplication", FrameworkServiceFromAppId(service)))),_,_ ), d) =>
-//      requestUpdateAndStay(service)
-//
-//    case Event(MarathonDeploymentInfo(currentStep,_,_), d) =>
-//      log.debug(s"ignoring DeploymentInfo ${currentStep}")
-//      stay
 
     /**************************************************
       *

@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
+import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.marathon._
 import modules.Module
@@ -14,23 +14,19 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   "Payload generation" should {
 
-    lazy val testGlobalVars = Json.parse(
-      """{
-        |  "database": {
-        |     "hostname": "test-db.marathon.mesos",
-        |     "port": 5432,
-        |     "username": "test-user",
-        |     "password": "test-password",
-        |     "prefix": "test-"
-        |  },
-        |  "security": {
-        |     "apiKey": "apikey",
-        |     "realm" : "192.168.1.50:12345",
-        |     "apiSecret": "apisecret"
-        |  }
-        |}
-      """.stripMargin
-    )
+    val testGlobalVars = GlobalConfig().withDb(GlobalDBConfig(
+      hostname = "test-db.marathon.mesos",
+      port = 5432,
+      username = "test-user",
+      password = "test-password",
+      prefix = "test-"
+    )).withSec(GlobalSecConfig(
+      hostname = "security",
+      port = 9455,
+      apiKey = "key",
+      apiSecret = "secret",
+      realm = "192.168.1.50:12345"
+    ))
 
     "work from global config (BRIDGE)" in {
       val injector = new GuiceApplicationBuilder()
@@ -41,34 +37,19 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val global = Json.parse(
-        """{
-          |  "marathon": {
-          |     "appGroup": "gestalt",
-          |     "url": "http://marathon.mesos:8080"
-          |  },
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "oauth": {
-          |       "rateLimitingPeriod": 5,
-          |       "rateLimitingAmount": 1000
-          |     }
-          |  }
-          |}
-        """.stripMargin
-      )
+      val globalConfig = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      ))
       val expected = MarathonAppPayload(
         id = "/gestalt-framework-tasks/security",
         args = Some(Seq("-J-Xmx768m")),
         env = Map(
-          "OAUTH_RATE_LIMITING_PERIOD" -> "5",
-          "OAUTH_RATE_LIMITING_AMOUNT" -> "1000",
+          "OAUTH_RATE_LIMITING_PERIOD" -> "1",
+          "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
           "DATABASE_HOSTNAME" -> "test-db.marathon.mesos",
           "DATABASE_PORT" -> "5432",
           "DATABASE_NAME" -> "test-security",
@@ -128,7 +109,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           intervalSeconds = 5
         ))
       )
-      val security = gtf.getMarathonPayload(SECURITY, global)
+      val security = gtf.getMarathonPayload(SECURITY, globalConfig)
       security must_== expected
     }
 
@@ -140,23 +121,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val global = Json.parse(
-        """{
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "apiKey": "apikey",
-          |     "realm" : "192.168.1.50:12345",
-          |     "apiSecret": "apisecret"
-          |  }
-          |}
-        """.stripMargin
-      )
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = "192.168.1.50:12345"
+      ))
+
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
       ko("implement the appropriate test for these two")
 //      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
@@ -169,22 +147,19 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
-      val global = Json.parse(
-        """{
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "apiKey": "apikey",
-          |     "apiSecret": "apisecret"
-          |  }
-          |}
-        """.stripMargin
-      )
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = "192.168.1.50:12345"
+      ))
 
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
       ko("implement the appropriate test for these two")
@@ -197,23 +172,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val global = Json.parse(
-        """{
-          |  "database": {
-          |     "hostname": "test-db.marathon.mesos",
-          |     "port": 5432,
-          |     "username": "test-user",
-          |     "password": "test-password",
-          |     "prefix": "test-"
-          |  },
-          |  "security": {
-          |     "apiKey": "apikey",
-          |     "realm" : "192.168.1.50:12345",
-          |     "apiSecret": "apisecret"
-          |  }
-          |}
-        """.stripMargin
-      )
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = "192.168.1.50:12345"
+      ))
+
       gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
       ko("implement the appropriate test for these two")
 //      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "192.168.1.50:12345")
@@ -304,13 +276,16 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 //      )
     }.pendingUntilFixed
 
+    val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(
+      hostname = "", port = 0, username = "", password = "", prefix = ""
+    ))
+
     "request appropriate host port for database" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
-      val data = gtf.getMarathonPayload(DATA(0), Json.obj())
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
       data.container.docker must beSome
       val Some(docker) = data.container.docker
       docker.portMappings.get must haveSize(1)
@@ -324,7 +299,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
-      val data = gtf.getMarathonPayload(RABBIT, Json.obj())
+      val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
       data.container.docker must beSome
       val Some(docker) = data.container.docker
       docker.portMappings.get must haveSize(2)
@@ -338,7 +313,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
-      val data = gtf.getMarathonPayload(DATA(0), Json.obj())
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
       data.residency must beSome(Residency(Residency.WAIT_FOREVER))
       data.taskKillGracePeriodSeconds must beSome(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD)
       data.container.volumes must beSome(containTheSameElementsAs(

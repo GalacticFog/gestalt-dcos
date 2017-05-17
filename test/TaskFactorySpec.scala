@@ -1,4 +1,4 @@
-import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory, HealthCheck}
+import com.galacticfog.gestalt.dcos._
 import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
@@ -8,6 +8,20 @@ import org.specs2.execute.Result
 import org.specs2.specification.core.Fragment
 
 class TaskFactorySpec extends Specification {
+
+  val testGlobals = GlobalConfig().withDb(GlobalDBConfig(
+    hostname = "test-db.marathon.mesos",
+    port = 5432,
+    username = "test-user",
+    password = "test-password",
+    prefix = "test-"
+  )).withSec(GlobalSecConfig(
+    hostname = "security",
+    port = 9455,
+    apiKey = "key",
+    apiSecret = "secret",
+    realm = "192.168.1.50:12345"
+  ))
 
   "GestaltTaskFactory" should {
 
@@ -36,19 +50,17 @@ class TaskFactorySpec extends Specification {
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
-      val globals = Json.obj()
-
-      gtf.getAppSpec(DATA(0), globals) must haveImage("test-data:tag")
-      gtf.getAppSpec(DATA(1), globals) must haveImage("test-data:tag")
-      gtf.getAppSpec(RABBIT, globals) must haveImage("test-rabbit:tag")
-      gtf.getAppSpec(SECURITY, globals) must haveImage("test-security:tag")
-      gtf.getAppSpec(META, globals) must haveImage("test-meta:tag")
-      gtf.getAppSpec(UI, globals) must haveImage("test-react-ui:tag")
+      gtf.getAppSpec(DATA(0), testGlobals) must haveImage("test-data:tag")
+      gtf.getAppSpec(DATA(1), testGlobals) must haveImage("test-data:tag")
+      gtf.getAppSpec(RABBIT, testGlobals) must haveImage("test-rabbit:tag")
+      gtf.getAppSpec(SECURITY, testGlobals) must haveImage("test-security:tag")
+      gtf.getAppSpec(META, testGlobals) must haveImage("test-meta:tag")
+      gtf.getAppSpec(UI, testGlobals) must haveImage("test-react-ui:tag")
       ko("update me")
-//      gtf.getAppSpec(KONG, globals) must haveImage("test-kong:tag")
-//      gtf.getAppSpec(POLICY, globals) must haveImage("test-policy:tag")
-//      gtf.getAppSpec(API_GATEWAY, globals) must haveImage("test-api-gateway:tag")
-//      val laser = gtf.getAppSpec(LASER, globals)
+//      gtf.getAppSpec(KONG, testGlobals) must haveImage("test-kong:tag")
+//      gtf.getAppSpec(POLICY, testGlobals) must haveImage("test-policy:tag")
+//      gtf.getAppSpec(API_GATEWAY, testGlobals) must haveImage("test-api-gateway:tag")
+//      val laser = gtf.getAppSpec(LASER, testGlobals)
 //      laser must haveImage("test-laser:tag")
 //      laser must haveLaserRuntimeImage("test-js-executor:tag")
 //      laser must haveLaserRuntimeImage("test-jvm-executor:tag")
@@ -69,19 +81,17 @@ class TaskFactorySpec extends Specification {
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
-      val globals = Json.obj()
-
-      gtf.getAppSpec(DATA(0), globals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
-      gtf.getAppSpec(DATA(1), globals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
-      gtf.getAppSpec(RABBIT, globals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
-      gtf.getAppSpec(SECURITY, globals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
-      gtf.getAppSpec(META, globals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
-      gtf.getAppSpec(UI, globals) must haveImage("galacticfog/gestalt-ui-react:dcos-9.10.11.12")
+      gtf.getAppSpec(DATA(0), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
+      gtf.getAppSpec(DATA(1), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
+      gtf.getAppSpec(RABBIT, testGlobals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
+      gtf.getAppSpec(SECURITY, testGlobals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
+      gtf.getAppSpec(META, testGlobals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
+      gtf.getAppSpec(UI, testGlobals) must haveImage("galacticfog/gestalt-ui-react:dcos-9.10.11.12")
       ko("update me")
-//      gtf.getAppSpec(KONG, globals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
-//      gtf.getAppSpec(POLICY, globals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
-//      gtf.getAppSpec(API_GATEWAY, globals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
-//      val laser = gtf.getAppSpec(LASER, globals)
+//      gtf.getAppSpec(KONG, testGlobals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
+//      gtf.getAppSpec(POLICY, testGlobals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
+//      gtf.getAppSpec(API_GATEWAY, testGlobals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
+//      val laser = gtf.getAppSpec(LASER, testGlobals)
 //      laser must haveImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
 //      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-js:dcos-9.10.11.12")
 //      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-jvm:dcos-9.10.11.12")
@@ -99,21 +109,19 @@ class TaskFactorySpec extends Specification {
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
 
-      val globals = Json.obj()
-
       val ver = BuildInfo.version
 
-      gtf.getAppSpec(DATA(0), globals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
-      gtf.getAppSpec(DATA(1), globals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
-      gtf.getAppSpec(RABBIT, globals)       must haveImage(s"galacticfog/rabbit:dcos-${ver}")
-      gtf.getAppSpec(SECURITY, globals)     must haveImage(s"galacticfog/gestalt-security:dcos-${ver}")
-      gtf.getAppSpec(META, globals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
-      gtf.getAppSpec(UI, globals)           must haveImage(s"galacticfog/gestalt-ui-react:dcos-${ver}")
+      gtf.getAppSpec(DATA(0), testGlobals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
+      gtf.getAppSpec(DATA(1), testGlobals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
+      gtf.getAppSpec(RABBIT, testGlobals)       must haveImage(s"galacticfog/rabbit:dcos-${ver}")
+      gtf.getAppSpec(SECURITY, testGlobals)     must haveImage(s"galacticfog/gestalt-security:dcos-${ver}")
+      gtf.getAppSpec(META, testGlobals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
+      gtf.getAppSpec(UI, testGlobals)           must haveImage(s"galacticfog/gestalt-ui-react:dcos-${ver}")
       ko("update me")
-//      gtf.getAppSpec(KONG, globals)         must haveImage(s"galacticfog/kong:dcos-${ver}")
-//      gtf.getAppSpec(POLICY, globals)       must haveImage(s"galacticfog/gestalt-policy:dcos-${ver}")
-//      gtf.getAppSpec(API_GATEWAY, globals)  must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
-//      val laser = gtf.getAppSpec(LASER, globals)
+//      gtf.getAppSpec(KONG, testGlobals)         must haveImage(s"galacticfog/kong:dcos-${ver}")
+//      gtf.getAppSpec(POLICY, testGlobals)       must haveImage(s"galacticfog/gestalt-policy:dcos-${ver}")
+//      gtf.getAppSpec(API_GATEWAY, testGlobals)  must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
+//      val laser = gtf.getAppSpec(LASER, testGlobals)
 //      laser must haveImage(s"galacticfog/gestalt-laser:dcos-${ver}")
 //      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-js:dcos-${ver}")
 //      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ver}")
@@ -140,7 +148,7 @@ class TaskFactorySpec extends Specification {
 //          .configure("laser.enable-" + runtime + "-runtime" -> false)
 //          .injector
 //        val gtf = injector.instanceOf[GestaltTaskFactory]
-//        val laser = gtf.getAppSpec(LASER, Json.obj())
+//        val laser = gtf.getAppSpec(LASER, testGlobals)
 //        runtime ! {
 //          val theseNames = runtimeNames(runtime)
 //          val missingDisabled = Result.foreach(theseNames) {
@@ -162,7 +170,7 @@ class TaskFactorySpec extends Specification {
       Result.foreach(Seq(
         RABBIT, SECURITY, META, UI, DATA(0), DATA(1)
       )) {
-        svc => gtf.getAppSpec(svc, Json.obj()).healthChecks must contain(marathonHealthChecks)
+        svc => gtf.getAppSpec(svc, testGlobals).healthChecks must contain(marathonHealthChecks)
       }
     }
 
