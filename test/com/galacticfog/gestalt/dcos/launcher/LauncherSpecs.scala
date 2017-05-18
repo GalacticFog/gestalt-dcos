@@ -9,7 +9,7 @@ import akka.pattern.ask
 import akka.testkit.{ImplicitSender, TestFSMRef, TestKit}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos.{GlobalConfig, GlobalDBConfig, GlobalSecConfig, ServiceInfo}
+import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
 import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
@@ -29,6 +29,7 @@ import play.api.mvc._
 import play.api.mvc.Results._
 import play.api.test._
 
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Success
@@ -256,55 +257,83 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val dbProvId   = UUID.randomUUID()
     val rabbitProvId = UUID.randomUUID()
     val secProvId    = UUID.randomUUID()
+    val laserProvId  = UUID.randomUUID()
     val kongProvId   = UUID.randomUUID()
     val demoLambdaSetupId = UUID.randomUUID()
     val demoLambdaTdownId = UUID.randomUUID()
+    val sysWrkId = UUID.randomUUID()
+    val sysEnvId = UUID.randomUUID()
 
     val providerCreateAttempts = new AtomicInteger(0)
     val createdBaseDCOS = new AtomicInteger(0)
     val createdDbProvider = new AtomicInteger(0)
     val createdRabbitProvider = new AtomicInteger(0)
     val createdSecProvider = new AtomicInteger(0)
+    val createdLaserProvider = new AtomicInteger(0)
     val createdBaseKong = new AtomicInteger(0)
     val createdSetupLambda = new AtomicInteger(0)
     val createdTdownLambda = new AtomicInteger(0)
     val createdSetupLambdaEndpoint = new AtomicInteger(0)
     val createdTdownLambdaEndpoint = new AtomicInteger(0)
+    val createdExecProviders: mutable.Map[String, UUID] = scala.collection.mutable.LinkedHashMap[String,UUID]()
     val renamedRootOrg = new AtomicInteger(0)
 
     val newCompanyDescription = "MyCompany.com!"
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action{Ok(Json.arr())}
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action{Created(Json.obj(
+        "id" -> sysWrkId
+      ))}
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action{Created(Json.obj(
+        "id" -> sysEnvId
+      ))}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
         providerCreateAttempts.getAndIncrement()
-        (request.body \ "name").asOpt[String] match {
-          case Some("default-dcos-provider")  =>
-            createdBaseDCOS.getAndIncrement()
+        val providerName = (request.body \ "name").as[String]
+        val providerType = (request.body \ "resource_type").asOpt[String]
+        providerType match {
+          case Some(pt) if pt.startsWith("Gestalt::Configuration::Provider::Lambda::Executor") =>
+            val pid = UUID.randomUUID()
+            createdExecProviders.synchronized { createdExecProviders += (providerName -> pid) }
             Created(Json.obj(
-              "id" -> dcosProvId
+              "id" -> pid
             ))
-          case Some("default-postgres-provider") =>
-            createdDbProvider.getAndIncrement()
-            Created(Json.obj(
-              "id" -> dbProvId
-            ))
-          case Some("default-rabbit-provider") =>
-            createdRabbitProvider.getAndIncrement()
-            Created(Json.obj(
-              "id" -> rabbitProvId
-            ))
-          case Some("default-security-provider") =>
-            createdSecProvider.getAndIncrement()
-            Created(Json.obj(
-              "id" -> secProvId
-            ))
-//          case Some("base-kong")      =>
-//            createdBaseKong.getAndIncrement()
-//            Created(Json.obj(
-//            "id" -> kongProvId
-//          ))
-          case _ => BadRequest("")
+          case _ => providerName match {
+            case "default-dcos-provider"  =>
+              createdBaseDCOS.getAndIncrement()
+              Created(Json.obj(
+                "id" -> dcosProvId
+              ))
+            case "default-postgres-provider" =>
+              createdDbProvider.getAndIncrement()
+              Created(Json.obj(
+                "id" -> dbProvId
+              ))
+            case "default-rabbit-provider" =>
+              createdRabbitProvider.getAndIncrement()
+              Created(Json.obj(
+                "id" -> rabbitProvId
+              ))
+            case "default-security-provider" =>
+              createdSecProvider.getAndIncrement()
+              Created(Json.obj(
+                "id" -> secProvId
+              ))
+            case "default-laser-provider" =>
+              createdLaserProvider.getAndIncrement()
+              Created(Json.obj(
+                "id" -> laserProvId
+              ))
+            //          case Some("base-kong")      =>
+            //            createdBaseKong.getAndIncrement()
+            //            Created(Json.obj(
+            //            "id" -> kongProvId
+            //          ))
+            case _ => BadRequest("")
+          }
         }
       }
     })
@@ -442,12 +471,17 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       expectMsg(Transition(launcher, ProvisioningMeta, launcher.underlyingActor.nextState(ProvisioningMeta)))
 
       //
-      metaProvisionProviders.timeCalled     must beGreaterThanOrEqualTo(4)
-      providerCreateAttempts.get()          must_== 4
+      metaProvisionProviders.timeCalled     must beGreaterThanOrEqualTo(11)
+      providerCreateAttempts.get()          must_== 11
       createdBaseDCOS.get()                 must_== 1
       createdDbProvider.get()               must_== 1
       createdRabbitProvider.get()           must_== 1
       createdSecProvider.get()              must_== 1
+      createdExecProviders.size             must_== 6
+      createdLaserProvider.get()            must_== 1
+      Result.foreach(LauncherConfig.LaserConfig.KNOWN_LASER_RUNTIMES.values.toSeq) {
+        lr => createdExecProviders must haveKey(lr.name)
+      }
       createdBaseKong.get()                 must_== 0
       //
       metaProvisionLicense.timeCalled       must_== 1

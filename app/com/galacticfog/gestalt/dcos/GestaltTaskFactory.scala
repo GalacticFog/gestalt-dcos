@@ -76,13 +76,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   val RABBIT_EXCHANGE = "policy-exchange"
 
-  val TLD: Option[String] = launcherConfig.marathon.tld
-
-  val appGroup: String = launcherConfig.marathon.appGroup
-
-  val gestaltFrameworkEnsembleVersion: Option[String] = launcherConfig.gestaltFrameworkVersion
-
-  Logger.info("gestalt-framework-version: " + gestaltFrameworkEnsembleVersion)
+  Logger.info("gestalt-framework-version: " + launcherConfig.gestaltFrameworkVersion)
 
   import LauncherConfig.Services._
 
@@ -96,7 +90,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   )
 
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
-    val vhosts = TLD match {
+    val vhosts = launcherConfig.marathon.tld match {
       case Some(tld) => service match {
         case UI => Map(
           "HAPROXY_0_VHOST" -> tld
@@ -132,28 +126,14 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     }
   }
 
-  private[this] def gestaltSecurityEnvVars(secConfig: GlobalSecConfig): Map[String, String] = {
-    // TODO: use this wherever and then delete it
-    //    Map(
-    //      "GESTALT_SECURITY_PROTOCOL" -> "http",
-    //      "GESTALT_SECURITY_HOSTNAME" -> serviceHostname(SECURITY),
-    //      "GESTALT_SECURITY_PORT" -> vipPort(SECURITY),
-    //      "GESTALT_SECURITY_KEY" -> (secConfig \ "apiKey").asOpt[String].getOrElse("missing"),
-    //      "GESTALT_SECURITY_SECRET" -> (secConfig \ "apiSecret").asOpt[String].getOrElse("missing"),
-    //      "GESTALT_SECURITY_REALM" ->
-    //        TLD.map("https://security." + _)
-    //          .orElse((secConfig \ "realm").asOpt[String])
-    //          .getOrElse(s"http://${vipDestination(SECURITY)}")
-    //    )
-        Map(
-          "GESTALT_SECURITY_PROTOCOL" -> "http",
-          "GESTALT_SECURITY_HOSTNAME" -> secConfig.hostname,
-          "GESTALT_SECURITY_PORT" -> secConfig.port.toString,
-          "GESTALT_SECURITY_KEY" -> secConfig.apiKey,
-          "GESTALT_SECURITY_SECRET" -> secConfig.apiSecret,
-          "GESTALT_SECURITY_REALM" -> secConfig.realm
-        )
-  }
+  private[this] def gestaltSecurityEnvVars(secConfig: GlobalSecConfig): Map[String, String] = Map(
+    "GESTALT_SECURITY_PROTOCOL" -> "http",
+    "GESTALT_SECURITY_HOSTNAME" -> secConfig.hostname,
+    "GESTALT_SECURITY_PORT"     -> secConfig.port.toString,
+    "GESTALT_SECURITY_KEY"      -> secConfig.apiKey,
+    "GESTALT_SECURITY_SECRET"   -> secConfig.apiSecret,
+    "GESTALT_SECURITY_REALM"    -> secConfig.realm
+  )
 
   private[this] def getData(dbConfig: GlobalDBConfig, index: Int): AppSpec = {
     val replEnv = if (index > 0) Map(

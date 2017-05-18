@@ -18,7 +18,7 @@
     </div>
 
     <div class="row">
-        <div id="launcher-error" class="alert alert-danger col-md-10 col-md-offset-1"/>
+        <div id="launcher-error" class="hidden alert alert-danger col-md-10 col-md-offset-1"/>
     </div>
 
     <div class="row">
@@ -117,9 +117,9 @@
                 $.getJSON("data", function(data) {
                     setTimeout(doPoll,2000);
                     if (data.error) {
-                        $('#launcher-error').html(data.error).show();
+                        $('#launcher-error').html(data.error).removeClass('hidden');
                     } else {
-                        $('#launcher-error').html("").hide();
+                        $('#launcher-error').html("").addClass('hidden');
                     }
                     if (data.isConnectedToMarathon) {
                         $('#marathon-connection').html("Connected").removeClass("connected-false").addClass("connected-true")
@@ -142,7 +142,7 @@
                 $.each(svc.vhosts, function (i,vhost) {
                     url = vhost;
                     vhosts.push(
-                            '<a href="' + url + '">' + url + '</a>'
+                            '<a target="_blank" href="' + url + '">' + url + '</a>'
                     );
                 });
                 return vhosts.join("<br>");
@@ -152,13 +152,13 @@
                 if (svc.hostname && svc.ports.length > 0) {
                     if (svc.ports.length == 1) {
                         u = 'http://' + svc.hostname + ':' + svc.ports[0];
-                        return '<a href="' + u + '">' + u + '</a>';
+                        return '<a target="_blank" href="' + u + '">' + u + '</a>';
                     } else {
                         var url_list = [];
                         $.each(svc.ports, function (i,p) {
                             u = 'http://' + svc.hostname + ':' + p;
                             url_list.push(
-                                    '<a href="' + u + '">' + p + '</a>'
+                                    '<a target="_blank" href="' + u + '">' + p + '</a>'
                             )
                         });
                         return 'http://' + svc.hostname + ':[' + url_list.join(",") + ']';

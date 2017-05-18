@@ -22,6 +22,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import play.api.libs.json._
 import play.api.libs.json.Reads._
 import LauncherConfig.Services._
+import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
 import com.galacticfog.gestalt.cli._
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
@@ -138,10 +139,9 @@ object GestaltMarathonLauncher {
                                globalConfig: GlobalConfig,
                                connected: Boolean) {
     def getUrl(service: FrameworkService): Option[String] = {
-      statuses.get(service)
-        .filter(_.hostname.isDefined)
-        .map({ case ServiceInfo(_, _, hostname, ports, _) => ports.map(p => hostname.get + ":" + p.toString) })
-        .flatMap(_.headOption)
+      statuses.get(service).collect({
+        case ServiceInfo(_, _, Some(hostname), firstPort::_, _) => hostname + ":" + firstPort.toString
+      })
     }
 
     def update(update: ServiceInfo): ServiceData = this.update(Seq(update))
@@ -257,7 +257,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   } yield GestaltAPIKey(apiKey = key, apiSecret = Some(secret), accountId = UUID.randomUUID(), disabled = false)
 
   private[this] def launchApp(service: FrameworkService, globalConfig: GlobalConfig): Unit = {
-    val currentState = stateName.toString
+    val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
@@ -269,7 +269,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     fLaunch.onFailure {
       case e: Throwable =>
         log.warning("error launching {}: {}",service.name,e.getMessage)
-        self ! ErrorEvent(e.getMessage, errorStage = Some(currentState))
+        self ! ErrorEvent("Error launching application in Marathon: " + e.getMessage, errorStage = Some(currentState))
     }
   }
 
@@ -385,20 +385,20 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
 
   private[this] def getId(js: JsValue): Try[UUID] = Try{ (js \ "id").as[UUID] }
 
-  private[this] def provisionMetaDemoWorkspace(metaUrl: String, apiKey: GestaltAPIKey): Future[UUID] = {
-    val wrkUrl = s"http://${metaUrl}/root/workspaces"
-    resourceExistsInList(wrkUrl, apiKey, "demo") flatMap {
+  private[this] def provisionMetaWorkspace(metaUrl: String, apiKey: GestaltAPIKey, parentFQON: String, name: String, description: String): Future[UUID] = {
+    val wrkUrl = s"http://${metaUrl}/${parentFQON}/workspaces"
+    resourceExistsInList(wrkUrl, apiKey, name) flatMap {
       case Some(js) =>
         Future.fromTry(getId(js))
       case None =>
         genRequest(wrkUrl, apiKey)
           .post(Json.obj(
-            "name" -> "demo",
-            "description" -> "Demo workspace"
+            "name" -> name,
+            "description" -> description
           ))
           .flatMap { implicit resp =>
-            log.info("meta.provision(workspace demo) response: {}",resp.status)
-            log.debug("meta.provision(workspace demo) response body: {}",resp.body)
+            log.info(s"meta.provision(workspace '$name') response: {}",resp.status)
+            log.debug(s"meta.provision(workspace '$name') response body: {}",resp.body)
             resp.status match {
               case 201 => Future.fromTry(getId(resp.json))
               case _ => futureFailureWithMessage
@@ -407,23 +407,23 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     }
   }
 
-  private[this] def provisionMetaDemoEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentWorkspace: UUID): Future[UUID] = {
-    val envUrl = s"http://${metaUrl}/root/workspaces/$parentWorkspace/environments"
-    resourceExistsInList(envUrl, apiKey, "demo") flatMap {
+  private[this] def provisionMetaEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentFQON: String, parentWorkspace: UUID, name: String, description: String, envType: String): Future[UUID] = {
+    val envUrl = s"http://${metaUrl}/$parentFQON/workspaces/$parentWorkspace/environments"
+    resourceExistsInList(envUrl, apiKey, name) flatMap {
       case Some(js) =>
         Future.fromTry(getId(js))
       case None =>
         genRequest(envUrl, apiKey)
           .post(Json.obj(
-            "name" -> "demo",
-            "description" -> "Demo environment",
+            "name" -> name,
+            "description" -> description,
             "properties" -> Json.obj(
-              "environment_type" -> "production"
+              "environment_type" -> envType
             )
           ))
           .flatMap { implicit resp =>
-            log.info("meta.provision(environment demo) response: {}",resp.status)
-            log.debug("meta.provision(environment demo) response body: {}",resp.body)
+            log.info(s"meta.provision(environment $name) response: {}",resp.status)
+            log.debug(s"meta.provision(environment $name) response body: {}",resp.body)
             resp.status match {
               case 201 => Future.fromTry(getId(resp.json))
               case _ => futureFailureWithMessage
@@ -552,8 +552,8 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
   private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, laserProvider: UUID, gatewayProvider: UUID, kongProvider: UUID): Future[MetaProvisioned.type] = {
     val metaApiUrl = "http://" + config.vipHostname(META) + ":" + META.port
     for {
-      wrkId <- provisionMetaDemoWorkspace(metaUrl, apiKey)
-      envId <- provisionMetaDemoEnvironment(metaUrl, apiKey, wrkId)
+      wrkId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "demo", "Demo")
+      envId <- provisionMetaEnvironment(metaUrl, apiKey, "root", wrkId, "demo", "Demo", "production")
       Seq(setupLambdaId,tdownLambdaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, laserProvider)
       _ <- Future.sequence(Seq(
         setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo-setup",    lid, "demo-setup.js;run")),
@@ -651,9 +651,10 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     *************************************************************************************/
 
   startWith(Uninitialized, ServiceData.init.copy(
-    globalConfig = GlobalConfig().withDb(
-      if (config.database.provision) provisionedDB else configuredDB
-    )
+    globalConfig = GlobalConfig()
+      .withDb(
+        if (config.database.provision) provisionedDB else configuredDB
+      )
   ))
 
   when(Uninitialized) {
@@ -758,41 +759,89 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
       (nextStateData.getUrl(META), nextStateData.adminKey) match {
         case (Some(metaUrl),Some(apiKey)) =>
           val gc = nextStateData.globalConfig
+          val baseProviderPayloads = Seq(
+            GestaltProviderBuilder.caasProvider(CaaSSecrets(
+              url = Some(config.marathon.baseUrl),
+              username = Some("unused"),
+              password = Some("unused"),
+              kubeconfig = None
+            ), GestaltProviderBuilder.CaaSTypes.DCOS),
+            GestaltProviderBuilder.dbProvider(DBSecrets(
+              username = gc.dbConfig.get.username,
+              password = gc.dbConfig.get.password,
+              host     = gc.dbConfig.get.hostname,
+              port     = gc.dbConfig.get.port,
+              protocol = "tcp"
+            )),
+            GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
+              host = config.vipHostname(RABBIT_AMQP),
+              port = RABBIT_AMQP.port
+            )),
+            GestaltProviderBuilder.securityProvider(SecuritySecrets(
+              protocol = "http",
+              host = gc.secConfig.get.hostname,
+              port = gc.secConfig.get.port,
+              key = gc.secConfig.get.apiKey,
+              secret = gc.secConfig.get.apiSecret
+            ))
+          )
+          val enabledExecutorPayloads = config.laser.enabledRuntimes.map {
+            lr => GestaltProviderBuilder.executorPayload(ExecutorSecrets(
+              image = lr.image,
+              name = lr.name,
+              cmd = lr.cmd,
+              runtime = lr.runtime,
+              metaType = lr.metaType
+            ))
+          }
           val provSteps = for {
-            Seq(dcosProviderId,dbProviderId,rabbitProviderId,secProviderId) <- Future.sequence(
+            configOnlyProviderIds <- Future.sequence(
+              provisionMetaProviders(metaUrl,apiKey, baseProviderPayloads ++ enabledExecutorPayloads)
+            )
+            Seq(dcosProviderId,dbProviderId,rabbitProviderId,secProviderId) = configOnlyProviderIds.take(4)
+            laserExecutorIds = configOnlyProviderIds.drop(4).map(_.toString)
+            //
+            systemWorkspaceId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "gestalt-system-workspace", "Gestalt System Workspace")
+            laserEnvId        <- provisionMetaEnvironment(metaUrl, apiKey, "root", systemWorkspaceId, "gestalt-laser-environment", "Gestalt Laser Environment", "production")
+            //
+            Seq(laserProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
-                GestaltProviderBuilder.caasProvider(CaaSSecrets(
-                  url = Some(config.marathon.baseUrl),
-                  username = Some("unused"),
-                  password = Some("unused"),
-                  kubeconfig = None
-                ), GestaltProviderBuilder.CaaSTypes.DCOS),
-                GestaltProviderBuilder.dbProvider(DBSecrets(
-                  username = gc.dbConfig.get.username,
-                  password = gc.dbConfig.get.password,
-                  host     = gc.dbConfig.get.hostname,
-                  port     = gc.dbConfig.get.port,
-                  protocol = "tcp"
-                )),
-                GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
-                  host = config.vipHostname(RABBIT_AMQP),
-                  port = RABBIT_AMQP.port
-                )),
-                GestaltProviderBuilder.securityProvider(SecuritySecrets(
-                  protocol = "http",
-                  host = gc.secConfig.get.hostname,
-                  port = gc.secConfig.get.port,
-                  key = gc.secConfig.get.apiKey,
-                  secret = gc.secConfig.get.apiSecret
-                ))
+                GestaltProviderBuilder.laserProvider(
+                  secrets = LaserSecrets(
+                    dbName = "default-laser-provider",
+                    monitorExchange = "default-monitor-exchange",
+                    monitorTopic = "default-monitor-topic",
+                    responseExchange = "default-response-exchange",
+                    responseTopic = "default-response-topic",
+                    listenExchange = "default-listen-exchange",
+                    listenRoute = "default-listen-route",
+                    computeUsername = gc.secConfig.get.apiKey,
+                    computePassword = gc.secConfig.get.apiSecret,
+                    computeUrl = s"http://${config.vipHostname(META)}:${META.port}",
+                    laserImage = config.dockerImage(LASER),
+                    laserCpu = LASER.cpu,
+                    laserMem = LASER.mem,
+                    laserVHost = config.marathon.tld.map("default-laser." + _),
+                    laserEthernetPort = None,
+                    executors = Seq.empty
+                  ),
+                  executorIds = laserExecutorIds,
+                  laserFQON = s"/root/environments/$laserEnvId/containers",
+                  securityId = secProviderId.toString,
+                  computeId = dcosProviderId.toString,
+                  rabbitId = rabbitProviderId.toString,
+                  dbId = dbProviderId.toString,
+                  caastype = CaaSTypes.DCOS
+                )
               ))
             )
-            stageTwo <- Future.sequence(Seq(
+            //
+            stageThree <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
               // provisionDemo(metaUrl,apiKey,???,???,???),
               provisionMetaLicense(metaUrl,apiKey)
             ))
-          } yield stageTwo
+          } yield stageThree
           provSteps onComplete {
             case Success(msg) => self ! msg.head // all are MetaProvidersProvisioned
             case Failure(ex) =>
@@ -837,7 +886,17 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
     case Event(SecurityInitializationComplete(apiKey), d) =>
       log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
       goto(nextState(stateName)) using d.copy(
-        adminKey = Some(apiKey)
+        adminKey = Some(apiKey),
+        globalConfig = d.globalConfig.copy(
+          secConfig = Some(GlobalSecConfig(
+            hostname = config.vipHostname(SECURITY),
+            port = SECURITY.port,
+            apiKey = apiKey.apiKey,
+            apiSecret = apiKey.apiSecret.get,
+            realm = config.marathon.tld.map("https://security." + _)
+              .getOrElse(s"http://${gtf.vipDestination(SECURITY)}")
+          ))
+        )
       )
     case Event(APIKeyTimeout, d) =>
       val mesg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"

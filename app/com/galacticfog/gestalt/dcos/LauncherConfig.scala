@@ -270,27 +270,25 @@ object LauncherConfig {
     val DEFAULT_MIN_COOL_EXECS = 1
     val DEFAULT_SCALE_DOWN_TIMEOUT = 15
 
-    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String)
+    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String)
 
     val KNOWN_LASER_RUNTIMES: Map[Dockerable, LaserRuntime] = Map(
-      EXECUTOR_JS     -> LaserRuntime("js-executor",     "nodejs",        "", "bin/gestalt-laser-executor-js"),
-      EXECUTOR_JVM    -> LaserRuntime("jvm-executor",    "java;scala",    "", "bin/gestalt-laser-executor-jvm"),
-      EXECUTOR_DOTNET -> LaserRuntime("dotnet-executor", "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet"),
-      EXECUTOR_PYTHON -> LaserRuntime("python-executor", "python",        "", "bin/gestalt-laser-executor-python"),
-      EXECUTOR_RUBY   -> LaserRuntime("ruby-executor",   "ruby",          "", "bin/gestalt-laser-executor-ruby"),
-      EXECUTOR_GOLANG -> LaserRuntime("golang-executor", "golang",        "", "bin/gestalt-laser-executor-golang")
+      EXECUTOR_JS     -> LaserRuntime("js-executor",     "nodejs",        "", "bin/gestalt-laser-executor-js"    , "NodeJS"),
+      EXECUTOR_JVM    -> LaserRuntime("jvm-executor",    "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java"),
+      EXECUTOR_DOTNET -> LaserRuntime("dotnet-executor", "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp"),
+      EXECUTOR_PYTHON -> LaserRuntime("python-executor", "python",        "", "bin/gestalt-laser-executor-python", "Python"),
+      EXECUTOR_RUBY   -> LaserRuntime("ruby-executor",   "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby"),
+      EXECUTOR_GOLANG -> LaserRuntime("golang-executor", "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang")
     )
-
   }
 
   case class MetaConfig( companyName: String )
 
   object MetaConfig {
-
     val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
 
-    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-setup.js"
-    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-teardown.js"
+    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-setup.js"
+    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-teardown.js"
   }
 
 }
