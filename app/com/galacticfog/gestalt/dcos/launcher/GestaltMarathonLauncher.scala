@@ -804,7 +804,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
             systemWorkspaceId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "gestalt-system-workspace", "Gestalt System Workspace")
             laserEnvId        <- provisionMetaEnvironment(metaUrl, apiKey, "root", systemWorkspaceId, "gestalt-laser-environment", "Gestalt Laser Environment", "production")
             //
-            Seq(laserProviderId) <- Future.sequence(
+            Seq(laserProviderId,kongProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
                 GestaltProviderBuilder.laserProvider(
                   secrets = LaserSecrets(
@@ -831,14 +831,54 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
                   computeId = dcosProviderId.toString,
                   rabbitId = rabbitProviderId.toString,
                   dbId = dbProviderId.toString,
-                  caastype = CaaSTypes.DCOS
+                  caasType = CaaSTypes.DCOS
+                ),
+                GestaltProviderBuilder.kongProvider(
+                  secrets = KongSecrets(
+                    image = config.dockerImage(KONG),
+                    dbName = "default-kong-db",
+                    gatewayVHost = config.marathon.tld.map("gtw1." + _),
+                    serviceVHost = None,
+                    externalProtocol = Some("https")
+                  ),
+                  dbId = dbProviderId.toString,
+                  computeId = dcosProviderId.toString,
+                  caasType = CaaSTypes.DCOS
+                )
+              ))
+            )
+            Seq(policyProviderId,gtwProviderId) <- Future.sequence(
+              provisionMetaProviders(metaUrl,apiKey, Seq(
+                GestaltProviderBuilder.policyProvider(
+                  secrets = PolicySecrets(
+                    image = config.dockerImage(POLICY),
+                    rabbitExchange = gtf.RABBIT_POLICY_EXCHANGE,
+                    rabbitRoute = gtf.RABBIT_POLICY_ROUTE,
+                    laserUser = apiKey.apiKey,
+                    laserPassword = apiKey.apiSecret.get
+                  ),
+                  computeId = dcosProviderId.toString,
+                  laserId = laserProviderId.toString,
+                  rabbitId = rabbitProviderId.toString,
+                  caasType = CaaSTypes.DCOS
+                ),
+                GestaltProviderBuilder.gatewayProvider(
+                  secrets = GatewaySecrets(
+                    image = config.dockerImage(API_GATEWAY),
+                    dbName = "default-gateway-db",
+                    gatewayVHost = None
+                  ),
+                  kongId = kongProviderId.toString,
+                  dbId = dbProviderId.toString,
+                  computeId = dcosProviderId.toString,
+                  securityId = secProviderId.toString
                 )
               ))
             )
             //
             stageThree <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
-              // provisionDemo(metaUrl,apiKey,???,???,???),
+              provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
           } yield stageThree

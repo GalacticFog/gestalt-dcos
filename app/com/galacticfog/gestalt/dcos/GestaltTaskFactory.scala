@@ -74,7 +74,8 @@ case class GlobalSecConfig( hostname: String,
 @Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
-  val RABBIT_EXCHANGE = "policy-exchange"
+  val RABBIT_POLICY_EXCHANGE = "policy-exchange"
+  val RABBIT_POLICY_ROUTE    = "policy"
 
   Logger.info("gestalt-framework-version: " + launcherConfig.gestaltFrameworkVersion)
 
@@ -229,8 +230,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_HOST"      -> serviceHostname(RABBIT_AMQP),
         "RABBIT_PORT"      -> vipPort(RABBIT_AMQP),
         "RABBIT_HTTP_PORT" -> vipPort(RABBIT_HTTP),
-        "RABBIT_EXCHANGE"  -> RABBIT_EXCHANGE,
-        "RABBIT_ROUTE"     -> "policy"
+        "RABBIT_EXCHANGE"  -> RABBIT_POLICY_EXCHANGE,
+        "RABBIT_ROUTE"     -> RABBIT_POLICY_ROUTE
       ),
       ports = Some(Seq(
         PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
