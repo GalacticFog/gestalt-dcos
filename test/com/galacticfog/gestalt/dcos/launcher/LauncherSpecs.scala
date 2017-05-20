@@ -254,7 +254,6 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val demoWrkId  = UUID.randomUUID()
     val demoEnvId  = UUID.randomUUID()
     val sysWrkId   = UUID.randomUUID()
-    val sysEnvId   = UUID.randomUUID()
     val dcosProvId = UUID.randomUUID()
     val dbProvId   = UUID.randomUUID()
     val rabbitProvId = UUID.randomUUID()
@@ -286,10 +285,6 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments"  => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas"    => Action{Ok(Json.arr())}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
         providerCreateAttempts.getAndIncrement()
         val providerName = (request.body \ "name").as[String]
@@ -348,6 +343,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       }
     })
 
+    val metaExistenceChecks = Route({
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments"  => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas"  => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apiendpoints"  => Action{Ok(Json.arr())}
+    })
+
     val metaRenameRoot = Route({
       case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action(BodyParsers.parse.json) { request =>
         (request.body).asOpt[Seq[PatchOp]] match {
@@ -375,19 +378,19 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     val metaProvisionDemoEnv = Route({
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("demo") &&
-             (request.body \ "properties" \ "environment_type").asOpt[String].contains("production") )
+        if ( (request.body \ "name").asOpt[String].contains("demo") )
           Created(Json.obj("id" -> demoEnvId))
         else
           BadRequest("")
       }
     })
 
-    val metaProvisionSysEnv = Route({
+    val metaProvisionSysEnvs = Route({
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("gestalt-system-environment") &&
-          (request.body \ "properties" \ "environment_type").asOpt[String].contains("production") )
-          Created(Json.obj("id" -> sysEnvId))
+        if ( (request.body \ "name").asOpt[String].contains("gestalt-system-environment") )
+          Created(Json.obj("id" -> UUID.randomUUID()))
+        else if ( (request.body \ "name").asOpt[String].contains("gestalt-laser-environment") )
+          Created(Json.obj("id" -> UUID.randomUUID()))
         else
           BadRequest("")
       }
@@ -444,9 +447,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     "provision meta with all expected components and configured company name" in new WithRoutesAndConfig(
       metaProvisionProviders orElse metaProvisionLicense
-        orElse metaProvisionWorkspace orElse metaProvisionDemoEnv orElse metaProvisionSysEnv
+        orElse metaProvisionWorkspace orElse metaProvisionDemoEnv orElse metaProvisionSysEnvs
         orElse metaProvisionDemoLambdas orElse metaProvisionDemoEndpoints
-        orElse metaRenameRoot
+        orElse metaRenameRoot orElse metaExistenceChecks
         orElse notFoundRoute,
       "meta.company-name" -> newCompanyDescription
     ) {
@@ -512,18 +515,18 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       metaProvisionLicense.timeCalled       must_== 1
       metaProvisionWorkspace.timeCalled     must_== 2
       metaProvisionDemoEnv.timeCalled       must_== 1
-      metaProvisionSysEnv.timeCalled        must_== 1
+      metaProvisionSysEnvs.timeCalled       must_== 2
       //
-      metaRenameRoot.timeCalled must_== 1
-      renamedRootOrg.get()      must_== 1
+      metaRenameRoot.timeCalled             must_== 1
+      renamedRootOrg.get()                  must_== 1
       //
-      metaProvisionDemoLambdas.timeCalled   must_== 1
-      createdSetupLambda.get() must_== 1
-      createdTdownLambda.get() must_== 1
+      metaProvisionDemoLambdas.timeCalled   must_== 2
+      createdSetupLambda.get()              must_== 1
+      createdTdownLambda.get()              must_== 1
       //
-      metaProvisionDemoEndpoints.timeCalled must_== 1
-      createdSetupLambdaEndpoint.get() must_== 1
-      createdTdownLambdaEndpoint.get() must_== 1
+      metaProvisionDemoEndpoints.timeCalled must_== 2
+      createdSetupLambdaEndpoint.get()      must_== 1
+      createdTdownLambdaEndpoint.get()      must_== 1
     }
 
   }

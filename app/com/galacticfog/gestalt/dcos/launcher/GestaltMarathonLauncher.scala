@@ -802,6 +802,7 @@ class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
             laserExecutorIds = configOnlyProviderIds.drop(4).map(_.toString)
             //
             systemWorkspaceId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "gestalt-system-workspace", "Gestalt System Workspace")
+            _                 <- provisionMetaEnvironment(metaUrl, apiKey, "root", systemWorkspaceId, "gestalt-system-environment", "Gestalt System Environment", "production")
             laserEnvId        <- provisionMetaEnvironment(metaUrl, apiKey, "root", systemWorkspaceId, "gestalt-laser-environment", "Gestalt Laser Environment", "production")
             //
             Seq(laserProviderId,kongProviderId) <- Future.sequence(
