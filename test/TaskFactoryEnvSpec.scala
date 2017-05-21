@@ -1,11 +1,19 @@
-import com.galacticfog.gestalt.dcos.{AppSpec, BuildInfo, GestaltTaskFactory, GlobalConfig}
+import java.util.UUID
+
+import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
+import com.galacticfog.gestalt.dcos.LauncherConfig.{Dockerable, WellKnownLaserExecutor}
+import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
+import com.galacticfog.gestalt.dcos._
 import modules.Module
 import org.specs2.mutable.Specification
-import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
-import play.api.libs.json.Json
+import play.api.inject.guice.GuiceApplicationBuilder
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
+import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import org.specs2.execute.Result
+import org.specs2.matcher.JsonMatchers
+import play.api.libs.json.JsValue
 
-class TaskFactoryEnvSpec extends Specification {
+class TaskFactoryEnvSpec extends Specification with JsonMatchers {
 
   "GestaltTaskFactory" should {
 
@@ -17,42 +25,58 @@ class TaskFactoryEnvSpec extends Specification {
         .injector
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
+      val lc  = injector.instanceOf[LauncherConfig]
 
       val globals = GlobalConfig()
+        .withDb(GlobalDBConfig(
+          hostname = "", port = 0, username = "", password = "", prefix = ""
+        ))
+        .withSec(GlobalSecConfig(
+          hostname = "", port = 0, apiKey = "", apiSecret = "", realm = ""
+        ))
+      val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
+
+      def uuid = UUID.randomUUID()
 
       println("GESTALT_FRAMEWORK_VERSION: " + env("GESTALT_FRAMEWORK_VERSION"))
 
-      val ensver = env("GESTALT_FRAMEWORK_VERSION") getOrElse BuildInfo.version
+      val ensVer = env("GESTALT_FRAMEWORK_VERSION") getOrElse BuildInfo.version
 
-      gtf.getAppSpec(DATA(0), globals)     must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensver}"))
-      gtf.getAppSpec(DATA(1), globals)     must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensver}"))
-      gtf.getAppSpec(RABBIT, globals)      must haveImage(env("GESTALT_RABBIT_IMG").getOrElse(s"galacticfog/rabbit:dcos-${ensver}"))
-      gtf.getAppSpec(SECURITY, globals)    must haveImage(env("GESTALT_SECURITY_IMG").getOrElse(s"galacticfog/gestalt-security:dcos-${ensver}"))
-      gtf.getAppSpec(META, globals)        must haveImage(env("GESTALT_META_IMG").getOrElse(s"galacticfog/gestalt-meta:dcos-${ensver}"))
-      gtf.getAppSpec(UI, globals)          must haveImage(env("GESTALT_UI_IMG").getOrElse(s"galacticfog/gestalt-ui-react:dcos-${ensver}"))
+      gtf.getAppSpec(DATA(0), globals) must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensVer}"))
+      gtf.getAppSpec(DATA(1), globals) must haveImage(env("GESTALT_DATA_IMG").getOrElse(s"galacticfog/postgres_repl:dcos-${ensVer}"))
+      gtf.getAppSpec(RABBIT, globals) must haveImage(env("GESTALT_RABBIT_IMG").getOrElse(s"galacticfog/rabbit:dcos-${ensVer}"))
+      gtf.getAppSpec(SECURITY, globals) must haveImage(env("GESTALT_SECURITY_IMG").getOrElse(s"galacticfog/gestalt-security:dcos-${ensVer}"))
+      gtf.getAppSpec(META, globals) must haveImage(env("GESTALT_META_IMG").getOrElse(s"galacticfog/gestalt-meta:dcos-${ensVer}"))
+      gtf.getAppSpec(UI, globals) must haveImage(env("GESTALT_UI_IMG").getOrElse(s"galacticfog/gestalt-ui-react:dcos-${ensVer}"))
 
-//      gtf.getAppSpec(KONG, globals)        must haveImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:dcos-${ensver}"))
-//      gtf.getAppSpec(POLICY, globals)      must haveImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:dcos-${ensver}"))
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:dcos-${ensVer}"))
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:dcos-${ensVer}"))
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:dcos-${ensVer}"))
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:dcos-${ensVer}"))
 
-//      val laserSpec = gtf.getAppSpec(LASER, globals)
-//      laserSpec must haveImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:dcos-${ensver}"))
-//      laserSpec must haveLaserRuntimeImage(env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:dcos-${ensver}"))
+      def getImage(lr: LaserRuntime) = lr.name match {
+        case "js-executor"     => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:dcos-${ensVer}")
+        case "jvm-executor"    => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ensVer}")
+        case "dotnet-executor" => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ensVer}")
+        case "python-executor" => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:dcos-${ensVer}")
+        case "ruby-executor"   => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:dcos-${ensVer}")
+        case "golang-executor" => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:dcos-${ensVer}")
+        case _ => throw new RuntimeException("unexpected")
+      }
 
-//      gtf.getAppSpec(API_GATEWAY, globals) must haveImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:dcos-${ensver}"))
-    }.pendingUntilFixed
-
+      Result.foreach(lc.laser.enabledRuntimes) {
+        lr => gtf.getExecutorProvider(lr) must haveLaserRuntimeImage(getImage(lr))
+      }
+    }
   }
 
-  def haveLaserRuntimeImage(img: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_IMAGE")).values) ^^ contain(img)
+  def haveLaserRuntimeImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("public") /("IMAGE" -> name)
 
   def haveImage(name: => String) = ((_: AppSpec).image) ^^ be_==(name)
 
-  def haveEnvVar(pair: => (String,String)) = ((_: AppSpec).env) ^^ havePair(pair)
+  def haveServiceImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("services") */("container_spec") /("properties") /("image" -> name)
+
+  def haveEnvVar(pair: => (String, String)) = ((_: AppSpec).env) ^^ havePair(pair)
 
   def env(name: String): Option[String] = {
     scala.util.Properties.envOrNone(name)

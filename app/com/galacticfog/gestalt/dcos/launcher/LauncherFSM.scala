@@ -5,9 +5,7 @@ import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM, Status}
-import akka.event.LoggingAdapter
-import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
-import com.galacticfog.gestalt.cli._
+import com.galacticfog.gestalt.cli.{ExecutorSecrets, GestaltProviderBuilder}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
@@ -189,8 +187,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
               Future.failed(new RuntimeException("failed to init security; attempted to clear init flag and will try again"))
           }
         case _ =>
-          val mesg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
-          Future.failed(new RuntimeException(mesg))
+          val msg = Try{(resp.json \ "message").as[String]}.getOrElse(resp.body)
+          Future.failed(new RuntimeException(msg))
       }
     }
   }
@@ -241,8 +239,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
           case v: JsValue => if (matchesName(v)) Some(v) else None
         }
         case _ =>
-          val mesg = getMessageFromResponse
-          log.debug(mesg)
+          val msg = getMessageFromResponse
+          log.debug(msg)
           None
       }
     }
@@ -438,7 +436,12 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     }
   }
 
-  private[this] def provisionDemo(metaUrl: String, apiKey: GestaltAPIKey, laserProvider: UUID, gatewayProvider: UUID, kongProvider: UUID): Future[MetaProvisioned.type] = {
+  private[this] def provisionDemo( metaUrl: String,
+                                   apiKey: GestaltAPIKey,
+                                   laserProvider: UUID,
+                                   gatewayProvider: UUID,
+                                   kongProvider: UUID ): Future[MetaProvisioned.type] =
+  {
     val metaApiUrl = "http://" + config.vipHostname(META) + ":" + META.port
     for {
       wrkId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "demo", "Demo")
@@ -456,8 +459,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
   }
 
   private[this] def futureFailureWithMessage(implicit response: WSResponse) = {
-    val mesg = getMessageFromResponse
-    Future.failed(new RuntimeException(mesg))
+    val msg = getMessageFromResponse
+    Future.failed(new RuntimeException(msg))
   }
 
   private[this] def renameMetaRootOrg(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
@@ -649,46 +652,17 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         case (Some(metaUrl),Some(apiKey)) =>
           val gc = nextStateData.globalConfig
           val baseProviderPayloads = Seq(
-            GestaltProviderBuilder.caasProvider(CaaSSecrets(
-              url = Some(config.marathon.baseUrl),
-              username = Some("unused"),
-              password = Some("unused"),
-              kubeconfig = None
-            ), GestaltProviderBuilder.CaaSTypes.DCOS),
-            GestaltProviderBuilder.dbProvider(DBSecrets(
-              username = gc.dbConfig.get.username,
-              password = gc.dbConfig.get.password,
-              host     = gc.dbConfig.get.hostname,
-              port     = gc.dbConfig.get.port,
-              protocol = "tcp"
-            )),
-            GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
-              host = config.vipHostname(RABBIT_AMQP),
-              port = RABBIT_AMQP.port
-            )),
-            GestaltProviderBuilder.securityProvider(SecuritySecrets(
-              protocol = "http",
-              host = gc.secConfig.get.hostname,
-              port = gc.secConfig.get.port,
-              key = gc.secConfig.get.apiKey,
-              secret = gc.secConfig.get.apiSecret
-            ))
+            gtf.getCaasProvider(),
+            gtf.getDbProvider(gc.dbConfig.get),
+            gtf.getRabbitProvider(),
+            gtf.getSecurityProvider(gc.secConfig.get)
           )
-          val enabledExecutorPayloads = config.laser.enabledRuntimes.map {
-            lr => GestaltProviderBuilder.executorPayload(ExecutorSecrets(
-              image = lr.image,
-              name = lr.name,
-              cmd = lr.cmd,
-              runtime = lr.runtime,
-              metaType = lr.metaType
-            ))
-          }
+          val enabledExecutorPayloads = config.laser.enabledRuntimes map gtf.getExecutorProvider
           val provSteps = for {
             configOnlyProviderIds <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, baseProviderPayloads ++ enabledExecutorPayloads)
             )
-            Seq(dcosProviderId,dbProviderId,rabbitProviderId,secProviderId) = configOnlyProviderIds.take(4)
-            laserExecutorIds = configOnlyProviderIds.drop(4).map(_.toString)
+            (Seq(dcosProviderId,dbProviderId,rabbitProviderId,secProviderId),laserExecutorIds) = configOnlyProviderIds.splitAt(4)
             //
             systemWorkspaceId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "gestalt-system-workspace", "Gestalt System Workspace")
             _                 <- provisionMetaEnvironment(metaUrl, apiKey, "root", systemWorkspaceId, "gestalt-system-environment", "Gestalt System Environment", "production")
@@ -696,73 +670,14 @@ class LauncherFSM @Inject()( config: LauncherConfig,
             //
             Seq(laserProviderId,kongProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
-                GestaltProviderBuilder.laserProvider(
-                  secrets = LaserSecrets(
-                    dbName = "default-laser-provider",
-                    monitorExchange = "default-monitor-exchange",
-                    monitorTopic = "default-monitor-topic",
-                    responseExchange = "default-response-exchange",
-                    responseTopic = "default-response-topic",
-                    listenExchange = "default-listen-exchange",
-                    listenRoute = "default-listen-route",
-                    computeUsername = gc.secConfig.get.apiKey,
-                    computePassword = gc.secConfig.get.apiSecret,
-                    computeUrl = s"http://${config.vipHostname(META)}:${META.port}",
-                    laserImage = config.dockerImage(LASER),
-                    laserCpu = LASER.cpu,
-                    laserMem = LASER.mem,
-                    laserVHost = config.marathon.tld.map("default-laser." + _),
-                    laserEthernetPort = None,
-                    executors = Seq.empty
-                  ),
-                  executorIds = laserExecutorIds,
-                  laserFQON = s"/root/environments/$laserEnvId/containers",
-                  securityId = secProviderId.toString,
-                  computeId = dcosProviderId.toString,
-                  rabbitId = rabbitProviderId.toString,
-                  dbId = dbProviderId.toString,
-                  caasType = CaaSTypes.DCOS
-                ),
-                GestaltProviderBuilder.kongProvider(
-                  secrets = KongSecrets(
-                    image = config.dockerImage(KONG),
-                    dbName = "default-kong-db",
-                    gatewayVHost = config.marathon.tld.map("gtw1." + _),
-                    serviceVHost = None,
-                    externalProtocol = Some("https")
-                  ),
-                  dbId = dbProviderId.toString,
-                  computeId = dcosProviderId.toString,
-                  caasType = CaaSTypes.DCOS
-                )
+                gtf.getLaserProvider(apiKey, dbProviderId, rabbitProviderId, secProviderId, dcosProviderId, laserExecutorIds, laserEnvId),
+                gtf.getKongProvider(dbProviderId, dcosProviderId)
               ))
             )
             Seq(policyProviderId,gtwProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
-                GestaltProviderBuilder.policyProvider(
-                  secrets = PolicySecrets(
-                    image = config.dockerImage(POLICY),
-                    rabbitExchange = gtf.RABBIT_POLICY_EXCHANGE,
-                    rabbitRoute = gtf.RABBIT_POLICY_ROUTE,
-                    laserUser = apiKey.apiKey,
-                    laserPassword = apiKey.apiSecret.get
-                  ),
-                  computeId = dcosProviderId.toString,
-                  laserId = laserProviderId.toString,
-                  rabbitId = rabbitProviderId.toString,
-                  caasType = CaaSTypes.DCOS
-                ),
-                GestaltProviderBuilder.gatewayProvider(
-                  secrets = GatewaySecrets(
-                    image = config.dockerImage(API_GATEWAY),
-                    dbName = "default-gateway-db",
-                    gatewayVHost = None
-                  ),
-                  kongId = kongProviderId.toString,
-                  dbId = dbProviderId.toString,
-                  computeId = dcosProviderId.toString,
-                  securityId = secProviderId.toString
-                )
+                gtf.getPolicyProvider(apiKey, dcosProviderId, laserProviderId, rabbitProviderId),
+                gtf.getGatewayProvider(dbProviderId, secProviderId, kongProviderId, dcosProviderId)
               ))
             )
             //
@@ -829,10 +744,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         )
       )
     case Event(APIKeyTimeout, d) =>
-      val mesg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"
-      log.error(mesg)
+      val msg = "timed out waiting for initialization of gestalt-security and retrieval of administrative API keys"
+      log.error(msg)
       goto(Error) using d.copy(
-        error = Some(mesg)
+        error = Some(msg)
       )
   }
 
@@ -842,10 +757,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     case Event(MetaBootstrapFinished, d) =>
       goto(nextState(stateName))
     case Event(MetaBootstrapTimeout, d) =>
-      val mesg = "timed out waiting for bootstrap of gestalt-meta"
-      log.error(mesg)
+      val msg = "timed out waiting for bootstrap of gestalt-meta"
+      log.error(msg)
       goto(Error) using d.copy(
-        error = Some(mesg)
+        error = Some(msg)
       )
   }
 
@@ -855,10 +770,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     case Event(MetaSyncFinished, d) =>
       goto(nextState(stateName))
     case Event(MetaSyncTimeout, d) =>
-      val mesg = "timed out waiting for sync of gestalt-meta"
-      log.error(mesg)
+      val msg = "timed out waiting for sync of gestalt-meta"
+      log.error(msg)
       goto(Error) using d.copy(
-        error = Some(mesg)
+        error = Some(msg)
       )
   }
 
@@ -868,10 +783,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     case Event(MetaProvisioned, d) =>
       goto(nextState(stateName))
     case Event(MetaProvisioningTimeout, d) =>
-      val mesg = "timed out provisioning gestalt-meta"
-      log.error(mesg)
+      val msg = "timed out provisioning gestalt-meta"
+      log.error(msg)
       goto(Error) using d.copy(
-        error = Some(mesg)
+        error = Some(msg)
       )
   }
 
@@ -928,8 +843,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         connected = false
       )
 
-    case Event(sse @ ServerSentEvent(Some(data), Some(eventType), _, _), d) =>
-      val mesg = eventType match {
+    case Event(sse @ ServerSentEvent(Some(_), Some(eventType), _, _), d) =>
+      val msg = eventType match {
         case "app_terminated_event"        => MarathonSSEClient.parseEvent[MarathonAppTerminatedEvent](sse)
         case "health_status_changed_event" => MarathonSSEClient.parseEvent[MarathonHealthStatusChange](sse)
         case "status_update_event"         => MarathonSSEClient.parseEvent[MarathonStatusUpdateEvent](sse)
@@ -938,10 +853,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
           None
         }
       }
-      mesg.foreach(sse => self ! sse)
+      msg.foreach(sse => self ! sse)
       stay
 
-    case Event(sse @ ServerSentEvent(maybeData, maybeEventType, _, _), d) =>
+    case Event(_ : ServerSentEvent, d) =>
       log.debug("received server-sent-event heartbeat from marathon event bus")
       stay
 

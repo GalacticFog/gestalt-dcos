@@ -1,15 +1,21 @@
 package com.galacticfog.gestalt.dcos
 
+import java.util.UUID
+
 import scala.language.implicitConversions
-import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, ServiceEndpoint}
 import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
 
+import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
+import com.galacticfog.gestalt.cli._
 import com.galacticfog.gestalt.dcos.HealthCheck.{MARATHON_HTTP, MARATHON_TCP}
+import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
+import play.api.libs.json.JsValue
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
@@ -301,5 +307,130 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds
     )
   }
+
+  def getCaasProvider(): JsValue = {
+    GestaltProviderBuilder.caasProvider(CaaSSecrets(
+      url = Some(launcherConfig.marathon.baseUrl),
+      username = Some("unused"),
+      password = Some("unused"),
+      kubeconfig = None
+    ), GestaltProviderBuilder.CaaSTypes.DCOS)
+  }
+
+  def getDbProvider(dbConfig: GlobalDBConfig): JsValue = {
+    GestaltProviderBuilder.dbProvider(DBSecrets(
+      username = dbConfig.username,
+      password = dbConfig.password,
+      host     = dbConfig.hostname,
+      port     = dbConfig.port,
+      protocol = "tcp"
+    ))
+  }
+
+  def getRabbitProvider(): JsValue = {
+    GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
+      host = launcherConfig.vipHostname(RABBIT_AMQP),
+      port = RABBIT_AMQP.port
+    ))
+  }
+
+  def getSecurityProvider(secConfig: GlobalSecConfig): JsValue = {
+    GestaltProviderBuilder.securityProvider(SecuritySecrets(
+      protocol = "http",
+      host =   secConfig.hostname,
+      port =   secConfig.port,
+      key =    secConfig.apiKey,
+      secret = secConfig.apiSecret
+    ))
+  }
+
+  def getLaserProvider(apiKey: GestaltAPIKey,
+                       dbProviderId: UUID, rabbitProviderId: UUID,
+                       secProviderId: UUID, caasProviderId: UUID,
+                       laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
+    GestaltProviderBuilder.laserProvider(
+      secrets = LaserSecrets(
+        dbName = "default-laser-provider",
+        monitorExchange = "default-monitor-exchange",
+        monitorTopic = "default-monitor-topic",
+        responseExchange = "default-response-exchange",
+        responseTopic = "default-response-topic",
+        listenExchange = "default-listen-exchange",
+        listenRoute = "default-listen-route",
+        computeUsername = apiKey.apiKey,
+        computePassword = apiKey.apiSecret.get,
+        computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",
+        laserImage = launcherConfig.dockerImage(LASER),
+        laserCpu = LASER.cpu,
+        laserMem = LASER.mem,
+        laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
+        laserEthernetPort = None,
+        executors = Seq.empty
+      ),
+      executorIds = laserExecutorIds.map(_.toString),
+      laserFQON = s"/root/environments/$laserEnvId/containers",
+      securityId = secProviderId.toString,
+      computeId = caasProviderId.toString,
+      rabbitId = rabbitProviderId.toString,
+      dbId = dbProviderId.toString,
+      caasType = CaaSTypes.DCOS
+    )
+  }
+
+  def getKongProvider(dbProviderId: UUID, caasProviderId: UUID): JsValue = {
+    GestaltProviderBuilder.kongProvider(
+      secrets = KongSecrets(
+        image = launcherConfig.dockerImage(KONG),
+        dbName = "default-kong-db",
+        gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
+        serviceVHost = None,
+        externalProtocol = Some("https")
+      ),
+      dbId = dbProviderId.toString,
+      computeId = caasProviderId.toString,
+      caasType = CaaSTypes.DCOS
+    )
+  }
+
+  def getPolicyProvider(apiKey: GestaltAPIKey,
+                        caasProviderId: UUID,
+                        laserProviderId: UUID,
+                        rabbitProviderId: UUID): JsValue = {
+    GestaltProviderBuilder.policyProvider(
+      secrets = PolicySecrets(
+        image = launcherConfig.dockerImage(POLICY),
+        rabbitExchange = RABBIT_POLICY_EXCHANGE,
+        rabbitRoute = RABBIT_POLICY_ROUTE,
+        laserUser = apiKey.apiKey,
+        laserPassword = apiKey.apiSecret.get
+      ),
+      computeId = caasProviderId.toString,
+      laserId = laserProviderId.toString,
+      rabbitId = rabbitProviderId.toString,
+      caasType = CaaSTypes.DCOS
+    )
+  }
+
+  def getGatewayProvider(dbProviderId: UUID, secProviderId: UUID, kongProviderId: UUID, caasProviderId: UUID): JsValue = {
+    GestaltProviderBuilder.gatewayProvider(
+      secrets = GatewaySecrets(
+        image = launcherConfig.dockerImage(API_GATEWAY),
+        dbName = "default-gateway-db",
+        gatewayVHost = None
+      ),
+      kongId = kongProviderId.toString,
+      dbId = dbProviderId.toString,
+      computeId = caasProviderId.toString,
+      securityId = secProviderId.toString
+    )
+  }
+
+  def getExecutorProvider(lr: LaserConfig.LaserRuntime): JsValue = GestaltProviderBuilder.executorPayload(ExecutorSecrets(
+    image = lr.image,
+    name = lr.name,
+    cmd = lr.cmd,
+    runtime = lr.runtime,
+    metaType = lr.metaType
+  ))
 
 }
