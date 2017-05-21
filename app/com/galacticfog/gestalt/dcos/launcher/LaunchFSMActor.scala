@@ -1,34 +1,32 @@
 package com.galacticfog.gestalt.dcos.launcher
 
 import java.io.{PrintWriter, StringWriter}
-
-import scala.language.postfixOps
 import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM, Status}
 import akka.event.LoggingAdapter
+import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
+import com.galacticfog.gestalt.cli._
+import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
+import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
+import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
+import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import de.heikoseeberger.akkasse.ServerSentEvent
-import play.api.libs.json.{JsObject, Json}
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
+import play.api.libs.json.Reads._
+import play.api.libs.json.{JsObject, Json, _}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest, WSResponse}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
-import play.api.libs.json._
-import play.api.libs.json.Reads._
-import LauncherConfig.Services._
-import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
-import com.galacticfog.gestalt.cli._
-import com.galacticfog.gestalt.dcos.ServiceStatus._
-import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
-import com.galacticfog.gestalt.patch.PatchOp
 
-object GestaltMarathonLauncher {
+object LaunchFSMActor {
 
   object Messages {
 
@@ -84,53 +82,6 @@ object GestaltMarathonLauncher {
 
   }
 
-  sealed trait LauncherState
-
-  sealed trait LaunchingState extends LauncherState {
-    def targetService: FrameworkService
-  }
-
-  object States {
-
-    // ordered/ordinary states...
-    case object Uninitialized extends LauncherState
-
-    case class LaunchingDB(index: Int) extends LaunchingState {
-      val targetService = DATA(index)
-    }
-
-    case object LaunchingRabbit extends LaunchingState {
-      val targetService = RABBIT
-    }
-
-    case object LaunchingSecurity extends LaunchingState {
-      val targetService = SECURITY
-    }
-
-    case object RetrievingAPIKeys extends LauncherState
-
-    case object LaunchingMeta extends LaunchingState {
-      val targetService = META
-    }
-
-    case object BootstrappingMeta extends LauncherState
-
-    case object SyncingMeta extends LauncherState
-
-    case object ProvisioningMeta extends LauncherState
-
-    case object LaunchingUI extends LaunchingState {
-      val targetService = UI
-    }
-
-    case object AllServicesLaunched extends LauncherState
-
-    // exceptional states
-    case object ShuttingDown extends LauncherState
-
-    case object Error extends LauncherState
-
-  }
 
   final case class ServiceData(statuses: Map[FrameworkService, ServiceInfo],
                                adminKey: Option[GestaltAPIKey],
@@ -194,14 +145,14 @@ object GestaltMarathonLauncher {
 
 }
 
-class GestaltMarathonLauncher @Inject()(config: LauncherConfig,
-                                        marClient: MarathonSSEClient,
-                                        ws: WSClient,
-                                        gtf: GestaltTaskFactory ) extends LoggingFSM[GestaltMarathonLauncher.LauncherState,GestaltMarathonLauncher.ServiceData] {
+class LaunchFSMActor @Inject()(config: LauncherConfig,
+                               marClient: MarathonSSEClient,
+                               ws: WSClient,
+                               gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,LaunchFSMActor.ServiceData] {
 
-  import GestaltMarathonLauncher._
-  import GestaltMarathonLauncher.Messages._
-  import GestaltMarathonLauncher.States._
+  import LaunchFSMActor.Messages._
+  import States._
+  import LaunchFSMActor._
   import LauncherConfig.Services._
   import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
 

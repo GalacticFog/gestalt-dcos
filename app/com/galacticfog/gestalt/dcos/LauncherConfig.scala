@@ -1,10 +1,11 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher
 import javax.inject.{Inject, Singleton}
 
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
+import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
+import com.galacticfog.gestalt.dcos.launcher.States._
 import play.api.Configuration
 
 import scala.concurrent.duration._
@@ -58,9 +59,6 @@ class LauncherConfig @Inject()(config: Configuration) {
   )
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
-
-  import GestaltMarathonLauncher._
-  import GestaltMarathonLauncher.States._
 
   val LAUNCH_ORDER: Seq[LauncherState] = {
     val dbs = if (database.provision) {
@@ -176,9 +174,9 @@ object LauncherConfig {
   object Services {
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
     case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
-    case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 0.50; val mem =  512; val port = 5432} // TODO: change this back to 2.0/4096
+    case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
-    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 0.50; val mem = 1536; val port = 14374} // TODO: change this back to 2.0/3072
+    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 3072; val port = 14374}
     case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
     case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
     case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}

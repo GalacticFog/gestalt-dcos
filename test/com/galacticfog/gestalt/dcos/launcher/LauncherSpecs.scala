@@ -11,9 +11,9 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.States._
+import com.galacticfog.gestalt.dcos.launcher.LaunchFSMActor.Messages._
+import com.galacticfog.gestalt.dcos.launcher.LaunchFSMActor.ServiceData
+import com.galacticfog.gestalt.dcos.launcher.States._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppPayload, MarathonSSEClient}
 import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
@@ -82,9 +82,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       "database.port"     -> 5555
     ) {
 
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
 
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      launcher.stateName must_== States.Uninitialized
 
       launcher ! SubscribeTransitionCallBack(testActor)
 
@@ -106,7 +106,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       "database.prefix"   -> "gestalt-test-"
     ) {
 
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
 
       mockSSEClient.launchApp(argThat(
         (app: MarathonAppPayload) => app.id.endsWith("/data-0")
@@ -126,7 +126,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         Future.failed(new RuntimeException("do not care what happens next"))
       }
 
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      launcher.stateName must_== States.Uninitialized
 
       launcher ! SubscribeTransitionCallBack(testActor)
 
@@ -165,8 +165,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     }
 
     "not shutdown database containers if they were not provisioned even if asked to" in new WithConfig("database.provision" -> false) {
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
+      launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
       mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
@@ -192,8 +192,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     }
 
     "not shutdown database containers unless explicitly instructed to" in new WithConfig("database.provision" -> true) {
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
+      launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
       mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
@@ -219,8 +219,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     }
 
     "shutdown database containers if explicitly instructed to" in new WithConfig("database.provision" -> true, "database.num-secondaries" -> 3) {
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
+      launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
       mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
@@ -455,9 +455,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     ) {
       mockSSEClient.launchApp(any[MarathonAppPayload]) returns Future.failed(new RuntimeException("i don't care whether i can launch apps"))
 
-      val launcher = TestFSMRef(injector.instanceOf[GestaltMarathonLauncher])
+      val launcher = TestFSMRef(injector.instanceOf[LaunchFSMActor])
 
-      launcher.stateName must_== GestaltMarathonLauncher.States.Uninitialized
+      launcher.stateName must_== States.Uninitialized
 
       launcher ! SubscribeTransitionCallBack(testActor)
 

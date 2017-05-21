@@ -1,34 +1,18 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.ActorSystem
-import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
-import akka.testkit.{ImplicitSender, TestFSMRef, TestKit}
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import akka.testkit.{ImplicitSender, TestKit}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
-import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.States._
-import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.google.inject.AbstractModule
 import de.heikoseeberger.akkasse.ServerSentEvent
-import mockws.{MockWS, Route}
-import org.specs2.execute.Result
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
-import play.api.mvc.Results._
-import play.api.mvc._
 import play.api.test._
-
-import scala.concurrent.Future
-import scala.util.{Success, Try}
+import scala.util.Try
 
 class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
