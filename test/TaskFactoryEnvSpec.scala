@@ -31,7 +31,6 @@ class TaskFactoryEnvSpec extends Specification {
       gtf.getAppSpec(META, globals)        must haveImage(env("GESTALT_META_IMG").getOrElse(s"galacticfog/gestalt-meta:dcos-${ensver}"))
       gtf.getAppSpec(UI, globals)          must haveImage(env("GESTALT_UI_IMG").getOrElse(s"galacticfog/gestalt-ui-react:dcos-${ensver}"))
 
-      ko("update me")
 //      gtf.getAppSpec(KONG, globals)        must haveImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:dcos-${ensver}"))
 //      gtf.getAppSpec(POLICY, globals)      must haveImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:dcos-${ensver}"))
 

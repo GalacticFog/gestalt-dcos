@@ -10,7 +10,7 @@ import play.api.mvc._
 import views.html.index
 import akka.pattern.ask
 import akka.util.Timeout
-import com.galacticfog.gestalt.dcos.launcher.LaunchFSMActor
+import com.galacticfog.gestalt.dcos.launcher.LauncherFSM
 import play.api.http.HeaderNames
 
 import scala.concurrent.duration._
@@ -42,11 +42,11 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
     for {
       f <- {
         logger.debug(s"sending StatusRequest to launcher from ${fromAddress}")
-        schedulerFSM ? LaunchFSMActor.Messages.StatusRequest
+        schedulerFSM ? LauncherFSM.Messages.StatusRequest
       }
       resp = {
         logger.debug(s"received StatusResponse from launcher for ${fromAddress}")
-        f.asInstanceOf[LaunchFSMActor.Messages.StatusResponse]
+        f.asInstanceOf[LauncherFSM.Messages.StatusResponse]
       }
     } yield Ok(Json.toJson(resp))
   }
@@ -54,7 +54,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   def shutdown(shutdownDB: Boolean) = Action.async { implicit request =>
     implicit val timeout: Timeout = 25.seconds
     logger.info(s"received shutdown request: shutdownDB == ${shutdownDB} ${fromAddress}")
-    val response = schedulerFSM ? LaunchFSMActor.Messages.ShutdownRequest(shutdownDB = shutdownDB)
+    val response = schedulerFSM ? LauncherFSM.Messages.ShutdownRequest(shutdownDB = shutdownDB)
     response map {
       _ => Accepted(Json.obj("message" -> s"Framework shutting down for ${fromAddress}"))
     }
@@ -62,7 +62,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
 
   def restart() = Action { implicit request =>
     logger.info(s"received restart request from ${fromAddress}")
-    schedulerFSM ! LaunchFSMActor.Messages.LaunchServicesRequest
+    schedulerFSM ! LauncherFSM.Messages.LaunchServicesRequest
     Accepted(Json.obj("message" -> "Starting framework services"))
   }
 

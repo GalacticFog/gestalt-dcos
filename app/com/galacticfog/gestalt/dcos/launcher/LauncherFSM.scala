@@ -9,7 +9,6 @@ import akka.event.LoggingAdapter
 import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
 import com.galacticfog.gestalt.cli._
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
@@ -26,7 +25,7 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
-object LaunchFSMActor {
+object LauncherFSM {
 
   object Messages {
 
@@ -82,79 +81,18 @@ object LaunchFSMActor {
 
   }
 
-
-  final case class ServiceData(statuses: Map[FrameworkService, ServiceInfo],
-                               adminKey: Option[GestaltAPIKey],
-                               error: Option[String],
-                               errorStage: Option[String],
-                               globalConfig: GlobalConfig,
-                               connected: Boolean) {
-    def getUrl(service: FrameworkService): Option[String] = {
-      statuses.get(service).collect({
-        case ServiceInfo(_, _, Some(hostname), firstPort::_, _) => hostname + ":" + firstPort.toString
-      })
-    }
-
-    def update(update: ServiceInfo): ServiceData = this.update(Seq(update))
-
-    def update(updates: Seq[ServiceInfo]): ServiceData = {
-      copy(
-        statuses = updates.foldLeft(statuses) {
-          case (c, u) => c + (u.service -> u)
-        }
-      )
-    }
-  }
-
-  case object ServiceData {
-    def init: ServiceData = ServiceData(Map.empty, None, None, None, GlobalConfig.empty, false)
-  }
-
-  case class SecurityInitReset(dbConfig: GlobalDBConfig) {
-
-    import scalikejdbc._
-
-    def clearInit()(implicit log: LoggingAdapter): Unit = {
-      val driver = "org.postgresql.Driver"
-      val url = "jdbc:postgresql://%s:%d/%s".format(dbConfig.hostname, dbConfig.port, dbConfig.prefix + "security")
-      log.info("initializing connection pool against " + url)
-
-      Class.forName(driver)
-
-      val settings = ConnectionPoolSettings(
-        connectionTimeoutMillis = 5000
-      )
-
-      ConnectionPool.singleton(url, dbConfig.username, dbConfig.password, settings)
-      println("ConnectionPool.isInitialized: " + ConnectionPool.isInitialized())
-
-      implicit val session = AutoSession
-      Try {
-        sql"update initialization_settings set initialized = false where id = 0".execute.apply()
-        ConnectionPool.closeAll()
-      } recover {
-        case e: Throwable =>
-          log.warning(s"error clearing init flag on ${dbConfig.prefix}security database: {}", e.getMessage)
-          false
-      }
-
-      ConnectionPool.closeAll()
-    }
-
-  }
-
 }
 
-class LaunchFSMActor @Inject()(config: LauncherConfig,
-                               marClient: MarathonSSEClient,
-                               ws: WSClient,
-                               gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,LaunchFSMActor.ServiceData] {
+class LauncherFSM @Inject()( config: LauncherConfig,
+                             marClient: MarathonSSEClient,
+                             ws: WSClient,
+                             gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
 
-  import LaunchFSMActor.Messages._
-  import States._
-  import LaunchFSMActor._
   import LauncherConfig.Services._
   import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
+  import LauncherFSM.Messages._
+  import LauncherFSM._
+  import States._
 
   private[this] def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
     this.context.system.scheduler.scheduleOnce(delay, self, message)
