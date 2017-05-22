@@ -26,4 +26,4 @@ case class GlobalSecConfig( hostname: String,
                             port: Int,
                             apiKey: String,
                             apiSecret: String,
-                            realm: String )
+                            realm: Option[String] )

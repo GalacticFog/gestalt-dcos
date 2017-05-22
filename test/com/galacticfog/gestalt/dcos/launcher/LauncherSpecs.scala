@@ -485,7 +485,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
               port = 9455,
               apiKey = "key",
               apiSecret = "secret",
-              realm = "https://security.mycompany.com"
+              realm = Some("https://security.mycompany.com")
             )),
           connected = true
         )

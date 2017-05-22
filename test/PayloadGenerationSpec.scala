@@ -1,16 +1,21 @@
+import java.util.UUID
+
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.marathon._
+import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import modules.Module
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragment
-import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
-import play.api.inject.bind
-import play.api.libs.json.Json
-import play.test.WithApplication
+import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.libs.json.{JsValue, Json}
 
 class PayloadGenerationSpec extends Specification with JsonMatchers {
+
+  def uuid = UUID.randomUUID()
+
+  def haveEnvVar(pair: => (String, String)) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("private") /(pair)
 
   "Payload generation" should {
 
@@ -25,7 +30,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       port = 9455,
       apiKey = "key",
       apiSecret = "secret",
-      realm = "192.168.1.50:12345"
+      realm = Some("192.168.1.50:12345")
     ))
 
     "work from global config (BRIDGE)" in {
@@ -113,7 +118,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       security must_== expected
     }
 
-    "appropriately set realm override for security consumer services (TLD)" in {
+    "appropriately set realm override for security consumer services" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -132,65 +137,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         port = 9455,
         apiKey = "key",
         apiSecret = "secret",
-        realm = "192.168.1.50:12345"
+        realm = Some("https://security.galacticfog.com")
       ))
 
-      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-      ko("implement the appropriate test for these two")
-//      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-//      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "https://security.galacticfog.com")
-    }.pendingUntilFixed
-
-    "appropriately set realm override for security consumer services (host IP)" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-
-      val global = GlobalConfig().withDb(GlobalDBConfig(
-        hostname = "test-db.marathon.mesos",
-        port = 5432,
-        username = "test-user",
-        password = "test-password",
-        prefix = "test-"
-      )).withSec(GlobalSecConfig(
-        hostname = "security",
-        port = 9455,
-        apiKey = "key",
-        apiSecret = "secret",
-        realm = "192.168.1.50:12345"
-      ))
-
-      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
-      ko("implement the appropriate test for these two")
-//      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
-//      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "http://gestalt-framework-tasks-security.marathon.l4lb.thisdcos.directory:9455")
-    }.pendingUntilFixed
-
-    "appropriately set realm override for security consumer services (globals)" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val global = GlobalConfig().withDb(GlobalDBConfig(
-        hostname = "test-db.marathon.mesos",
-        port = 5432,
-        username = "test-user",
-        password = "test-password",
-        prefix = "test-"
-      )).withSec(GlobalSecConfig(
-        hostname = "security",
-        port = 9455,
-        apiKey = "key",
-        apiSecret = "secret",
-        realm = "192.168.1.50:12345"
-      ))
-
-      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM"        -> "192.168.1.50:12345")
-      ko("implement the appropriate test for these two")
-//      gtf.getMarathonPayload(LASER, global).env must havePair("GESTALT_SECURITY_REALM"       -> "192.168.1.50:12345")
-//      gtf.getMarathonPayload(API_GATEWAY, global).env must havePair("GESTALT_SECURITY_REALM" -> "192.168.1.50:12345")
-    }.pendingUntilFixed
+      val realm = "https://security.galacticfog.com"
+      gtf.getMarathonPayload(META, global).env must havePair("GESTALT_SECURITY_REALM" -> realm)
+      gtf.getSecurityProvider(global.secConfig.get).toString must /("properties") /("config") /("env") /("public") /("REALM" -> realm)
+    }
 
     "set min-cool, scaledown-timeout vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
@@ -201,26 +154,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_COOL_EXECUTORS" -> "10",
-//        "SCALE_DOWN_TIME_SECONDS" -> "300"
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("MIN_COOL_EXECUTORS" -> "10")
+      laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> "300")
+    }
 
     "set default min-cool, scaledown-timeout vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_COOL_EXECUTORS" -> LauncherConfig.LaserConfig.DEFAULT_MIN_COOL_EXECS.toString,
-//        "SCALE_DOWN_TIME_SECONDS" -> LauncherConfig.LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT.toString
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("MIN_COOL_EXECUTORS" -> LauncherConfig.LaserConfig.DEFAULT_MIN_COOL_EXECS.toString)
+      laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> LauncherConfig.LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT.toString)
+    }
 
     "set port range vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
@@ -249,30 +196,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 //      laserPayload.env must havePairs(
 //        "MIN_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString,
 //        "MAX_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString
-//      )
-    }.pendingUntilFixed
-
-    "support marathon-lb long-lived sockets for kong" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(KONG, testGlobalVars)
-//      laserPayload.labels must havePair(
-//        "HAPROXY_0_BACKEND_HEAD" -> "backend {backend}\n  balance {balance}\n  mode {mode}\n  timeout server 30m\n  timeout client 30m\n"
-//      )
-    }.pendingUntilFixed
-
-    "not expose kong service endpoint via marathon-lb" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(KONG, testGlobalVars)
-//      laserPayload.labels must havePair(
-//        "HAPROXY_1_ENABLED" -> "false"
 //      )
     }.pendingUntilFixed
 

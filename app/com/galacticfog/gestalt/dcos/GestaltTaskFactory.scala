@@ -109,9 +109,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     "GESTALT_SECURITY_HOSTNAME" -> secConfig.hostname,
     "GESTALT_SECURITY_PORT"     -> secConfig.port.toString,
     "GESTALT_SECURITY_KEY"      -> secConfig.apiKey,
-    "GESTALT_SECURITY_SECRET"   -> secConfig.apiSecret,
-    "GESTALT_SECURITY_REALM"    -> secConfig.realm
-  )
+    "GESTALT_SECURITY_SECRET"   -> secConfig.apiSecret
+  ) ++ secConfig.realm.map("GESTALT_SECURITY_REALM" -> _)
+
 
   private[this] def getData(dbConfig: GlobalDBConfig, index: Int): AppSpec = {
     val replEnv = if (index > 0) Map(
@@ -340,7 +340,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       host =   secConfig.hostname,
       port =   secConfig.port,
       key =    secConfig.apiKey,
-      secret = secConfig.apiSecret
+      secret = secConfig.apiSecret,
+      realm = secConfig.realm
     ))
   }
 
@@ -365,7 +366,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         laserMem = LASER.mem,
         laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
         laserEthernetPort = None,
-        executors = Seq.empty
+        executors = Seq.empty,
+        globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
+        globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout)
       ),
       executorIds = laserExecutorIds.map(_.toString),
       laserFQON = s"/root/environments/$laserEnvId/containers",

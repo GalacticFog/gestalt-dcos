@@ -32,7 +32,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
           hostname = "", port = 0, username = "", password = "", prefix = ""
         ))
         .withSec(GlobalSecConfig(
-          hostname = "", port = 0, apiKey = "", apiSecret = "", realm = ""
+          hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
         ))
       val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
 

@@ -739,7 +739,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
             apiKey = apiKey.apiKey,
             apiSecret = apiKey.apiSecret.get,
             realm = config.marathon.tld.map("https://security." + _)
-              .getOrElse(s"http://${gtf.vipDestination(SECURITY)}")
+              .orElse(Some(s"http://${gtf.vipDestination(SECURITY)}"))
           ))
         )
       )

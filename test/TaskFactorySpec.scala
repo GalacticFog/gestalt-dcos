@@ -1,13 +1,20 @@
+import java.util.UUID
+
+import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
 import com.galacticfog.gestalt.dcos._
 import modules.Module
 import org.specs2.mutable.Specification
 import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
-import play.api.libs.json.Json
+import play.api.libs.json.{JsValue, Json}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
+import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.specs2.execute.Result
+import org.specs2.matcher.JsonMatchers
 import org.specs2.specification.core.Fragment
 
-class TaskFactorySpec extends Specification {
+class TaskFactorySpec extends Specification with JsonMatchers {
+
+  def uuid = UUID.randomUUID()
 
   val testGlobals = GlobalConfig().withDb(GlobalDBConfig(
     hostname = "test-db.marathon.mesos",
@@ -20,8 +27,10 @@ class TaskFactorySpec extends Specification {
     port = 9455,
     apiKey = "key",
     apiSecret = "secret",
-    realm = "192.168.1.50:12345"
+    realm = Some("192.168.1.50:12345")
   ))
+
+  val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
 
   "GestaltTaskFactory" should {
 
@@ -49,6 +58,7 @@ class TaskFactorySpec extends Specification {
         .injector
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
+      val lc  = injector.instanceOf[LauncherConfig]
 
       gtf.getAppSpec(DATA(0), testGlobals) must haveImage("test-data:tag")
       gtf.getAppSpec(DATA(1), testGlobals) must haveImage("test-data:tag")
@@ -56,19 +66,26 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(SECURITY, testGlobals) must haveImage("test-security:tag")
       gtf.getAppSpec(META, testGlobals) must haveImage("test-meta:tag")
       gtf.getAppSpec(UI, testGlobals) must haveImage("test-react-ui:tag")
-      ko("update me")
-//      gtf.getAppSpec(KONG, testGlobals) must haveImage("test-kong:tag")
-//      gtf.getAppSpec(POLICY, testGlobals) must haveImage("test-policy:tag")
-//      gtf.getAppSpec(API_GATEWAY, testGlobals) must haveImage("test-api-gateway:tag")
-//      val laser = gtf.getAppSpec(LASER, testGlobals)
-//      laser must haveImage("test-laser:tag")
-//      laser must haveLaserRuntimeImage("test-js-executor:tag")
-//      laser must haveLaserRuntimeImage("test-jvm-executor:tag")
-//      laser must haveLaserRuntimeImage("test-dotnet-executor:tag")
-//      laser must haveLaserRuntimeImage("test-python-executor:tag")
-//      laser must haveLaserRuntimeImage("test-ruby-executor:tag")
-//      laser must haveLaserRuntimeImage("test-golang-executor:tag")
-    }.pendingUntilFixed
+
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage("test-kong:tag")
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("test-policy:tag")
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("test-laser:tag")
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
+
+      def getImage(lr: LaserRuntime) = lr.name match {
+        case "js-executor"     => "test-js-executor:tag"
+        case "jvm-executor"    => "test-jvm-executor:tag"
+        case "dotnet-executor" => "test-dotnet-executor:tag"
+        case "python-executor" => "test-python-executor:tag"
+        case "ruby-executor"   => "test-ruby-executor:tag"
+        case "golang-executor" => "test-golang-executor:tag"
+        case _ => throw new RuntimeException("unexpected")
+      }
+
+      Result.foreach(lc.laser.enabledRuntimes) {
+        lr => gtf.getExecutorProvider(lr) must haveLaserRuntimeImage(getImage(lr))
+      }
+    }
 
     "support ensemble versioning via config" in {
 
@@ -80,6 +97,7 @@ class TaskFactorySpec extends Specification {
         .injector
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
+      val lc  = injector.instanceOf[LauncherConfig]
 
       gtf.getAppSpec(DATA(0), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
       gtf.getAppSpec(DATA(1), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
@@ -87,19 +105,26 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(SECURITY, testGlobals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
       gtf.getAppSpec(META, testGlobals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
       gtf.getAppSpec(UI, testGlobals) must haveImage("galacticfog/gestalt-ui-react:dcos-9.10.11.12")
-      ko("update me")
-//      gtf.getAppSpec(KONG, testGlobals) must haveImage("galacticfog/kong:dcos-9.10.11.12")
-//      gtf.getAppSpec(POLICY, testGlobals) must haveImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
-//      gtf.getAppSpec(API_GATEWAY, testGlobals) must haveImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
-//      val laser = gtf.getAppSpec(LASER, testGlobals)
-//      laser must haveImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-js:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-jvm:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-dotnet:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-python:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-ruby:dcos-9.10.11.12")
-//      laser must haveLaserRuntimeImage("galacticfog/gestalt-laser-executor-golang:dcos-9.10.11.12")
-    }.pendingUntilFixed
+
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:dcos-9.10.11.12")
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
+
+      def getImage(lr: LaserRuntime) = lr.name match {
+        case "js-executor"     => "galacticfog/gestalt-laser-executor-js:dcos-9.10.11.12"
+        case "jvm-executor"    => "galacticfog/gestalt-laser-executor-jvm:dcos-9.10.11.12"
+        case "dotnet-executor" => "galacticfog/gestalt-laser-executor-dotnet:dcos-9.10.11.12"
+        case "python-executor" => "galacticfog/gestalt-laser-executor-python:dcos-9.10.11.12"
+        case "ruby-executor"   => "galacticfog/gestalt-laser-executor-ruby:dcos-9.10.11.12"
+        case "golang-executor" => "galacticfog/gestalt-laser-executor-golang:dcos-9.10.11.12"
+        case _ => throw new RuntimeException("unexpected")
+      }
+
+      Result.foreach(lc.laser.enabledRuntimes) {
+        lr => gtf.getExecutorProvider(lr) must haveLaserRuntimeImage(getImage(lr))
+      }
+    }
 
     "default to current version" in {
 
@@ -108,6 +133,7 @@ class TaskFactorySpec extends Specification {
         .injector
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
+      val lc  = injector.instanceOf[LauncherConfig]
 
       val ver = BuildInfo.version
 
@@ -117,19 +143,26 @@ class TaskFactorySpec extends Specification {
       gtf.getAppSpec(SECURITY, testGlobals)     must haveImage(s"galacticfog/gestalt-security:dcos-${ver}")
       gtf.getAppSpec(META, testGlobals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
       gtf.getAppSpec(UI, testGlobals)           must haveImage(s"galacticfog/gestalt-ui-react:dcos-${ver}")
-      ko("update me")
-//      gtf.getAppSpec(KONG, testGlobals)         must haveImage(s"galacticfog/kong:dcos-${ver}")
-//      gtf.getAppSpec(POLICY, testGlobals)       must haveImage(s"galacticfog/gestalt-policy:dcos-${ver}")
-//      gtf.getAppSpec(API_GATEWAY, testGlobals)  must haveImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
-//      val laser = gtf.getAppSpec(LASER, testGlobals)
-//      laser must haveImage(s"galacticfog/gestalt-laser:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-js:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-jvm:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-python:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-ruby:dcos-${ver}")
-//      laser must haveLaserRuntimeImage(s"galacticfog/gestalt-laser-executor-golang:dcos-${ver}")
-    }.pendingUntilFixed
+
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:dcos-${ver}")
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:dcos-${ver}")
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:dcos-${ver}")
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
+
+      def getImage(lr: LaserRuntime) = lr.name match {
+        case "js-executor"     => s"galacticfog/gestalt-laser-executor-js:dcos-${ver}"
+        case "jvm-executor"    => s"galacticfog/gestalt-laser-executor-jvm:dcos-${ver}"
+        case "dotnet-executor" => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ver}"
+        case "python-executor" => s"galacticfog/gestalt-laser-executor-python:dcos-${ver}"
+        case "ruby-executor"   => s"galacticfog/gestalt-laser-executor-ruby:dcos-${ver}"
+        case "golang-executor" => s"galacticfog/gestalt-laser-executor-golang:dcos-${ver}"
+        case _ => throw new RuntimeException("unexpected")
+      }
+
+      Result.foreach(lc.laser.enabledRuntimes) {
+        lr => gtf.getExecutorProvider(lr) must haveLaserRuntimeImage(getImage(lr))
+      }
+    }
 
     "enable and disabled runtimes per command line configuration" in {
       val runtimeNames = Map(
@@ -141,7 +174,8 @@ class TaskFactorySpec extends Specification {
         "ruby"   -> Seq("ruby")
       )
       val allNames: Seq[String] = runtimeNames.values.toSeq.flatten
-      ko("update me")
+
+      ko("fix me")
 //      Fragment.foreach(runtimeNames.keys.toSeq) { runtime =>
 //        val injector = new GuiceApplicationBuilder()
 //          .disable[Module]
@@ -180,7 +214,9 @@ class TaskFactorySpec extends Specification {
 
   def haveLaserRuntime(name: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_RUNTIME")).values.flatMap(_.split(";"))) ^^ contain(name)
 
-  def haveLaserRuntimeImage(img: => String) = ((_:AppSpec).env.filterKeys(_.matches("EXECUTOR_[0-9]+_IMAGE")).values) ^^ contain(img)
+  def haveLaserRuntimeImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("public") /("IMAGE" -> name)
+
+  def haveServiceImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("services") */("container_spec") /("properties") /("image" -> name)
 
   def haveImage(name: => String) = ((_:AppSpec).image) ^^ be_==(name)
 
