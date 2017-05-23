@@ -1,10 +1,11 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher
 import javax.inject.{Inject, Singleton}
 
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
+import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
+import com.galacticfog.gestalt.dcos.launcher.States._
 import play.api.Configuration
 
 import scala.concurrent.duration._
@@ -59,21 +60,18 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
 
-  import GestaltMarathonLauncher._
-  import GestaltMarathonLauncher.States._
-
-  val LAUNCH_ORDER: Seq[LauncherState] = (if (database.provision) {
-    Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
-  } else Seq.empty) ++ Seq(
-    LaunchingRabbit,
-    LaunchingSecurity, RetrievingAPIKeys,
-    LaunchingKong, LaunchingApiGateway,
-    LaunchingLaser,
-    LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
-    LaunchingPolicy,
-    LaunchingApiProxy, LaunchingUI,
-    AllServicesLaunched
-  )
+  val LAUNCH_ORDER: Seq[LauncherState] = {
+    val dbs = if (database.provision) {
+      Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
+    } else Seq.empty
+    dbs ++ Seq(
+      LaunchingRabbit,
+      LaunchingSecurity, RetrievingAPIKeys,
+      LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
+      LaunchingUI,
+      AllServicesLaunched
+    )
+  }
 
   val provisionedServices: Seq[FrameworkService] = LAUNCH_ORDER.collect({case s: LaunchingState => s.targetService})
 
@@ -94,7 +92,14 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipLabel(service: ServiceEndpoint): String = "/" + vipBase(service) + ":" + service.port
 
-  def vipHostname(service: ServiceEndpoint): String = vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+  def vipHostname(service: ServiceEndpoint): String = {
+    service match {
+      case DATA(_) | RABBIT_AMQP =>
+        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + ".marathon.mesos"
+      case _ =>
+        vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+    }
+  }
 
   def dockerImage(service: Dockerable): String = {
     val name = service match {
@@ -157,7 +162,6 @@ object LauncherConfig {
   }
 
   sealed trait FrameworkService extends Dockerable {
-
     def cpu: Double
     def mem: Int
   }
@@ -169,15 +173,20 @@ object LauncherConfig {
 
   object Services {
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
-    case object KONG             extends FrameworkService                      with Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
-    case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 1.00; val mem = 512;  val port = 5432}
+    case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
-    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 1.50; val mem = 1536; val port = 14374}
-    case object LASER            extends FrameworkService with ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
-    case object POLICY           extends FrameworkService with ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
-    case object API_GATEWAY      extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
-    case object API_PROXY        extends FrameworkService with ServiceEndpoint with Dockerable {val name = "api-proxy";      val cpu = 0.50; val mem = 128;  val port = 81}
-    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui";             val cpu = 0.25; val mem = 128;  val port = 80}
+    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 3072; val port = 14374}
+    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
+
+    case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
+    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
+    case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
+    case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
+
+    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
+    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
+    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
+    case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
 
     case object DataFromName {
       private[this] val dataRegex = "data-([0-9]+)".r
@@ -187,23 +196,20 @@ object LauncherConfig {
       }
     }
 
-    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
-    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
-    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
-    case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
-
-    val allServices: Seq[FrameworkService] = Seq( RABBIT, KONG, SECURITY, META, LASER, POLICY, API_GATEWAY, API_PROXY, UI )
+    val allServices: Seq[FrameworkService] = Seq( RABBIT, SECURITY, META, UI )
 
     def fromName(serviceName: String): Option[FrameworkService] = allServices.find(_.name == serviceName) orElse DataFromName.unapply(serviceName)
   }
 
+  sealed trait WellKnownLaserExecutor extends Dockerable
+
   object LaserExecutors {
-    case object EXECUTOR_DOTNET extends Dockerable {val name = "laser-executor-dotnet"}
-    case object EXECUTOR_JS     extends Dockerable {val name = "laser-executor-js"}
-    case object EXECUTOR_JVM    extends Dockerable {val name = "laser-executor-jvm"}
-    case object EXECUTOR_PYTHON extends Dockerable {val name = "laser-executor-python"}
-    case object EXECUTOR_GOLANG extends Dockerable {val name = "laser-executor-golang"}
-    case object EXECUTOR_RUBY   extends Dockerable {val name = "laser-executor-ruby"}
+    case object EXECUTOR_DOTNET extends WellKnownLaserExecutor {val name = "laser-executor-dotnet"}
+    case object EXECUTOR_JS     extends WellKnownLaserExecutor {val name = "laser-executor-js"}
+    case object EXECUTOR_JVM    extends WellKnownLaserExecutor {val name = "laser-executor-jvm"}
+    case object EXECUTOR_PYTHON extends WellKnownLaserExecutor {val name = "laser-executor-python"}
+    case object EXECUTOR_GOLANG extends WellKnownLaserExecutor {val name = "laser-executor-golang"}
+    case object EXECUTOR_RUBY   extends WellKnownLaserExecutor {val name = "laser-executor-ruby"}
   }
 
   def defaultDockerImages(service: Dockerable): String = service match {
@@ -215,8 +221,7 @@ object LauncherConfig {
     case Services.POLICY              => s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}"
     case Services.LASER               => s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}"
     case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}"
-    case Services.API_PROXY           => s"galacticfog/gestalt-api-proxy:dcos-${BuildInfo.version}"
-    case Services.UI                  => s"galacticfog/gestalt-ui:dcos-${BuildInfo.version}"
+    case Services.UI                  => s"galacticfog/gestalt-ui-react:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}"
@@ -266,27 +271,25 @@ object LauncherConfig {
     val DEFAULT_MIN_COOL_EXECS = 1
     val DEFAULT_SCALE_DOWN_TIMEOUT = 15
 
-    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String)
+    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String)
 
-    val KNOWN_LASER_RUNTIMES: Map[Dockerable, LaserRuntime] = Map(
-      EXECUTOR_JS     -> LaserRuntime("js-executor",     "nodejs",        "", "bin/gestalt-laser-executor-js"),
-      EXECUTOR_JVM    -> LaserRuntime("jvm-executor",    "java;scala",    "", "bin/gestalt-laser-executor-jvm"),
-      EXECUTOR_DOTNET -> LaserRuntime("dotnet-executor", "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet"),
-      EXECUTOR_PYTHON -> LaserRuntime("python-executor", "python",        "", "bin/gestalt-laser-executor-python"),
-      EXECUTOR_RUBY   -> LaserRuntime("ruby-executor",   "ruby",          "", "bin/gestalt-laser-executor-ruby"),
-      EXECUTOR_GOLANG -> LaserRuntime("golang-executor", "golang",        "", "bin/gestalt-laser-executor-golang")
+    val KNOWN_LASER_RUNTIMES: Map[WellKnownLaserExecutor, LaserRuntime] = Map(
+      EXECUTOR_JS     -> LaserRuntime("js-executor",     "nodejs",        "", "bin/gestalt-laser-executor-js"    , "NodeJS"),
+      EXECUTOR_JVM    -> LaserRuntime("jvm-executor",    "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java"),
+      EXECUTOR_DOTNET -> LaserRuntime("dotnet-executor", "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp"),
+      EXECUTOR_PYTHON -> LaserRuntime("python-executor", "python",        "", "bin/gestalt-laser-executor-python", "Python"),
+      EXECUTOR_RUBY   -> LaserRuntime("ruby-executor",   "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby"),
+      EXECUTOR_GOLANG -> LaserRuntime("golang-executor", "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang")
     )
-
   }
 
   case class MetaConfig( companyName: String )
 
   object MetaConfig {
-
     val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
 
-    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-setup.js"
-    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.0.1/js_lambda/demo-teardown.js"
+    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-setup.js"
+    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-teardown.js"
   }
 
 }

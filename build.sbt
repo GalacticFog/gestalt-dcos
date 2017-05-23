@@ -41,8 +41,15 @@ resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 resolvers += "Mesosphere Repo" at "http://downloads.mesosphere.io/maven"
 libraryDependencies += "mesosphere" %% "mesos-utils" % "0.28.0" withJavadoc()
 
-resolvers += "gestalt" at "http://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local"
-libraryDependencies += "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources()
+resolvers ++= Seq(
+  "gestalt-snapshots" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
+  "gestalt-releases" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-releases-local"
+)
+
+libraryDependencies ++= Seq(
+  "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
+  "com.galacticfog" %% "gestalt-cli" % "2.0.4-SNAPSHOT" withSources()
+)
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
 libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "2.0.0"

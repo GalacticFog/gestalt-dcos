@@ -47,3 +47,10 @@
     width: auto;
 }
 
+.hidden {
+    visibility: hidden;
+    over-flow: hidden;
+    width: 0px;
+    height: 0px;
+}
+

@@ -1,34 +1,18 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.ActorSystem
-import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
-import akka.testkit.{ImplicitSender, TestFSMRef, TestKit}
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import akka.testkit.{ImplicitSender, TestKit}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
-import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.Messages._
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.ServiceData
-import com.galacticfog.gestalt.dcos.launcher.GestaltMarathonLauncher.States._
-import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.google.inject.AbstractModule
 import de.heikoseeberger.akkasse.ServerSentEvent
-import mockws.{MockWS, Route}
-import org.specs2.execute.Result
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
-import play.api.mvc.Results._
-import play.api.mvc._
 import play.api.test._
-
-import scala.concurrent.Future
-import scala.util.{Success, Try}
+import scala.util.Try
 
 class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
@@ -53,8 +37,8 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
   "MarathonSSEClient" should {
 
-    val baseFakeKong = MarathonAppPayload(
-      id = "/kong",
+    val baseFakeSec = MarathonAppPayload(
+      id = "/security",
       env = Map.empty,
       instances = 1,
       cpus = 0.1,
@@ -70,14 +54,12 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
           parameters = Seq.empty,
           forcePullImage = false,
           portMappings = Some(Seq(
-            DockerPortMapping(containerPort=80, hostPort=None, servicePort=Some(8001), name=Some("gateway"), protocol="tcp"),
-            DockerPortMapping(containerPort=81, hostPort=None, servicePort=Some(8002), name=Some("service"), protocol="tcp")
+            DockerPortMapping(containerPort=9000, hostPort=None, servicePort=Some(9455), name=Some("api"), protocol="tcp")
           ))
         ))
       ),
       portDefinitions = Some(Seq(
-        PortDefinition(port = 8001, None, "tcp", None),
-        PortDefinition(port = 8002, None, "tcp", None)
+        PortDefinition(port = 9455, None, "tcp", None)
       )),
       requirePorts = false,
       healthChecks = Seq.empty,
@@ -93,30 +75,80 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
     "gather service ports (BRIDGED) into service endpoints" in new WithConfig("marathon.lb-url" -> "https://lb.cluster.myco.com") {
       val client = injector.instanceOf[MarathonSSEClient]
       val info = client.toServiceInfo(
-        service = KONG,
-        app = baseFakeKong
+        service = SECURITY,
+        app = baseFakeSec
       )
       info.vhosts must containAllOf(Seq(
-        "https://lb.cluster.myco.com:8001",
-        "https://lb.cluster.myco.com:8002"
+        "https://lb.cluster.myco.com:9455"
       ))
     }
 
+    def mockMarVhostApp(lbls: (String,String)*): MarathonAppPayload = {
+      val mockApp = mock[MarathonAppPayload]
+      mockApp.labels returns Map(lbls:_*) ++ Map("HAPROXY_GROUP" -> "external")
+      mockApp
+    }
+
+    "appropriately gather vhosts and vpaths" in {
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_PATH"  -> "/blerg"
+      )) must containTheSameElementsAs(Seq("https://foo.bar/blerg"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_3_VHOST" -> "foo.org",
+        "HAPROXY_1_VHOST" -> "bar.com"
+      )) must containTheSameElementsAs(Seq("https://bar.com","https://foo.org"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_7_VHOST" -> "bloop.io",
+        "HAPROXY_1_PATH" -> "nope"
+      )) must containTheSameElementsAs(Seq("https://bloop.io"))
+
+    }
+
     "not gather service ports with HAPROXY_n_ENABLED false" in new WithConfig("marathon.lb-url" -> "https://lb.cluster.myco.com") {
-      val client = injector.instanceOf[MarathonSSEClient]
-      val info = client.toServiceInfo(
-        service = KONG,
-        app = baseFakeKong.copy(
-          labels = Map(
-            "HAPROXY_GROUP" -> "external",
-            "HAPROXY_1_ENABLED" -> "false"
-          )
-        )
-      )
-      info.vhosts must containAllOf(Seq(
-        "https://lb.cluster.myco.com:8001"
-      ))
-      info.vhosts must not contain("https://lb.cluster.myco.com:8002")
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "t"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "true"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "TRUE"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "T"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "y"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "yes"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "Y"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "YES"
+      )) must containTheSameElementsAs(Seq("https://foo.bar"))
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> ""
+      )) must beEmpty
+      MarathonSSEClient.getVHosts(mockMarVhostApp(
+        "HAPROXY_0_VHOST" -> "foo.bar",
+        "HAPROXY_0_ENABLED" -> "anything"
+      )) must beEmpty
     }
 
     "parse 1.9 marathon response payload and convert to ServiceInfo" in new WithConfig {
