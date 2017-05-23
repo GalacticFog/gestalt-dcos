@@ -313,7 +313,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       url = Some(launcherConfig.marathon.baseUrl),
       username = Some("unused"),
       password = Some("unused"),
-      kubeconfig = None
+      kubeconfig = None,
+      appGroupPrefix = Some(launcherConfig.marathon.appGroup)
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 

@@ -1,14 +1,15 @@
 package test
 
-import com.galacticfog.gestalt.dcos.LauncherConfig
+import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, RABBIT_AMQP, SECURITY}
+import org.specs2.matcher.JsonMatchers
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.test._
 import play.api.inject.guice.GuiceApplicationBuilder
 
-class ConfigSpecs extends PlaySpecification with Mockito {
+class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
 
   abstract class WithAppGroup(appGroup: String = null) extends Scope {
     val injector = Option(appGroup).foldLeft(
@@ -18,6 +19,7 @@ class ConfigSpecs extends PlaySpecification with Mockito {
     }).injector
 
     val launcherConfig = injector.instanceOf[LauncherConfig]
+    val gtf = injector.instanceOf[GestaltTaskFactory]
   }
 
   abstract class WithConfig(config: (String,Any)*) extends Scope {
@@ -33,6 +35,10 @@ class ConfigSpecs extends PlaySpecification with Mockito {
 
     "strip prefix/suffix slashes from application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
       launcherConfig.marathon.appGroup must_== "gestalt-tasks-in-test/dev"
+    }
+
+    "configure caas provider with application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
+      gtf.getCaasProvider().toString must /("properties") /("config") /("appGroupPrefix" -> "gestalt-tasks-in-test/dev")
     }
 
     "generate named VIP from requested nested application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
