@@ -263,6 +263,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     val gtwProvId    = UUID.randomUUID()
     val demoLambdaSetupId = UUID.randomUUID()
     val demoLambdaTdownId = UUID.randomUUID()
+    val demoApi = UUID.randomUUID()
 
     val providerCreateAttempts = new AtomicInteger(0)
     val createdBaseDCOS = new AtomicInteger(0)
@@ -342,12 +343,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       }
     })
 
+    val emptyOk = Action{Ok(Json.arr())}
     val metaExistenceChecks = Route({
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments"  => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas"  => Action{Ok(Json.arr())}
-      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apiendpoints"  => Action{Ok(Json.arr())}
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces"                            => emptyOk
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments"     => emptyOk
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments"    => emptyOk
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas"       => emptyOk
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis"          => emptyOk
+      case (GET, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints"            => emptyOk
     })
 
     val metaRenameRoot = Route({
@@ -413,15 +416,27 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       }
     })
 
-    val metaProvisionDemoEndpoints = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apiendpoints" => Action(BodyParsers.parse.json) { request =>
+    val metaProvisionDemoAPI = Route({
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
-          case Some("demo-setup")    =>
+          case Some("demo")    =>
+            Created(Json.arr(Json.obj(
+              "id" -> demoApi
+            )))
+          case _ => BadRequest("")
+        }
+      }
+    })
+
+    val metaProvisionDemoEndpoints = Route({
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints" => Action(BodyParsers.parse.json) { request =>
+        (request.body \ "name").asOpt[String] match {
+          case Some("-setup")    =>
             createdSetupLambdaEndpoint.getAndIncrement()
             Created(Json.arr(Json.obj(
               "id" -> UUID.randomUUID()
             )))
-          case Some("demo-teardown") =>
+          case Some("-teardown") =>
             createdTdownLambdaEndpoint.getAndIncrement()
             Created(Json.arr(Json.obj(
               "id" -> UUID.randomUUID()
@@ -447,7 +462,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     "provision meta with all expected components and configured company name" in new WithRoutesAndConfig(
       metaProvisionProviders orElse metaProvisionLicense
         orElse metaProvisionWorkspace orElse metaProvisionDemoEnv orElse metaProvisionSysEnvs
-        orElse metaProvisionDemoLambdas orElse metaProvisionDemoEndpoints
+        orElse metaProvisionDemoLambdas orElse metaProvisionDemoAPI orElse metaProvisionDemoEndpoints
         orElse metaRenameRoot orElse metaExistenceChecks
         orElse notFoundRoute,
       "meta.company-name" -> newCompanyDescription
@@ -523,6 +538,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       createdSetupLambda.get()              must_== 1
       createdTdownLambda.get()              must_== 1
       //
+      metaProvisionDemoAPI.timeCalled       must_== 1
       metaProvisionDemoEndpoints.timeCalled must_== 2
       createdSetupLambdaEndpoint.get()      must_== 1
       createdTdownLambdaEndpoint.get()      must_== 1
