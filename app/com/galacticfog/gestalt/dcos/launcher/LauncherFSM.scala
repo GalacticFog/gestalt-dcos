@@ -334,21 +334,18 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         "code_type" -> "package",
         "package_url" -> LauncherConfig.MetaConfig.SETUP_LAMBDA_URL,
         "handler" -> "demo-setup.js;run",
-        "synchronous" -> true,
         "compressed" -> false,
         "public" -> true,
         "cpus" -> 0.2,
         "memory" -> 512,
         "timeout" -> 120,
+        "headers" -> Json.obj(
+          "Accept" -> "text/plain"
+        ),
         "env" -> env,
-        "headers" -> Json.obj(),
         "providers" -> Json.arr(Json.obj(
           "id" -> providerId,
-          "locations" -> Json.arr(Json.obj(
-            "enabled" -> true,
-            "selected" -> true,
-            "name" -> "dcos"
-          ))
+          "locations" -> Json.arr()
         ))
       )
     )
@@ -360,21 +357,19 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         "code_type" -> "package",
         "package_url" -> LauncherConfig.MetaConfig.TDOWN_LAMBDA_URL,
         "handler" -> "demo-teardown.js;run",
-        "synchronous" -> true,
         "compressed" -> false,
         "public" -> true,
         "cpus" -> 0.2,
         "memory" -> 512,
         "timeout" -> 120,
+        "headers" -> Json.obj(
+          "Accept" -> "text/plain"
+        ),
         "env" -> env,
         "headers" -> Json.obj(),
         "providers" -> Json.arr(Json.obj(
           "id" -> providerId,
-          "locations" -> Json.arr(Json.obj(
-            "enabled" -> true,
-            "selected" -> true,
-            "name" -> "dcos"
-          ))
+          "locations" -> Json.arr()
         ))
       )
     )
@@ -397,32 +392,56 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     }
   }
 
+  private[this] def provisionApi( metaUrl: String,
+                                  apiKey: GestaltAPIKey,
+                                  parentEnv: UUID,
+                                  gatewayProvider: UUID,
+                                  kongProvider: UUID,
+                                  name: String ): Future[UUID] = {
+    val url = s"http://${metaUrl}/root/environments/$parentEnv/apis"
+    resourceExistsInList(url, apiKey, name) flatMap {
+      case Some(js) => Future.fromTry(getId(js))
+      case None =>
+        genRequest(url, apiKey)
+          .post(
+            Json.obj(
+              "description" -> "API for exposing Demo setup/teardown lambdas",
+              "name" -> "demo",
+              "properties" -> Json.obj(
+                "provider" -> Json.obj(
+                  "id" -> gatewayProvider.toString,
+                  "locations" -> Json.arr(kongProvider.toString)
+                )
+              )
+            ))
+          .flatMap { implicit resp =>
+            log.info(s"meta.provision(api $name) response: {}", resp.status)
+            log.debug(s"meta.provision(api $name) response body: {}", resp.body)
+            resp.status match {
+              case 201 => Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
+              case _ => futureFailureWithMessage
+            }
+          }
+    }
+  }
+
   private[this] def provisionEndpoint( metaUrl: String,
                                        apiKey: GestaltAPIKey,
-                                       parentEnv: UUID,
-                                       gatewayProvider: UUID,
-                                       kongProvider: UUID,
+                                       parentApi: UUID,
                                        name: String,
-                                       lambdaId: UUID,
-                                       handler: String ): Future[UUID] = {
-    val url = s"http://${metaUrl}/root/environments/$parentEnv/apiendpoints"
+                                       lambdaId: UUID ): Future[UUID] = {
+    val url = s"http://${metaUrl}/root/apis/$parentApi/apiendpoints"
     resourceExistsInList(url, apiKey, name) flatMap {
       case Some(js) => Future.fromTry(getId(js))
       case None =>
         genRequest(url, apiKey)
           .post(Json.obj(
-            "name" -> name,
+            "name" -> ("-" + name),
             "properties" -> Json.obj(
-              "auth_type" -> Json.obj(
-                "type" -> "None"
-              ),
-              "http_method" -> "GET",
-              "implementation" -> Json.obj(
-                "function" -> handler,
-                "id" -> lambdaId,
-                "type" -> "Lambda"
-              ),
-              "resource" -> "/run"
+              "implementation_type" -> "lambda",
+              "implementation_id" -> lambdaId.toString,
+              "resource" -> ("/" + name),
+              "synchronous" -> true
             )
           ))
           .flatMap { implicit resp =>
@@ -446,10 +465,11 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     for {
       wrkId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "demo", "Demo")
       envId <- provisionMetaEnvironment(metaUrl, apiKey, "root", wrkId, "demo", "Demo", "production")
-      Seq(setupLambdaId,tdownLambdaId) = provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, laserProvider)
+      Seq(setupLambdaId,tdownLambdaId) <- Future.sequence(provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, laserProvider))
+      demoApiId <- provisionApi(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo")
       _ <- Future.sequence(Seq(
-        setupLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo-setup",    lid, "demo-setup.js;run")),
-        tdownLambdaId.flatMap(lid => provisionEndpoint(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo-teardown", lid, "demo-teardown.js;run"))
+         provisionEndpoint(metaUrl, apiKey, demoApiId, "setup",    setupLambdaId),
+         provisionEndpoint(metaUrl, apiKey, demoApiId, "teardown", tdownLambdaId)
       ))
     } yield MetaProvisioned
   }
