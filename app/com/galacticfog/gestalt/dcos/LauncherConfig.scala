@@ -149,7 +149,7 @@ class LauncherConfig @Inject()(config: Configuration) {
 
 object LauncherConfig {
 
-  val DEFAULT_APP_GROUP = "gestalt-framework-tasks"
+  val DEFAULT_APP_GROUP = "gestalt-framework"
 
   val MARATHON_RECONNECT_DELAY: FiniteDuration = 10 seconds
 
