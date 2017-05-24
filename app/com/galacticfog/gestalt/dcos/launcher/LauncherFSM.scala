@@ -193,6 +193,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     }
   }
 
+  private[this] def genRequest(url: String, apiKey: GestaltAPIKey): WSRequest = {
+    ws.url(url).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
+  }
+
   private[this] def bootstrapMeta(metaUrl: String, apiKey: GestaltAPIKey) = {
     val initUrl = s"http://${metaUrl}/bootstrap"
     val rootUrl = s"http://${metaUrl}/root"
@@ -246,82 +250,54 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     }
   }
 
-  private[this] def genRequest(url: String, apiKey: GestaltAPIKey): WSRequest = {
-    ws.url(url).withRequestTimeout(EXTERNAL_API_CALL_TIMEOUT).withAuth(apiKey.apiKey,apiKey.apiSecret.get,WSAuthScheme.BASIC)
-  }
-
   private[this] def provisionMetaProviders(metaUrl: String, apiKey: GestaltAPIKey, providerPayloads: Seq[JsValue]): Seq[Future[UUID]] = {
-    // TODO: considering extracting the call to /root/providers so that it isn't repeated
-    val providerUrl = s"http://${metaUrl}/root/providers"
-    log.info(s"provisioning providers in meta at {}",providerUrl)
+    val url = s"http://${metaUrl}/root/providers"
     providerPayloads.map { payload =>
       val name = (payload \ "name").as[String]
-      log.debug("provider '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
-      resourceExistsInList(providerUrl, apiKey, name) flatMap {
-        case Some(js) => Future.fromTry(getId(js))
-        case None =>  genRequest(providerUrl, apiKey).post(payload) flatMap { implicit resp =>
-          log.info(s"meta.provision(provider $name) response: {}",resp.status)
-          log.debug(s"meta.provision(provider $name) response body: {}",resp.body)
-          resp.status match {
-            case 201 => Future.fromTry(getId(resp.json))
-            case _ => futureFailureWithMessage
-          }
-        }
-      }
+      provisionMetaResource(url, apiKey, "provider", name, payload)
     }
   }
 
-  private[this] def getId(js: JsValue): Try[UUID] = Try{ (js \ "id").as[UUID] }
+  private[this] def provisionMetaResource(url: String, apiKey: GestaltAPIKey, resourceType: String, name: String, payload: JsValue): Future[UUID] = {
+    def getId(js: JsValue): Try[UUID] = Try{ (js \ "id").as[UUID] }
 
-  private[this] def provisionMetaWorkspace(metaUrl: String, apiKey: GestaltAPIKey, parentFQON: String, name: String, description: String): Future[UUID] = {
-    val wrkUrl = s"http://${metaUrl}/${parentFQON}/workspaces"
-    resourceExistsInList(wrkUrl, apiKey, name) flatMap {
+    log.info(s"meta.provision({} '{}') to {}", resourceType, name, url)
+    resourceExistsInList(url, apiKey, name) flatMap {
       case Some(js) =>
+        log.info("meta.provision({} '{}') already exists", resourceType, name)
         Future.fromTry(getId(js))
       case None =>
-        val payload = Json.obj(
-          "name" -> name,
-          "description" -> description
-        )
-        log.debug("workspace '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
-        genRequest(wrkUrl, apiKey)
+        log.debug("meta.provision({} '{}') payload:\n{}", resourceType, name, Json.prettyPrint(payload))
+        genRequest(url, apiKey)
           .post(payload)
           .flatMap { implicit resp =>
-            log.info(s"meta.provision(workspace '$name') response: {}",resp.status)
-            log.debug(s"meta.provision(workspace '$name') response body: {}",resp.body)
+            log.info("meta.provision({} '{}') response: {}", resourceType, name, resp.status)
+            log.debug("meta.provision({} '{}') response body: {}", resourceType, name, resp.body)
             resp.status match {
               case 201 => Future.fromTry(getId(resp.json))
               case _ => futureFailureWithMessage
             }
           }
     }
+  }
+
+  private[this] def provisionMetaWorkspace(metaUrl: String, apiKey: GestaltAPIKey, parentFQON: String, name: String, description: String): Future[UUID] = {
+    val url = s"http://${metaUrl}/${parentFQON}/workspaces"
+    provisionMetaResource(url, apiKey, "workspace", name, Json.obj(
+      "name" -> name,
+      "description" -> description
+    ))
   }
 
   private[this] def provisionMetaEnvironment(metaUrl: String, apiKey: GestaltAPIKey, parentFQON: String, parentWorkspace: UUID, name: String, description: String, envType: String): Future[UUID] = {
-    val envUrl = s"http://${metaUrl}/$parentFQON/workspaces/$parentWorkspace/environments"
-    resourceExistsInList(envUrl, apiKey, name) flatMap {
-      case Some(js) =>
-        Future.fromTry(getId(js))
-      case None =>
-        val payload = Json.obj(
-          "name" -> name,
-          "description" -> description,
-          "properties" -> Json.obj(
-            "environment_type" -> envType
-          )
-        )
-        log.debug("environment '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
-        genRequest(envUrl, apiKey)
-          .post(payload)
-          .flatMap { implicit resp =>
-            log.info(s"meta.provision(environment $name) response: {}",resp.status)
-            log.debug(s"meta.provision(environment $name) response body: {}",resp.body)
-            resp.status match {
-              case 201 => Future.fromTry(getId(resp.json))
-              case _ => futureFailureWithMessage
-            }
-          }
-    }
+    val url = s"http://${metaUrl}/$parentFQON/workspaces/$parentWorkspace/environments"
+    provisionMetaResource(url, apiKey, "environment", name, Json.obj(
+      "name" -> name,
+      "description" -> description,
+      "properties" -> Json.obj(
+        "environment_type" -> envType
+      )
+    ))
   }
 
   private[this] def provisionDemoLambdas(metaUrl: String, metaApiUrl: String, apiKey: GestaltAPIKey, parentEnv: UUID, providerId: UUID): Seq[Future[UUID]] = {
@@ -378,23 +354,9 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         )
       )
     )
-    Seq(setupLambda,teardownLambda).map{ payload =>
-        val name = (payload \ "name").as[String]
-        resourceExistsInList(url, apiKey, name) flatMap {
-          case Some(js) => Future.fromTry(getId(js))
-          case None =>
-            log.debug("lambda '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
-            genRequest(url, apiKey)
-              .post(payload)
-              .flatMap { implicit resp =>
-                log.info(s"meta.provision(lambda $name) response: {}",resp.status)
-                log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
-                resp.status match {
-                  case 201 => Future.fromTry(getId(resp.json))
-                  case _ => futureFailureWithMessage
-                }
-              }
-        }
+    Seq(setupLambda,teardownLambda).map { payload =>
+      val name = (payload \ "name").as[String]
+      provisionMetaResource(url, apiKey, "lambda", name, payload)
     }
   }
 
@@ -405,31 +367,16 @@ class LauncherFSM @Inject()( config: LauncherConfig,
                                   kongProvider: UUID,
                                   name: String ): Future[UUID] = {
     val url = s"http://${metaUrl}/root/environments/$parentEnv/apis"
-    resourceExistsInList(url, apiKey, name) flatMap {
-      case Some(js) => Future.fromTry(getId(js))
-      case None =>
-        val apiJson = Json.obj(
-          "description" -> "API for exposing Demo setup/teardown lambdas",
-          "name" -> "demo",
-          "properties" -> Json.obj(
-            "provider" -> Json.obj(
-              "id" -> gatewayProvider.toString,
-              "locations" -> Json.arr(kongProvider.toString)
-            )
-          )
+    provisionMetaResource(url, apiKey, "api", name, Json.obj(
+      "description" -> "API for exposing Demo setup/teardown lambdas",
+      "name" -> "demo",
+      "properties" -> Json.obj(
+        "provider" -> Json.obj(
+          "id" -> gatewayProvider.toString,
+          "locations" -> Json.arr(kongProvider.toString)
         )
-        log.debug(s"api ${name} provision payload:\n{}", Json.prettyPrint(apiJson))
-        genRequest(url, apiKey)
-          .post(apiJson)
-          .flatMap { implicit resp =>
-            log.info(s"meta.provision(api $name) response: {}", resp.status)
-            log.debug(s"meta.provision(api $name) response body: {}", resp.body)
-            resp.status match {
-              case 201 => Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
-              case _ => futureFailureWithMessage
-            }
-          }
-    }
+      )
+    ))
   }
 
   private[this] def provisionEndpoint( metaUrl: String,
@@ -438,30 +385,15 @@ class LauncherFSM @Inject()( config: LauncherConfig,
                                        name: String,
                                        lambdaId: UUID ): Future[UUID] = {
     val url = s"http://${metaUrl}/root/apis/$parentApi/apiendpoints"
-    resourceExistsInList(url, apiKey, name) flatMap {
-      case Some(js) => Future.fromTry(getId(js))
-      case None =>
-        val endpointJson = Json.obj(
-          "name" -> ("-" + name),
-          "properties" -> Json.obj(
-            "implementation_type" -> "lambda",
-            "implementation_id" -> lambdaId.toString,
-            "resource" -> ("/" + name),
-            "synchronous" -> true
-          )
-        )
-        log.debug(s"apiendpoint ${name} provision payload:\n{}", Json.prettyPrint(endpointJson))
-        genRequest(url, apiKey)
-          .post(endpointJson)
-          .flatMap { implicit resp =>
-            log.info(s"meta.provision(apiendpoint $name) response: {}", resp.status)
-            log.debug(s"meta.provision(apiendpoint $name) response body: {}", resp.body)
-            resp.status match {
-              case 201 => Future.fromTry(Try{ (resp.json.as[Seq[JsObject]].head \ "id").as[UUID] })
-              case _ => futureFailureWithMessage
-            }
-          }
-    }
+    provisionMetaResource(url, apiKey, "apiendpoint", name, Json.obj(
+      "name" -> ("-" + name),
+      "properties" -> Json.obj(
+        "implementation_type" -> "lambda",
+        "implementation_id" -> lambdaId.toString,
+        "resource" -> ("/" + name),
+        "synchronous" -> true
+      )
+    ))
   }
 
   private[this] def provisionDemo( metaUrl: String,
@@ -687,7 +619,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
             gtf.getSecurityProvider(gc.secConfig.get)
           )
           val enabledExecutorPayloads = config.laser.enabledRuntimes map gtf.getExecutorProvider
-          val provSteps = for {
+          val fMetaProvisioning = for {
             configOnlyProviderIds <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, baseProviderPayloads ++ enabledExecutorPayloads)
             )
@@ -715,16 +647,16 @@ class LauncherFSM @Inject()( config: LauncherConfig,
               provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
-          } yield stageThree
-          provSteps onComplete {
-            case Success(msg) => self ! msg.head // all are MetaProvidersProvisioned
+          } yield MetaProvisioned
+          fMetaProvisioning onComplete {
+            case Success(msg) => self ! msg
             case Failure(ex) =>
-              log.warning("error provisioning resources in meta service: {}",ex.getMessage)
+              log.warning("error provisioning resources in meta service: {}", ex.getMessage)
               // keep retrying until our time runs out and we leave this state
               sendMessageToSelf(EXTERNAL_API_RETRY_INTERVAL, RetryRequest(ProvisioningMeta))
           }
-        case (None,_)  => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
-        case (_,None)   => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
+        case (None,_) => self ! ErrorEvent("while provisioning resources in meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
+        case (_,None) => self ! ErrorEvent("while provisioning resources in meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
       }
   }
 
