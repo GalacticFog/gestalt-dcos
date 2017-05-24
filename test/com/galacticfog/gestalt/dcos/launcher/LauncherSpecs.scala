@@ -133,7 +133,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
         username = "test-username",
         password = "test-password",
-        hostname = "data-0.gestalt-framework-tasks.marathon.mesos",
+        hostname = "data-0.gestalt-framework.marathon.mesos",
         port = 5432,
         prefix = "gestalt-test-"
       ))
@@ -157,7 +157,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
         username = "test-username",
         password = "test-password",
-        hostname = "data-0.gestalt-framework-tasks.marathon.mesos",
+        hostname = "data-0.gestalt-framework.marathon.mesos",
         port = 5432,
         prefix = "gestalt-test-"
       ))
@@ -496,7 +496,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
               prefix = "gestalt-"
             ))
             .withSec(GlobalSecConfig(
-              hostname = "testsecurity-gestalt-tasks.marathon.l4lb.thisdcos.directory",
+              hostname = "testsecurity-gestalt.marathon.l4lb.thisdcos.directory",
               port = 9455,
               apiKey = "key",
               apiSecret = "secret",
@@ -527,21 +527,21 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       }
       //
       metaProvisionLicense.timeCalled       must_== 1
-      metaProvisionWorkspace.timeCalled     must_== 2
-      metaProvisionDemoEnv.timeCalled       must_== 1
+      metaProvisionWorkspace.timeCalled     must_== 1 // 2
+      metaProvisionDemoEnv.timeCalled       must_== 0 // 1
       metaProvisionSysEnvs.timeCalled       must_== 2
       //
       metaRenameRoot.timeCalled             must_== 1
       renamedRootOrg.get()                  must_== 1
       //
-      metaProvisionDemoLambdas.timeCalled   must_== 2
-      createdSetupLambda.get()              must_== 1
-      createdTdownLambda.get()              must_== 1
+      metaProvisionDemoLambdas.timeCalled   must_== 0 // 2
+      createdSetupLambda.get()              must_== 0 // 1
+      createdTdownLambda.get()              must_== 0 // 1
       //
-      metaProvisionDemoAPI.timeCalled       must_== 1
-      metaProvisionDemoEndpoints.timeCalled must_== 2
-      createdSetupLambdaEndpoint.get()      must_== 1
-      createdTdownLambdaEndpoint.get()      must_== 1
+      metaProvisionDemoAPI.timeCalled       must_== 0 // 1
+      metaProvisionDemoEndpoints.timeCalled must_== 0 // 2
+      createdSetupLambdaEndpoint.get()      must_== 0 // 1
+      createdTdownLambdaEndpoint.get()      must_== 0 // 1
     }
 
   }

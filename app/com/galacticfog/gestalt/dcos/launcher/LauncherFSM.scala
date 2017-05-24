@@ -642,9 +642,9 @@ class LauncherFSM @Inject()( config: LauncherConfig,
               ))
             )
             //
-            stageThree <- Future.sequence(Seq(
+            _ <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
-              provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
+              // provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
           } yield MetaProvisioned

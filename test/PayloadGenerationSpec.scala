@@ -50,7 +50,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         prefix = "test-"
       ))
       val expected = MarathonAppPayload(
-        id = "/gestalt-framework-tasks/security",
+        id = "/gestalt-framework/security",
         args = Some(Seq("-J-Xmx768m")),
         env = Map(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
@@ -80,7 +80,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
                 containerPort = 9000,
                 protocol = "tcp",
                 name = Some("http-api"),
-                labels = Some(Map("VIP_0" -> "/gestalt-framework-tasks-security:9455"))
+                labels = Some(Map("VIP_0" -> "/gestalt-framework-security:9455"))
               ),
               DockerPortMapping(
                 containerPort = 9000,
