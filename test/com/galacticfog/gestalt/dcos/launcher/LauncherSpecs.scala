@@ -420,9 +420,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action(BodyParsers.parse.json) { request =>
         (request.body \ "name").asOpt[String] match {
           case Some("demo")    =>
-            Created(Json.arr(Json.obj(
+            Created(Json.obj(
               "id" -> demoApi
-            )))
+            ))
           case _ => BadRequest("")
         }
       }
@@ -433,14 +433,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         (request.body \ "name").asOpt[String] match {
           case Some("-setup")    =>
             createdSetupLambdaEndpoint.getAndIncrement()
-            Created(Json.arr(Json.obj(
+            Created(Json.obj(
               "id" -> UUID.randomUUID()
-            )))
+            ))
           case Some("-teardown") =>
             createdTdownLambdaEndpoint.getAndIncrement()
-            Created(Json.arr(Json.obj(
+            Created(Json.obj(
               "id" -> UUID.randomUUID()
-            )))
+            ))
           case _ => BadRequest("")
         }
       }
