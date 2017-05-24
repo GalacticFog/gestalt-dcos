@@ -146,10 +146,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
   private[this] def launchApp(service: FrameworkService, globalConfig: GlobalConfig): Unit = {
     val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
-    log.debug("'{}' launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
+    log.debug("'{}' app launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
     val fLaunch = marClient.launchApp(payload) map {
       r =>
-        log.info("'{}' launch response: {}", service.name, r.toString)
+        log.info("'{}' app launch response: {}", service.name, r.toString)
         self ! ServiceDeployed(service)
     }
     // launch failed, so we'll never get a task update
@@ -254,11 +254,12 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     // TODO: considering extracting the call to /root/providers so that it isn't repeated
     val providerUrl = s"http://${metaUrl}/root/providers"
     log.info(s"provisioning providers in meta at {}",providerUrl)
-    providerPayloads.map { providerJson =>
-      val name = (providerJson \ "name").as[String]
+    providerPayloads.map { payload =>
+      val name = (payload \ "name").as[String]
+      log.debug("provider '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
       resourceExistsInList(providerUrl, apiKey, name) flatMap {
         case Some(js) => Future.fromTry(getId(js))
-        case None =>  genRequest(providerUrl, apiKey).post(providerJson) flatMap { implicit resp =>
+        case None =>  genRequest(providerUrl, apiKey).post(payload) flatMap { implicit resp =>
           log.info(s"meta.provision(provider $name) response: {}",resp.status)
           log.debug(s"meta.provision(provider $name) response body: {}",resp.body)
           resp.status match {
@@ -278,11 +279,13 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       case Some(js) =>
         Future.fromTry(getId(js))
       case None =>
+        val payload = Json.obj(
+          "name" -> name,
+          "description" -> description
+        )
+        log.debug("workspace '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
         genRequest(wrkUrl, apiKey)
-          .post(Json.obj(
-            "name" -> name,
-            "description" -> description
-          ))
+          .post(payload)
           .flatMap { implicit resp =>
             log.info(s"meta.provision(workspace '$name') response: {}",resp.status)
             log.debug(s"meta.provision(workspace '$name') response body: {}",resp.body)
@@ -300,14 +303,16 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       case Some(js) =>
         Future.fromTry(getId(js))
       case None =>
+        val payload = Json.obj(
+          "name" -> name,
+          "description" -> description,
+          "properties" -> Json.obj(
+            "environment_type" -> envType
+          )
+        )
+        log.debug("environment '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
         genRequest(envUrl, apiKey)
-          .post(Json.obj(
-            "name" -> name,
-            "description" -> description,
-            "properties" -> Json.obj(
-              "environment_type" -> envType
-            )
-          ))
+          .post(payload)
           .flatMap { implicit resp =>
             log.info(s"meta.provision(environment $name) response: {}",resp.status)
             log.debug(s"meta.provision(environment $name) response body: {}",resp.body)
@@ -343,10 +348,10 @@ class LauncherFSM @Inject()( config: LauncherConfig,
           "Accept" -> "text/plain"
         ),
         "env" -> env,
-        "providers" -> Json.arr(Json.obj(
+        "provider" -> Json.obj(
           "id" -> providerId,
           "locations" -> Json.arr()
-        ))
+        )
       )
     )
     val teardownLambda = Json.obj(
@@ -367,19 +372,20 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         ),
         "env" -> env,
         "headers" -> Json.obj(),
-        "providers" -> Json.arr(Json.obj(
+        "provider" -> Json.obj(
           "id" -> providerId,
           "locations" -> Json.arr()
-        ))
+        )
       )
     )
-    Seq(setupLambda,teardownLambda).map{ lambdaJson =>
-        val name = (lambdaJson \ "name").as[String]
+    Seq(setupLambda,teardownLambda).map{ payload =>
+        val name = (payload \ "name").as[String]
         resourceExistsInList(url, apiKey, name) flatMap {
           case Some(js) => Future.fromTry(getId(js))
           case None =>
+            log.debug("lambda '{}' provision payload:\n{}", name, Json.prettyPrint(payload))
             genRequest(url, apiKey)
-              .post(lambdaJson)
+              .post(payload)
               .flatMap { implicit resp =>
                 log.info(s"meta.provision(lambda $name) response: {}",resp.status)
                 log.debug(s"meta.provision(lambda $name) response body: {}",resp.body)
@@ -402,18 +408,19 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     resourceExistsInList(url, apiKey, name) flatMap {
       case Some(js) => Future.fromTry(getId(js))
       case None =>
+        val apiJson = Json.obj(
+          "description" -> "API for exposing Demo setup/teardown lambdas",
+          "name" -> "demo",
+          "properties" -> Json.obj(
+            "provider" -> Json.obj(
+              "id" -> gatewayProvider.toString,
+              "locations" -> Json.arr(kongProvider.toString)
+            )
+          )
+        )
+        log.debug(s"api ${name} provision payload:\n{}", Json.prettyPrint(apiJson))
         genRequest(url, apiKey)
-          .post(
-            Json.obj(
-              "description" -> "API for exposing Demo setup/teardown lambdas",
-              "name" -> "demo",
-              "properties" -> Json.obj(
-                "provider" -> Json.obj(
-                  "id" -> gatewayProvider.toString,
-                  "locations" -> Json.arr(kongProvider.toString)
-                )
-              )
-            ))
+          .post(apiJson)
           .flatMap { implicit resp =>
             log.info(s"meta.provision(api $name) response: {}", resp.status)
             log.debug(s"meta.provision(api $name) response body: {}", resp.body)
@@ -434,16 +441,18 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     resourceExistsInList(url, apiKey, name) flatMap {
       case Some(js) => Future.fromTry(getId(js))
       case None =>
+        val endpointJson = Json.obj(
+          "name" -> ("-" + name),
+          "properties" -> Json.obj(
+            "implementation_type" -> "lambda",
+            "implementation_id" -> lambdaId.toString,
+            "resource" -> ("/" + name),
+            "synchronous" -> true
+          )
+        )
+        log.debug(s"apiendpoint ${name} provision payload:\n{}", Json.prettyPrint(endpointJson))
         genRequest(url, apiKey)
-          .post(Json.obj(
-            "name" -> ("-" + name),
-            "properties" -> Json.obj(
-              "implementation_type" -> "lambda",
-              "implementation_id" -> lambdaId.toString,
-              "resource" -> ("/" + name),
-              "synchronous" -> true
-            )
-          ))
+          .post(endpointJson)
           .flatMap { implicit resp =>
             log.info(s"meta.provision(apiendpoint $name) response: {}", resp.status)
             log.debug(s"meta.provision(apiendpoint $name) response body: {}", resp.body)
