@@ -111,11 +111,11 @@ class LauncherConfig @Inject()(config: Configuration) {
       .orElse(gestaltFrameworkVersion.map(
         ensVer => service match {
           case DATA(_) =>
-            s"galacticfog/postgres_repl:dcos-${ensVer}"
+            s"galacticfog/postgres_repl:release-${ensVer}"
           case RABBIT | KONG =>
-            s"galacticfog/${name}:dcos-${ensVer}"
+            s"galacticfog/${name}:release-${ensVer}"
           case _ =>
-            s"galacticfog/gestalt-${name}:dcos-${ensVer}"
+            s"galacticfog/gestalt-${name}:release-${ensVer}"
         }
       ))
       .getOrElse(defaultDockerImages(service))
@@ -213,21 +213,21 @@ object LauncherConfig {
   }
 
   def defaultDockerImages(service: Dockerable): String = service match {
-    case Services.DATA(_)             => s"galacticfog/postgres_repl:dcos-${BuildInfo.version}"
-    case Services.RABBIT              => s"galacticfog/rabbit:dcos-${BuildInfo.version}"
-    case Services.KONG                => s"galacticfog/kong:dcos-${BuildInfo.version}"
-    case Services.SECURITY            => s"galacticfog/gestalt-security:dcos-${BuildInfo.version}"
-    case Services.META                => s"galacticfog/gestalt-meta:dcos-${BuildInfo.version}"
-    case Services.POLICY              => s"galacticfog/gestalt-policy:dcos-${BuildInfo.version}"
-    case Services.LASER               => s"galacticfog/gestalt-laser:dcos-${BuildInfo.version}"
-    case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:dcos-${BuildInfo.version}"
-    case Services.UI                  => s"galacticfog/gestalt-ui-react:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_PYTHON    => s"galacticfog/gestalt-laser-executor-python:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:dcos-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:dcos-${BuildInfo.version}"
+    case Services.DATA(_)             => s"galacticfog/postgres_repl:release-${BuildInfo.version}"
+    case Services.RABBIT              => s"galacticfog/rabbit:release-${BuildInfo.version}"
+    case Services.KONG                => s"galacticfog/kong:release-${BuildInfo.version}"
+    case Services.SECURITY            => s"galacticfog/gestalt-security:release-${BuildInfo.version}"
+    case Services.META                => s"galacticfog/gestalt-meta:release-${BuildInfo.version}"
+    case Services.POLICY              => s"galacticfog/gestalt-policy:release-${BuildInfo.version}"
+    case Services.LASER               => s"galacticfog/gestalt-laser:release-${BuildInfo.version}"
+    case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:release-${BuildInfo.version}"
+    case Services.UI                  => s"galacticfog/gestalt-ui-react:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_PYTHON    => s"galacticfog/gestalt-laser-executor-python:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
   }
   case class MesosConfig( master: String,
                           schedulerHostname: String,

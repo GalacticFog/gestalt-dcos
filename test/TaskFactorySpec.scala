@@ -99,25 +99,25 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val lc  = injector.instanceOf[LauncherConfig]
 
-      gtf.getAppSpec(DATA(0), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
-      gtf.getAppSpec(DATA(1), testGlobals) must haveImage("galacticfog/postgres_repl:dcos-9.10.11.12")
-      gtf.getAppSpec(RABBIT, testGlobals) must haveImage("galacticfog/rabbit:dcos-9.10.11.12")
-      gtf.getAppSpec(SECURITY, testGlobals) must haveImage("galacticfog/gestalt-security:dcos-9.10.11.12")
-      gtf.getAppSpec(META, testGlobals) must haveImage("galacticfog/gestalt-meta:dcos-9.10.11.12")
-      gtf.getAppSpec(UI, testGlobals) must haveImage("galacticfog/gestalt-ui-react:dcos-9.10.11.12")
+      gtf.getAppSpec(DATA(0), testGlobals) must haveImage("galacticfog/postgres_repl:release-9.10.11.12")
+      gtf.getAppSpec(DATA(1), testGlobals) must haveImage("galacticfog/postgres_repl:release-9.10.11.12")
+      gtf.getAppSpec(RABBIT, testGlobals) must haveImage("galacticfog/rabbit:release-9.10.11.12")
+      gtf.getAppSpec(SECURITY, testGlobals) must haveImage("galacticfog/gestalt-security:release-9.10.11.12")
+      gtf.getAppSpec(META, testGlobals) must haveImage("galacticfog/gestalt-meta:release-9.10.11.12")
+      gtf.getAppSpec(UI, testGlobals) must haveImage("galacticfog/gestalt-ui-react:release-9.10.11.12")
 
-      gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:dcos-9.10.11.12")
-      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:dcos-9.10.11.12")
-      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:dcos-9.10.11.12")
-      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:dcos-9.10.11.12")
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:release-9.10.11.12")
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:release-9.10.11.12")
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:release-9.10.11.12")
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:release-9.10.11.12")
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "js-executor"     => "galacticfog/gestalt-laser-executor-js:dcos-9.10.11.12"
-        case "jvm-executor"    => "galacticfog/gestalt-laser-executor-jvm:dcos-9.10.11.12"
-        case "dotnet-executor" => "galacticfog/gestalt-laser-executor-dotnet:dcos-9.10.11.12"
-        case "python-executor" => "galacticfog/gestalt-laser-executor-python:dcos-9.10.11.12"
-        case "ruby-executor"   => "galacticfog/gestalt-laser-executor-ruby:dcos-9.10.11.12"
-        case "golang-executor" => "galacticfog/gestalt-laser-executor-golang:dcos-9.10.11.12"
+        case "js-executor"     => "galacticfog/gestalt-laser-executor-js:release-9.10.11.12"
+        case "jvm-executor"    => "galacticfog/gestalt-laser-executor-jvm:release-9.10.11.12"
+        case "dotnet-executor" => "galacticfog/gestalt-laser-executor-dotnet:release-9.10.11.12"
+        case "python-executor" => "galacticfog/gestalt-laser-executor-python:release-9.10.11.12"
+        case "ruby-executor"   => "galacticfog/gestalt-laser-executor-ruby:release-9.10.11.12"
+        case "golang-executor" => "galacticfog/gestalt-laser-executor-golang:release-9.10.11.12"
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -137,25 +137,25 @@ class TaskFactorySpec extends Specification with JsonMatchers {
 
       val ver = BuildInfo.version
 
-      gtf.getAppSpec(DATA(0), testGlobals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
-      gtf.getAppSpec(DATA(1), testGlobals)      must haveImage(s"galacticfog/postgres_repl:dcos-${ver}")
-      gtf.getAppSpec(RABBIT, testGlobals)       must haveImage(s"galacticfog/rabbit:dcos-${ver}")
-      gtf.getAppSpec(SECURITY, testGlobals)     must haveImage(s"galacticfog/gestalt-security:dcos-${ver}")
-      gtf.getAppSpec(META, testGlobals)         must haveImage(s"galacticfog/gestalt-meta:dcos-${ver}")
-      gtf.getAppSpec(UI, testGlobals)           must haveImage(s"galacticfog/gestalt-ui-react:dcos-${ver}")
+      gtf.getAppSpec(DATA(0), testGlobals)      must haveImage(s"galacticfog/postgres_repl:release-${ver}")
+      gtf.getAppSpec(DATA(1), testGlobals)      must haveImage(s"galacticfog/postgres_repl:release-${ver}")
+      gtf.getAppSpec(RABBIT, testGlobals)       must haveImage(s"galacticfog/rabbit:release-${ver}")
+      gtf.getAppSpec(SECURITY, testGlobals)     must haveImage(s"galacticfog/gestalt-security:release-${ver}")
+      gtf.getAppSpec(META, testGlobals)         must haveImage(s"galacticfog/gestalt-meta:release-${ver}")
+      gtf.getAppSpec(UI, testGlobals)           must haveImage(s"galacticfog/gestalt-ui-react:release-${ver}")
 
-      gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:dcos-${ver}")
-      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:dcos-${ver}")
-      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:dcos-${ver}")
-      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:dcos-${ver}")
+      gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:release-${ver}")
+      gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:release-${ver}")
+      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:release-${ver}")
+      gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:release-${ver}")
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "js-executor"     => s"galacticfog/gestalt-laser-executor-js:dcos-${ver}"
-        case "jvm-executor"    => s"galacticfog/gestalt-laser-executor-jvm:dcos-${ver}"
-        case "dotnet-executor" => s"galacticfog/gestalt-laser-executor-dotnet:dcos-${ver}"
-        case "python-executor" => s"galacticfog/gestalt-laser-executor-python:dcos-${ver}"
-        case "ruby-executor"   => s"galacticfog/gestalt-laser-executor-ruby:dcos-${ver}"
-        case "golang-executor" => s"galacticfog/gestalt-laser-executor-golang:dcos-${ver}"
+        case "js-executor"     => s"galacticfog/gestalt-laser-executor-js:release-${ver}"
+        case "jvm-executor"    => s"galacticfog/gestalt-laser-executor-jvm:release-${ver}"
+        case "dotnet-executor" => s"galacticfog/gestalt-laser-executor-dotnet:release-${ver}"
+        case "python-executor" => s"galacticfog/gestalt-laser-executor-python:release-${ver}"
+        case "ruby-executor"   => s"galacticfog/gestalt-laser-executor-ruby:release-${ver}"
+        case "golang-executor" => s"galacticfog/gestalt-laser-executor-golang:release-${ver}"
         case _ => throw new RuntimeException("unexpected")
       }
 
