@@ -288,8 +288,8 @@ object LauncherConfig {
   object MetaConfig {
     val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
 
-    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-setup.js"
-    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.1.0/js_lambda/demo-teardown.js"
+    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.2.0/js_lambda/demo-setup.js"
+    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.2.0/js_lambda/demo-teardown.js"
   }
 
 }
