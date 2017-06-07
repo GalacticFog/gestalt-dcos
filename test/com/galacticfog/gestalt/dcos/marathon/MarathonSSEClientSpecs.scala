@@ -195,7 +195,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
           |        }
           |      ],
           |      "docker": {
-          |        "image": "galacticfog/postgres_repl:dcos-1.0.1",
+          |        "image": "galacticfog/postgres_repl:release-1.2.0",
           |        "network": "BRIDGE",
           |        "portMappings": [
           |          {
