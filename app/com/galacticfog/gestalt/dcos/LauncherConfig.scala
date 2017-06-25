@@ -46,7 +46,6 @@ class LauncherConfig @Inject()(config: Configuration) {
     prefix = getString("database.prefix", "gestalt-")
   )
 
-
   val meta = MetaConfig(
     companyName = getString("meta.company-name", MetaConfig.DEFAULT_COMPANY_NAME)
   )
@@ -59,6 +58,8 @@ class LauncherConfig @Inject()(config: Configuration) {
   )
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
+
+  val acceptAnyCertificate: Boolean = config.getBoolean("acceptAnyCertificate").getOrElse(false)
 
   val LAUNCH_ORDER: Seq[LauncherState] = {
     val dbs = if (database.provision) {

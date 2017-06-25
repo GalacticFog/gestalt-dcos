@@ -1,24 +1,30 @@
 package com.galacticfog.gestalt.dcos.marathon
 
 import akka.actor.ActorSystem
+import akka.http.scaladsl.Http
 import akka.testkit.{ImplicitSender, TestKit}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.google.inject.AbstractModule
+import com.google.inject.name.Names
 import de.heikoseeberger.akkasse.ServerSentEvent
+import modules.PermissiveWSClient
+import net.codingwell.scalaguice.ScalaModule
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
 import play.api.test._
+
 import scala.util.Try
 
 class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
-  case class TestModule(ws: WSClient) extends AbstractModule {
+  case class TestModule(ws: WSClient) extends AbstractModule with ScalaModule {
     override def configure(): Unit = {
-      bind(classOf[WSClient]).toInstance(ws)
+      bind[WSClient].toInstance(ws)
+      bind[WSClient].annotatedWithName("permissive-wsclient").to[PermissiveWSClient]
     }
   }
 
@@ -87,6 +93,26 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
       val mockApp = mock[MarathonAppPayload]
       mockApp.labels returns Map(lbls:_*) ++ Map("HAPROXY_GROUP" -> "external")
       mockApp
+    }
+
+    "use permissive ssl for WS and akka-http if acceptAnyCertificate = true" in new WithConfig("acceptAnyCertificate" -> true) {
+      import net.codingwell.scalaguice.InjectorExtensions._
+      val gi = injector.instanceOf[com.google.inject.Injector]
+      val client = gi.instance[MarathonSSEClient]
+      // client.connectionContext.sslContext must_!= Http(system).defaultClientHttpsContext.sslContext
+      client.client must_== gi.instance[WSClient](Names.named("permissive-wsclient"))
+    }
+
+    "not use permissive ssl for WS and akka-http if acceptAnyCertificate is absent (backwards-compatible and secure-by-default)" in new WithConfig() {
+      val client = injector.instanceOf[MarathonSSEClient]
+      // client.connectionContext.sslContext must_== Http(system).defaultClientHttpsContext.sslContext
+      client.client must_== injector.instanceOf[WSClient]
+    }
+
+    "not use permissive ssl for WS and akka-http if acceptAnyCertificate is false" in new WithConfig("acceptAnyCertificate" -> false) {
+      val client = injector.instanceOf[MarathonSSEClient]
+      // client.connectionContext.sslContext must_== Http(system).defaultClientHttpsContext.sslContext
+      client.client must_== injector.instanceOf[WSClient]
     }
 
     "appropriately gather vhosts and vpaths" in {

@@ -1,11 +1,13 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import javax.inject.{Inject, Singleton}
+import java.security.cert.X509Certificate
+import javax.inject.{Inject, Named, Singleton}
+import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
 
 import scala.language.postfixOps
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
-import akka.http.scaladsl.Http
+import akka.http.scaladsl.{Http, HttpsConnectionContext}
 import akka.http.scaladsl.model.headers.Accept
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.stream.ActorMaterializer
@@ -20,6 +22,7 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
+import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
@@ -31,8 +34,9 @@ object BiggerUnmarshalling extends EventStreamUnmarshalling {
 }
 
 @Singleton
-class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
-                                   ws: WSClient )
+class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
+                                    wsDefault: WSClient,
+                                    @Named("permissive-wsclient") wsPermissive: WSClient )
                                   ( implicit system: ActorSystem ) {
 
   import system.dispatcher
@@ -48,12 +52,34 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
+  private[marathon] val client: WSClient = {
+    if (launcherConfig.acceptAnyCertificate) wsPermissive
+    else wsDefault
+  }
+
+  private[marathon] val connectionContext: HttpsConnectionContext = {
+    if (launcherConfig.acceptAnyCertificate) {
+      logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
+      // Create a trust manager that does not validate certificate chains
+      val trustAllCerts: Array[TrustManager] = Array(new X509TrustManager {
+        override def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
+        override def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
+        override def getAcceptedIssuers: Array[X509Certificate] = {null}
+      })
+      // Install the all-trusting trust manager
+      val sc = SSLContext.getInstance("SSL")
+      sc.init(null, trustAllCerts, new java.security.SecureRandom())
+      new HttpsConnectionContext(sc, None, None, None, None, None)
+    } else Http(system).defaultClientHttpsContext
+  }
+
   def connectToBus(actorRef: ActorRef): Unit = {
     implicit val mat = ActorMaterializer()
     val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
     Http(system)
       .singleRequest(
-        Get(s"${marathonBaseUrl}/v2/events")
+        connectionContext = connectionContext,
+        request = Get(s"${marathonBaseUrl}/v2/events")
           .addHeader(
             Accept(`text/event-stream`)
           )
@@ -72,7 +98,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.stripPrefix("/")
-    ws.url(s"${marathonBaseUrl}/v2/apps/${appId}")
+    client.url(s"${marathonBaseUrl}/v2/apps/${appId}")
       .withQueryString("force" -> "true")
       .put(
         Json.toJson(appPayload)
@@ -92,7 +118,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
   def killApp(service: FrameworkService): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${service.name}")
     val appId = s"/${appGroup}/${service.name}"
-    ws.url(s"${marathonBaseUrl}/v2/apps${appId}")
+    client.url(s"${marathonBaseUrl}/v2/apps${appId}")
       .withQueryString("force" -> "true")
       .delete()
       .flatMap { resp =>
@@ -107,7 +133,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   def stopApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
-    ws.url(s"${marathonBaseUrl}/v2/apps/${appGroup}/${svcName}")
+    client.url(s"${marathonBaseUrl}/v2/apps/${appGroup}/${svcName}")
       .withQueryString("force" -> "true")
       .put(Json.obj("instances" -> 0))
       .map { resp =>
@@ -160,7 +186,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   def getServices(): Future[Seq[ServiceInfo]] = {
     val url = marathonBaseUrl.stripSuffix("/")
-    ws.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+    client.url(s"${url}/v2/groups/${appGroup}").withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
         case 200 =>
           Future.fromTry(Try {
@@ -176,7 +202,7 @@ class MarathonSSEClient @Inject() (launcherConfig: LauncherConfig,
 
   def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
     val url = marathonBaseUrl.stripSuffix("/")
-    ws.url(s"${url}/v2/apps/${appGroup}/${service.name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
+    client.url(s"${url}/v2/apps/${appGroup}/${service.name}").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get().flatMap { response =>
       response.status match {
         case 200 =>
           Future.fromTry(Try{
