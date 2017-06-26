@@ -13,9 +13,15 @@ case class PortDefinition(port: Int,
                           protocol: String,
                           labels: Option[Map[String,String]])
 
-case class MarathonContainerInfo(`type`: String,
-                                 volumes: Option[Seq[Volume]],
-                                 docker: Option[MarathonDockerContainer])
+case class MarathonContainerInfo(`type`: String = MarathonContainerInfo.Types.DOCKER,
+                                 volumes: Option[Seq[Volume]] = None,
+                                 docker: Option[MarathonDockerContainer] = None)
+
+case object MarathonContainerInfo {
+  object Types {
+    val DOCKER = "DOCKER"
+  }
+}
 
 case class DockerPortMapping(containerPort: Int,
                              hostPort: Option[Int] = None,
@@ -78,16 +84,16 @@ case object Residency {
 case class MarathonAppPayload(id: String,
                               cmd: Option[String] = None,
                               args: Option[Seq[String]] = None,
-                              env: Map[String,String],
+                              env: Map[String,String] = Map.empty,
                               instances: Int,
                               cpus: Double,
                               mem: Int,
-                              disk: Int,
+                              disk: Int = 0,
                               container: MarathonContainerInfo,
                               portDefinitions: Option[Seq[PortDefinition]] = None,
-                              requirePorts: Boolean,
-                              healthChecks: Seq[MarathonHealthCheck],
-                              labels: Map[String,String],
+                              requirePorts: Boolean = false,
+                              healthChecks: Seq[MarathonHealthCheck] = Seq.empty,
+                              labels: Map[String,String] = Map.empty,
                               readinessCheck: Option[MarathonReadinessCheck] = None,
                               residency: Option[Residency] = None,
                               tasksStaged: Option[Int] = None,

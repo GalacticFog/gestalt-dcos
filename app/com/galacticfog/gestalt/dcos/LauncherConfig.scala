@@ -61,6 +61,19 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val acceptAnyCertificate: Boolean = config.getBoolean("acceptAnyCertificate").getOrElse(false)
 
+  val dcosAuth = for {
+    auth <- config.getString("auth.method")
+    if auth == "acs"
+    dcosUrl <- config.getString("auth.dcosUrl")
+    serviceAccountId <- config.getString("auth.serviceAccountId")
+    privateKeyVar = config.getString("auth.privateKeyVar")
+    privateKey <- privateKeyVar.flatMap(sys.env.get(_)) orElse config.getString("auth.privateKey")
+  } yield ACSAuthConfig(
+    dcosUrl = dcosUrl,
+    serviceAccountId = serviceAccountId,
+    privateKey = privateKey
+  )
+
   val LAUNCH_ORDER: Seq[LauncherState] = {
     val dbs = if (database.provision) {
       Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
@@ -265,6 +278,10 @@ object LauncherConfig {
                           minPortRange: Int,
                           maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime] )
+
+  case class ACSAuthConfig ( dcosUrl : String,
+                             serviceAccountId : String,
+                             privateKey : String )
 
   case object LaserConfig {
     val DEFAULT_MIN_PORT_RANGE = 60000
