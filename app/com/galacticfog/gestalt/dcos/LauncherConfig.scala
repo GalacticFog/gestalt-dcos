@@ -31,6 +31,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
+    frameworkName = getString("marathon.framework-name", "marathon"),
+    clusterName = getString("marathon.cluster-name", "thisdcos"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
   )
 
@@ -74,6 +76,11 @@ class LauncherConfig @Inject()(config: Configuration) {
     privateKey = privateKey
   )
 
+  val debug = Debug(
+    cpu = config.getDouble("debug.cpu"),
+    mem = config.getInt("debug.mem")
+  )
+
   val LAUNCH_ORDER: Seq[LauncherState] = {
     val dbs = if (database.provision) {
       Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
@@ -109,9 +116,9 @@ class LauncherConfig @Inject()(config: Configuration) {
   def vipHostname(service: ServiceEndpoint): String = {
     service match {
       case DATA(_) | RABBIT_AMQP =>
-        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + ".marathon.mesos"
+        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + "." + marathon.frameworkName + ".mesos"
       case _ =>
-        vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+        vipBase(service) + s".${marathon.frameworkName}.l4lb.${marathon.clusterName}.directory"
     }
   }
 
@@ -262,10 +269,14 @@ object LauncherConfig {
     val DEFAULT_KILL_GRACE_PERIOD = 300
   }
 
+  case class Debug( cpu: Option[Double], mem: Option[Int] )
+
   case class MarathonConfig( marathonLbUrl: Option[String],
                              appGroup: String,
                              tld: Option[String],
                              baseUrl: String,
+                             frameworkName: String,
+                             clusterName: String,
                              jvmOverheadFactor: Double )
 
   case class SecurityConfig( username: String,
