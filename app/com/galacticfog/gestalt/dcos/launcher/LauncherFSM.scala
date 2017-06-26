@@ -5,7 +5,6 @@ import java.util.UUID
 import javax.inject.Inject
 
 import akka.actor.{FSM, LoggingFSM, Status}
-import com.galacticfog.gestalt.cli.{ExecutorSecrets, GestaltProviderBuilder}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._

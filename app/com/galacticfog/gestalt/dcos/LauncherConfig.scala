@@ -68,8 +68,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     if auth == "acs"
     dcosUrl <- config.getString("auth.dcosUrl")
     serviceAccountId <- config.getString("auth.serviceAccountId")
-    privateKeyVar = config.getString("auth.privateKeyVar")
-    privateKey <- privateKeyVar.flatMap(sys.env.get(_)) orElse config.getString("auth.privateKey")
+    privateKey <- config.getString("auth.privateKey") orElse config.getString("auth.privateKeyVar").flatMap(sys.env.get(_))
   } yield ACSAuthConfig(
     dcosUrl = dcosUrl,
     serviceAccountId = serviceAccountId,

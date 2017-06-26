@@ -15,7 +15,7 @@ import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
-import play.api.libs.json.JsValue
+import play.api.libs.json.{JsValue, Json}
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
@@ -313,6 +313,15 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       url = Some(launcherConfig.marathon.baseUrl),
       username = Some("unused"),
       password = Some("unused"),
+      auth = launcherConfig.dcosAuth.map(
+        auth => Json.obj(
+          "scheme" -> "acs",
+          "service_account_id" -> auth.serviceAccountId,
+          "private_key" -> auth.privateKey,
+          "dcos_base_url" -> auth.dcosUrl
+        )
+      ),
+      acceptAnyCert = launcherConfig.acceptAnyCertificate,
       kubeconfig = None,
       appGroupPrefix = Some(launcherConfig.marathon.appGroup)
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
