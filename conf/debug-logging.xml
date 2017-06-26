@@ -46,4 +46,6 @@
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient" level="DEBUG" />
 
+  <logger name="com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor" level="DEBUG" />
+
 </configuration>

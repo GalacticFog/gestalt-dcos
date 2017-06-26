@@ -49,7 +49,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   val logger: Logger = Logger(this.getClass())
 
-  private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl
+  private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl.stripSuffix("/")
 
   private[this] val appGroup = launcherConfig.marathon.appGroup
   private[this] val appIdWithGroup = s"/${appGroup}/(.*)".r
@@ -93,6 +93,14 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
+  private[this] def considerInvalidatingAuthToken(status: Int): Unit = {
+    if (Seq(401,403).contains(status)) {
+      launcherConfig.dcosAuth foreach {
+        _ => authTokenActor ! DCOSAuthTokenActor.InvalidateCachedToken
+      }
+    }
+  }
+
   def connectToBus(actorRef: ActorRef): Unit = {
     val fMaybeAuthToken = getAuthToken // start this early
     implicit val mat = ActorMaterializer()
@@ -100,18 +108,18 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
     val fEventSource = for {
       maybeAuthToken <- fMaybeAuthToken
-      baseRequest = Get(s"${marathonBaseUrl}/v2/events")
-        .addHeader(
-          Accept(`text/event-stream`)
-        )
-      req = maybeAuthToken.foldLeft(baseRequest) {
-        case (req, tok) => req.addHeader(
-          Authorization(GenericHttpCredentials("token="+tok, ""))
-        )
+      req = maybeAuthToken.foldLeft(
+        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(`text/event-stream`))
+      ) {
+        case (req, tok) =>
+          logger.debug("adding header to event bus request")
+          req.addHeader(
+            Authorization(GenericHttpCredentials("token="+tok, ""))
+          )
       }
       resp <- Http(system).singleRequest(
         connectionContext = connectionContext,
-        request = baseRequest
+        request = req
       )
     } yield resp
 
@@ -122,6 +130,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           actorRef ! Connected
           eventSource.runWith(handler)
         case Failure(t) =>
+          considerInvalidatingAuthToken(401)
           logger.info("failure connecting to marathon event bus", t)
           actorRef ! akka.actor.Status.Failure(new RuntimeException("error connecting to Marathon event bus", t))
       }
@@ -129,7 +138,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   private[this] def genRequest(endpoint: String): Future[WSRequest] = {
     val fMaybeToken = getAuthToken
-    val url = marathonBaseUrl.stripSuffix("/") + "/" + endpoint.stripPrefix("/")
+    val url = marathonBaseUrl + "/" + endpoint.stripPrefix("/")
     fMaybeToken map {
       _.foldLeft(client.url(url)){
         case (r,t) => r.withHeaders(
@@ -147,14 +156,19 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       resp <- req.withQueryString("force" -> "true").put(
         Json.toJson(appPayload)
       )
-      json <- resp.status match {
-        case 201 => Future.successful(resp.json)
-        case 200 => Future.successful(resp.json)
-        case _ =>
-          logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
-          Future.failed(new RuntimeException(
-            Try{(resp.json \ "message").as[String]} getOrElse resp.body
-          ))
+      json <- {
+        considerInvalidatingAuthToken(resp.status)
+        resp.status match {
+          case 201 => Future.successful(resp.json)
+          case 200 => Future.successful(resp.json)
+          case s =>
+            logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
+            Future.failed(new RuntimeException(
+              Try {
+                (resp.json \ "message").as[String]
+              } getOrElse resp.body
+            ))
+        }
       }
     } yield json
   }
@@ -168,6 +182,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       resp <- req.withQueryString("force" -> "true").delete()
       deleted <- {
         logger.info(s"marathon.delete(${service.name}) => ${resp.statusText}")
+        considerInvalidatingAuthToken(resp.status)
         resp.status match {
           case 200 => Future.successful(true)
           case 404 => Future.successful(false)
@@ -185,6 +200,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       resp <- req.withQueryString("force" -> "true").put(Json.obj("instances" -> 0))
       maybeOk = {
         logger.info(s"marathon.stop(${svcName}) => ${resp.statusText}")
+        considerInvalidatingAuthToken(resp.status)
         resp.status == 200
       }
     } yield maybeOk
@@ -237,15 +253,18 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     for {
       req <- genRequest(endpoint)
       resp <- req.withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
-      svcs <-  resp.status match {
-        case 200 =>
-          Future.fromTry(Try {
-            (resp.json \ "apps").as[Seq[MarathonAppPayload]].flatMap {
-              app => appIdWithGroup.unapplySeq(app.id) flatMap(_.headOption) flatMap(LauncherConfig.Services.fromName) map (service => (service,app))
-            } map { case (service,app) => toServiceInfo(service,app) }
-          })
-        case 404 => Future.successful(Seq.empty)
-        case _ => Future.failed(new RuntimeException(resp.statusText))
+      svcs <- {
+        considerInvalidatingAuthToken(resp.status)
+        resp.status match {
+          case 200 =>
+            Future.fromTry(Try {
+              (resp.json \ "apps").as[Seq[MarathonAppPayload]].flatMap {
+                app => appIdWithGroup.unapplySeq(app.id) flatMap (_.headOption) flatMap (LauncherConfig.Services.fromName) map (service => (service, app))
+              } map { case (service, app) => toServiceInfo(service, app) }
+            })
+          case 404 => Future.successful(Seq.empty)
+          case _ => Future.failed(new RuntimeException(resp.statusText))
+        }
       }
     } yield svcs
   }
@@ -255,15 +274,18 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val fStat = for {
       req <- genRequest(endpoint)
       resp <- req.withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
-      stat <- resp.status match {
-        case 200 =>
-          Future.fromTry(Try{
-            val app = (resp.json \ "app").as[MarathonAppPayload]
-            toServiceInfo(service, app)
-          })
-        case 404 => Future.successful(ServiceInfo(service,Seq(),None,Seq.empty,NOT_FOUND))
-        case _   =>
-          Future.failed(new RuntimeException(resp.statusText))
+      stat <- {
+        considerInvalidatingAuthToken(resp.status)
+        resp.status match {
+          case 200 =>
+            Future.fromTry(Try{
+              val app = (resp.json \ "app").as[MarathonAppPayload]
+              toServiceInfo(service, app)
+            })
+          case 404 => Future.successful(ServiceInfo(service,Seq(),None,Seq.empty,NOT_FOUND))
+          case _   =>
+            Future.failed(new RuntimeException(resp.statusText))
+        }
       }
     } yield stat
     fStat recover {

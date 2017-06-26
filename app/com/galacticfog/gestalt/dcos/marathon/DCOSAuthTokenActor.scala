@@ -6,7 +6,7 @@ import java.util.UUID
 
 import akka.actor.{Actor, Props}
 import akka.pattern.ask
-import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
+import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse, InvalidateCachedToken}
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import io.jsonwebtoken.{Jwts, SignatureAlgorithm}
@@ -28,32 +28,40 @@ class DCOSAuthTokenActor @Inject() ( clientFac: WSClientFactory ) extends Actor 
 
   val log = Logger(this.getClass)
 
-  // TODO: once we start using cached tokens, how do we handle that the underlying credentials may change? need to store enough so that we can check/invalidate
-
-  // TODO: if we automatically refresh tokens, we'll need to keep the url and the secret
-
   val requestChild = context.actorOf(Props(classOf[DCOSAuthTokenRequestActor], clientFac.getClient))
 
-  var acsAuthorizationToken: Option[String] = _
+  var acsAuthorizationToken: Option[String] = None
 
   // use the error kernel pattern to help protect our state from being wiped...
   // if we still manage to fail, it's not the end of the world, because the tokens will be regenerated
   override def receive: Receive = {
+    case InvalidateCachedToken =>
+      log.info("Invalidating cached authorization token per demand")
+      acsAuthorizationToken = None
     case r: DCOSAuthTokenActor.DCOSAuthTokenRequest =>
+      log.debug("requesting authentication token from child")
       import context.dispatcher
       val s = sender()
-      val f = requestChild.ask(r)(30 seconds)
-      f.onComplete {
-        case Success(response) =>
-          if (response.isInstanceOf[DCOSAuthTokenResponse]) {
-            acsAuthorizationToken = Some(response.asInstanceOf[DCOSAuthTokenResponse].authToken)
+      acsAuthorizationToken match {
+        case Some(tok) =>
+          s ! DCOSAuthTokenResponse(tok)
+        case None =>
+          val f = requestChild.ask(r)(30 seconds)
+          f.onComplete {
+            case Success(response) =>
+              log.info(s"received authentication response from child: $response")
+              if (response.isInstanceOf[DCOSAuthTokenResponse]) {
+                acsAuthorizationToken = Some(response.asInstanceOf[DCOSAuthTokenResponse].authToken)
+              }
+              s ! response
+            case Failure(t) =>
+              log.error("error getting authentication response from child")
+              s ! DCOSAuthTokenError(t.getMessage)
           }
-          s ! response
-        case Failure(t) =>
-          s ! DCOSAuthTokenError(t.getMessage)
       }
     case e =>
       log.error(s"DCOSAuthTokenActor: unhandled message type: $e")
+      sender() ! DCOSAuthTokenError(s"DCOSAuthTokenActor: unhandled message type: $e")
   }
 
 }
@@ -61,6 +69,12 @@ class DCOSAuthTokenActor @Inject() ( clientFac: WSClientFactory ) extends Actor 
 object DCOSAuthTokenActor {
 
   final val name = "dcos-auth-token-actor"
+
+  case object InvalidateCachedToken
+
+  case class RefreshTokenRequest( dcosUrl : String,
+                                  serviceAccountId: String,
+                                  privateKey: String )
 
   case class DCOSAuthTokenRequest( dcosUrl : String,
                                    serviceAccountId : String,

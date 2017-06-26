@@ -62,8 +62,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     name = service.name,
     args = Some(Seq()),
     image = launcherConfig.dockerImage(service),
-    cpus = service.cpu,
-    mem = service.mem,
+    cpus = launcherConfig.debug.cpu.getOrElse(service.cpu),
+    mem = launcherConfig.debug.mem.getOrElse(service.mem),
     network = ContainerInfo.DockerInfo.Network.BRIDGE
   )
 
