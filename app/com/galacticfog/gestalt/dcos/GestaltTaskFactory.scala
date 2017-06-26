@@ -323,7 +323,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       ),
       acceptAnyCert = launcherConfig.acceptAnyCertificate,
       kubeconfig = None,
-      appGroupPrefix = Some(launcherConfig.marathon.appGroup)
+      appGroupPrefix = Some(launcherConfig.marathon.appGroup),
+      marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
+      dcosClusterName = Some(launcherConfig.marathon.clusterName)
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
