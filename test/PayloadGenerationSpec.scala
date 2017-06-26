@@ -397,10 +397,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
     }
 
     "configure meta caas provider with fallback to basic authentication" in {
-      val testServiceId = "meta-dcos-provider"
-      val testPrivateKey = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC9OzC0iseKnsqd\nu82KvTav6q+j4MoSS3mGGPZIA2JaD/cMjpzBtaaOxIbcyLWt2M8hwdO3TLXCZiW2\nybz2Koeo3+vNphnO7U4ZggSIuM+RYfhUUnQ79yiYKmL3z93HRrvZBlulG3yOFo5y\n30IFKqyt2QKlPy3ObCtZYwT4opYNnkev/pubtOjsjdkU9/u088eiLfVHwSwpBxjG\n2wbpFVGyN3p55UHW3K6QUrUw8B7EOF2A5EXzgR5GmAgL6SjuzEdghumqdMcSxGoE\n4pL3Y6LHer391ITdxO819o0i3cfglvgXxFGZSsiRVV89X15n8pEbP73cD3sRxnwe\nIwW860ZnAgMBAAECggEAIKUXb+4JIobmWXPOr8KYrpyEFHdxJNrUaifgROggjXz3\nl7j6nghiZXrN8UTG4ujmQuKXTaX0LUdF9lSzPpxzrtSCb4XaKfKSaKAffB614FTQ\nbGuVFcs7u5SEYk//6KLxQS1xnfgx8qk9hd+yGgYUqCEp7awKkPPkPpVwhBw4WrzJ\nkYxJ3bIT7j3svTr5uhno7cFso5jhfFyMA7PruHGNfyOWLIgzgw5qwRUK1WLMyk88\nJivrDRbvuskWK7pxvLrRQ/VA34LvGKLroj9Gqw9HIDGbY526PPjFo/uDq8ErHBsQ\nBdoagN6VihX5YjXdi3eF8mIcaFYBOQj6zB+Kfmkc0QKBgQDjkIemfgpHEMcRsinm\ni0WLlZGD8hjFTNku1Pki5sFffXcHR+FImrEUXL/NqJr8iqIeJ+1cx3OAiBm8PHh4\nl+LYz4H2TlvIEEURmOwLiBbh49N4o7T9the+PluDGLsZ9ka3AGHP1LBcvwYJdf7v\nubK3eky1QQSI5Ce6+uayU76QFQKBgQDU4G4j2eAIVTDQ0xMfJYXFaIh2eVqTkv83\nPeskWhAQcPUKzyX7bPHSdSbx+91ZW5iL8GX4DFp+JBiQFSqNq1tqhLwz9xHTxYrj\nGvi6MUJ4LCOihbU+6JIYuOdxq3govxtnJ+lE4cmwr5Y4HM1wx2dxba9EsItLrzkj\nHGPNDJ6fiwKBgCXgPHO9rsA9TqTnXon8zEp7TokDlpPgQpXE5OKmPbFDFLilgh2v\ngaG9/j6gvYsjF/Ck/KDgoZzXClGGTxbjUOJ9R0hTqnsWGijfpwoUUJqwbNY7iThh\nQnprrpeXWizsDMEQ0zbgU6pcMQkKFrCX2+Ml+/Z/J94Q+3vnntY3khQxAoGAdUkh\n5cbI1E57ktJ4mpSF23n4la3O5bf7vWf0AhdM+oIBwG7ZMmmX4qiBSJnIHs+EgLV2\nuO+1fAJPNjMzOtLKjymKt+bMf607FF1r5Mn3IVbQW17nuT1SISTe/5XFok2Iv5ER\nyM3N3fcgANJ9rkFvEOOpyWKrnItyI5IkunjVfHkCgYEAjmAjQOQt5eCO9kGitL7X\ntQGn8TWWHRCjMm1w3ith7bPp11WrdeyfNuUAB7weQjk2qjAIKTOGWtIRqc36OLPA\nkwF1GDyFXvLqJej/2ZLfytyjhetLAQnRL0qOgCi7EU5+YLXuYnn7zPEJgrR3ogX4\n4rvG4NIQ8wG0sEUTnr06nck=\n-----END PRIVATE KEY-----"
-      val testDcosUrl = "https://m1.dcos"
-
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -413,6 +409,34 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         "username" -> "unused",
         "password" -> "unused"
       )
+    }
+
+    "configure meta caas provider with support for marathon-under-marathon and custom dcos cluster name" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.framework-name" -> "marathon-user",
+          "marathon.cluster-name" -> "my-dcos-cluster"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "marathon_framework_name").asOpt[String] must beSome("marathon-user")
+      (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("my-dcos-cluster")
+    }
+
+    "configure meta caas provider marathon-under-marathon and dcos cluster using defaults if not specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.framework-name" -> "marathon-user",
+          // "marathon.cluster-name" -> "my-dcos-cluster"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "marathon_framework_name").asOpt[String] must beSome("marathon")
+      (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
 
     "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
