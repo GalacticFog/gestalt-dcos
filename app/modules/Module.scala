@@ -4,8 +4,9 @@ import javax.inject.{Inject, Named}
 
 import akka.actor.ActorRef
 import akka.stream.Materializer
-import com.galacticfog.gestalt.dcos.GestaltTaskFactory
+import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM
+import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor
 import com.google.inject.{AbstractModule, Singleton}
 import io.netty.handler.ssl.SslContextBuilder
 import net.codingwell.scalaguice.ScalaModule
@@ -22,23 +23,35 @@ class Module extends AbstractModule with AkkaGuiceSupport with ScalaModule {
     bind[GestaltTaskFactory].asEagerSingleton()
     bindActor[LauncherFSM]("scheduler-actor")
     bind[Kickstart].asEagerSingleton()
-    bind[WSClient].annotatedWithName("permissive-wsclient").to[PermissiveWSClient]
+    bind[WSClientFactory].to[DefaultWSClientFactory]
+    bindActor[DCOSAuthTokenActor](DCOSAuthTokenActor.name)
   }
 
 }
 
+trait WSClientFactory {
+  def getClient: WSClient
+}
+
 @Singleton
-class PermissiveWSClient @Inject() (implicit val mat: Materializer) extends WSClient {
-  private val permissiveClient = {
+class DefaultWSClientFactory @Inject()(config: LauncherConfig, defaultClient: WSClient )
+                                      ( implicit val mat: Materializer ) extends WSClientFactory {
+
+  private lazy val permissiveClient = {
     val config = new DefaultAsyncHttpClientConfig.Builder()
       .setFollowRedirect(true)
       .setSslContext(SslContextBuilder.forClient.trustManager(InsecureTrustManagerFactory.INSTANCE).build)
       .build()
     new AhcWSClient(config)(mat)
   }
-  override def underlying[T]: T = permissiveClient.asInstanceOf[T]
-  override def url(url: String): WSRequest = permissiveClient.url(url)
-  override def close(): Unit = permissiveClient.close()
+
+  def getClient: WSClient = {
+    if (config.acceptAnyCertificate) {
+      permissiveClient
+    } else {
+      defaultClient
+    }
+  }
 }
 
 class Kickstart @Inject()(@Named("scheduler-actor") schedulerActor: ActorRef) {
