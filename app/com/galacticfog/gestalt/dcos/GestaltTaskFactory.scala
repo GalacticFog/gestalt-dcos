@@ -377,7 +377,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         laserCpu = LASER.cpu,
         laserMem = LASER.mem,
         laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
-        laserEthernetPort = None,
+        laserEthernetPort = launcherConfig.laser.ethernetPort,
         executors = Seq.empty,
         globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
         globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout)
