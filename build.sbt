@@ -48,7 +48,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.0.4-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.1.1" withSources()
 )
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")
@@ -68,6 +68,8 @@ libraryDependencies ++= Seq(
   "org.webjars" % "bootstrap" % "3.1.1-2",
   "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
   "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
+  "net.codingwell"  %% "scala-guice" 					 % "4.1.0",
+  "io.jsonwebtoken"  % "jjwt"             % "0.7.0",
   "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
   "de.leanovate.play-mockws" %% "play-mockws" % "2.5.1" % Test
 )

@@ -31,6 +31,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
+    frameworkName = getString("marathon.framework-name", "marathon"),
+    clusterName = getString("marathon.cluster-name", "thisdcos"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
   )
 
@@ -46,7 +48,6 @@ class LauncherConfig @Inject()(config: Configuration) {
     prefix = getString("database.prefix", "gestalt-")
   )
 
-
   val meta = MetaConfig(
     companyName = getString("meta.company-name", MetaConfig.DEFAULT_COMPANY_NAME)
   )
@@ -59,6 +60,25 @@ class LauncherConfig @Inject()(config: Configuration) {
   )
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
+
+  val acceptAnyCertificate: Boolean = config.getBoolean("acceptAnyCertificate").getOrElse(false)
+
+  val dcosAuth = for {
+    auth <- config.getString("auth.method")
+    if auth == "acs"
+    dcosUrl <- config.getString("auth.dcosUrl")
+    serviceAccountId <- config.getString("auth.serviceAccountId")
+    privateKey <- config.getString("auth.privateKey") orElse config.getString("auth.privateKeyVar").flatMap(sys.env.get(_))
+  } yield ACSAuthConfig(
+    dcosUrl = dcosUrl,
+    serviceAccountId = serviceAccountId,
+    privateKey = privateKey
+  )
+
+  val debug = Debug(
+    cpu = config.getDouble("debug.cpu"),
+    mem = config.getInt("debug.mem")
+  )
 
   val LAUNCH_ORDER: Seq[LauncherState] = {
     val dbs = if (database.provision) {
@@ -95,9 +115,9 @@ class LauncherConfig @Inject()(config: Configuration) {
   def vipHostname(service: ServiceEndpoint): String = {
     service match {
       case DATA(_) | RABBIT_AMQP =>
-        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + ".marathon.mesos"
+        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + "." + marathon.frameworkName + ".mesos"
       case _ =>
-        vipBase(service) + ".marathon.l4lb.thisdcos.directory"
+        vipBase(service) + s".${marathon.frameworkName}.l4lb.${marathon.clusterName}.directory"
     }
   }
 
@@ -248,10 +268,14 @@ object LauncherConfig {
     val DEFAULT_KILL_GRACE_PERIOD = 300
   }
 
+  case class Debug( cpu: Option[Double], mem: Option[Int] )
+
   case class MarathonConfig( marathonLbUrl: Option[String],
                              appGroup: String,
                              tld: Option[String],
                              baseUrl: String,
+                             frameworkName: String,
+                             clusterName: String,
                              jvmOverheadFactor: Double )
 
   case class SecurityConfig( username: String,
@@ -264,6 +288,10 @@ object LauncherConfig {
                           minPortRange: Int,
                           maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime] )
+
+  case class ACSAuthConfig ( dcosUrl : String,
+                             serviceAccountId : String,
+                             privateKey : String )
 
   case object LaserConfig {
     val DEFAULT_MIN_PORT_RANGE = 60000
