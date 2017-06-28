@@ -161,7 +161,8 @@ class LauncherConfig @Inject()(config: Configuration) {
       case (e,r) => r.copy(
         image = dockerImage(e)
       )
-    }).toSeq
+    }).toSeq,
+    ethernetPort = config.getString("laser.ethernet-port")
   )
 
 
@@ -287,7 +288,8 @@ object LauncherConfig {
                           scaleDownTimeout: Int,
                           minPortRange: Int,
                           maxPortRange: Int,
-                          enabledRuntimes: Seq[LaserRuntime] )
+                          enabledRuntimes: Seq[LaserRuntime],
+                          ethernetPort: Option[String] )
 
   case class ACSAuthConfig ( dcosUrl : String,
                              serviceAccountId : String,
