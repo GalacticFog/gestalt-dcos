@@ -169,6 +169,30 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> LauncherConfig.LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT.toString)
     }
 
+    "set ethernet port on laser scheduler if configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.ethernet-port" -> "enp0s8"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("ETHERNET_PORT" -> "enp0s8")
+    }
+
+    "not set ethernet port on laser scheduler if not configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.ethernet-port" -> "enp0s8"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "ETHERNET_PORT").asOpt[String] must beNone
+    }
+
     "set port range vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
