@@ -1,5 +1,7 @@
 package com.galacticfog.gestalt.dcos.marathon
 
+import play.api.libs.json.{JsObject, Json}
+
 case class KeyValuePair(key: String, value: String)
 
 case class VolumePersistence(size: Int)
@@ -84,7 +86,7 @@ case object Residency {
 case class MarathonAppPayload(id: String,
                               cmd: Option[String] = None,
                               args: Option[Seq[String]] = None,
-                              env: Map[String,String] = Map.empty,
+                              env: JsObject = Json.obj(),
                               instances: Int,
                               cpus: Double,
                               mem: Int,

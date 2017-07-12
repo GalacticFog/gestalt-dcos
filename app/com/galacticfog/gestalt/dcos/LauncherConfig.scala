@@ -6,14 +6,17 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
 import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
 import com.galacticfog.gestalt.dcos.launcher.States._
-import play.api.Configuration
+import play.api.{Configuration, Logger}
+import play.api.libs.json.{JsError, JsSuccess, Json}
 
-import scala.concurrent.duration._
 import scala.language.postfixOps
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
+import scala.concurrent.duration._
 
 @Singleton
 class LauncherConfig @Inject()(config: Configuration) {
+
+  val log = Logger(this.getClass)
 
   import LauncherConfig._
   import LauncherConfig.Services._
@@ -66,14 +69,27 @@ class LauncherConfig @Inject()(config: Configuration) {
   val dcosAuth = for {
     auth <- config.getString("auth.method")
     if auth == "acs"
-    dcosUrl <- config.getString("auth.dcosUrl")
-    serviceAccountId <- config.getString("auth.serviceAccountId")
-    privateKey <- config.getString("auth.privateKey") orElse config.getString("auth.privateKeyVar").flatMap(sys.env.get(_))
-  } yield ACSAuthConfig(
-    dcosUrl = dcosUrl,
-    serviceAccountId = serviceAccountId,
-    privateKey = privateKey
-  )
+    credsStr <- config.getString("auth.acs_service_acct_creds")
+    credsJs  <- Try{Json.parse(credsStr)} match {
+      case Success(js) => Some(js)
+      case Failure(ex) => {
+        log.error("Could not parse auth.acs_service_acct_creds/DCOS_ACS_SERVICE_ACCT_CREDS as valid JSON. " +
+          "Will disable client authentication, but this will probably not work.")
+        None
+      }
+    }
+    acsCreds <- credsJs.validate[DCOSACSServiceAccountCreds](acsServiceAcctFmt) match {
+      case JsSuccess(c,_) =>
+        Some(c)
+      case JsError(errors) =>
+        log.error("Failure deserializing auth.acs_service_acct_creds/DCOS_ACS_SERVICE_ACCT_CREDS JSON to acs service account credentials. " +
+          errors.foldLeft[String]("[ "){
+            case (acc, (path, errors)) => acc + "(%s, %s)".format(path, errors.foldLeft("")(_ + "," + _.message))
+          } + "]"
+        )
+        None
+    }
+  } yield acsCreds
 
   val debug = Debug(
     cpu = config.getDouble("debug.cpu"),
@@ -291,9 +307,12 @@ object LauncherConfig {
                           enabledRuntimes: Seq[LaserRuntime],
                           ethernetPort: Option[String] )
 
-  case class ACSAuthConfig ( dcosUrl : String,
-                             serviceAccountId : String,
-                             privateKey : String )
+  implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
+
+  case class DCOSACSServiceAccountCreds( login_endpoint : String,
+                                         uid : String,
+                                         private_key : String,
+                                         scheme: String )
 
   case object LaserConfig {
     val DEFAULT_MIN_PORT_RANGE = 60000

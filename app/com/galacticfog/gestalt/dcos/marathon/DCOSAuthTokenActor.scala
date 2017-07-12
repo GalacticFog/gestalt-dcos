@@ -125,7 +125,7 @@ class DCOSAuthTokenRequestActor(client: WSClient) extends Actor {
             .signWith(SignatureAlgorithm.RS256, DCOSAuthTokenActor.strToPrivateKey(r.privateKey))
             .compact()
         })
-        url = r.dcosUrl.stripPrefix("/") + "/acs/api/v1/auth/login"
+        url = r.dcosUrl
         payload = Json.obj(
           "uid" -> r.serviceAccountId,
           "token" -> jwt

@@ -85,7 +85,7 @@ class ParsingSpec extends Specification with JsonMatchers {
       val expectedApp = MarathonAppPayload(
         id = "/gestalt-security",
         args = Some(Seq("-J-Xmx512m")),
-        env = Map(
+        env = Json.obj(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
           "DATABASE_HOSTNAME" -> "database",
           "DATABASE_NAME" -> "gestalt-security",
@@ -142,6 +142,75 @@ class ParsingSpec extends Specification with JsonMatchers {
       Json.toJson(expectedApp) must_== json
     }
 
+    "parse Marathon apps with secrets" in {
+      val jsonStr =
+        """
+          |{
+          |  "id": "/app-with-secrets",
+          |  "cpus": 0.2,
+          |  "mem": 512,
+          |  "disk": 0,
+          |  "instances": 1,
+          |  "healthChecks": [],
+          |  "labels": {},
+          |  "env": {
+          |    "VAR1": "VAL1",
+          |    "VAR_IS_SECRET": {
+          |       "secret": "some_secret"
+          |    },
+          |    "VAR2": "VAL2"
+          |  },
+          |  "requirePorts": true,
+          |  "container": {
+          |    "type": "DOCKER",
+          |    "docker": {
+          |      "image": "name:tag",
+          |      "network": "BRIDGE",
+          |      "parameters": [],
+          |      "privileged": false,
+          |      "forcePullImage": false
+          |    }
+          |  }
+          |}
+        """.stripMargin
+
+      val json = Json.parse(jsonStr)
+
+      val expectedApp = MarathonAppPayload(
+        id = "/app-with-secrets",
+        args = None,
+        env = Json.obj(
+          "VAR1" -> "VAL1",
+          "VAR_IS_SECRET" -> Json.obj(
+            "secret" -> "some_secret"
+          ),
+          "VAR2" -> "VAL2"
+        ),
+        instances = 1,
+        cpus = 0.2,
+        mem = 512,
+        disk = 0,
+        requirePorts = true,
+        container = MarathonContainerInfo(
+          `type` = "DOCKER",
+          volumes = None,
+          docker = Some(MarathonDockerContainer(
+            image = "name:tag",
+            network = "BRIDGE",
+            privileged = false,
+            parameters = Seq(),
+            forcePullImage = false,
+            portMappings = None
+          ))
+        ),
+        portDefinitions = None,
+        labels = Map.empty,
+        healthChecks = Seq.empty
+      )
+
+      json.as[MarathonAppPayload] must_== expectedApp
+      Json.toJson(expectedApp) must_== json
+    }
 
   }
 

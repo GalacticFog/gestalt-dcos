@@ -81,9 +81,9 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
       case Some(auth) =>
         implicit val timeout = akka.util.Timeout(5 seconds)
         val f = authTokenActor ? DCOSAuthTokenActor.DCOSAuthTokenRequest(
-          dcosUrl = auth.dcosUrl,
-          serviceAccountId = auth.serviceAccountId,
-          privateKey = auth.privateKey
+          dcosUrl = auth.login_endpoint,
+          serviceAccountId = auth.uid,
+          privateKey = auth.private_key
         )
         f.flatMap({
           case DCOSAuthTokenResponse(tok) => Future.successful(Some(tok))
