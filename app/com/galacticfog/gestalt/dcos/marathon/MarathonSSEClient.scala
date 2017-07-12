@@ -59,7 +59,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   private[marathon] def client: WSClient = wsFactory.getClient
 
   private[marathon] val connectionContext: HttpsConnectionContext = {
-    if (launcherConfig.acceptAnyCertificate) {
+    if (launcherConfig.acceptAnyCertificate.contains(true)) {
       logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
       // Create a trust manager that does not validate certificate chains
       val trustAllCerts: Array[TrustManager] = Array(new X509TrustManager {

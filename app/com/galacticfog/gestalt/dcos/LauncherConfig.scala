@@ -64,7 +64,7 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
 
-  val acceptAnyCertificate: Boolean = config.getBoolean("acceptAnyCertificate").getOrElse(false)
+  val acceptAnyCertificate: Option[Boolean] = config.getBoolean("acceptAnyCertificate")
 
   val dcosAuth = for {
     auth <- config.getString("auth.method")
