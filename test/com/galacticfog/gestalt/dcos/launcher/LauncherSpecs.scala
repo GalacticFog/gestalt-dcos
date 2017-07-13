@@ -108,7 +108,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
       mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.endsWith("/data-0")
+        (app: MarathonAppPayload) => app.id.get.endsWith("/data-0")
       )) returns {
         mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
           service = DATA(0),
@@ -120,7 +120,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         Future.successful(Json.obj())
       }
       mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.endsWith("/rabbit")
+        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
       )) returns {
         Future.failed(new RuntimeException("do not care what happens next"))
       }

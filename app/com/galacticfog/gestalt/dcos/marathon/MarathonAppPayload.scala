@@ -1,21 +1,21 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.JsObject
 
-case class KeyValuePair(key: String, value: String)
+case class KeyValuePair(key: Option[String], value: Option[String])
 
-case class VolumePersistence(size: Int)
+case class VolumePersistence(size: Option[Int])
 
-case class Volume(containerPath: String,
-                  mode: String,
+case class Volume(containerPath: Option[String],
+                  mode: Option[String],
                   persistent: Option[VolumePersistence])
 
-case class PortDefinition(port: Int,
+case class PortDefinition(port: Option[Int],
                           name: Option[String],
-                          protocol: String,
+                          protocol: Option[String] = Some("tcp"),
                           labels: Option[Map[String,String]])
 
-case class MarathonContainerInfo(`type`: String = MarathonContainerInfo.Types.DOCKER,
+case class MarathonContainerInfo(`type`: Option[String] = Some(MarathonContainerInfo.Types.DOCKER),
                                  volumes: Option[Seq[Volume]] = None,
                                  docker: Option[MarathonDockerContainer] = None)
 
@@ -25,38 +25,39 @@ case object MarathonContainerInfo {
   }
 }
 
-case class DockerPortMapping(containerPort: Int,
+case class DockerPortMapping(containerPort: Option[Int],
                              hostPort: Option[Int] = None,
                              servicePort: Option[Int] = None,
                              name: Option[String] = None,
-                             protocol: String,
+                             protocol: Option[String] = Some("tcp"),
                              labels: Option[Map[String,String]] = None)
 
-case class MarathonDockerContainer(image: String,
-                                   network: String,
-                                   privileged: Boolean,
-                                   parameters: Seq[KeyValuePair],
-                                   forcePullImage: Boolean,
-                                   portMappings: Option[Seq[DockerPortMapping]])
+case class MarathonDockerContainer(image: Option[String],
+                                   network: Option[String],
+                                   privileged: Option[Boolean] = None,
+                                   parameters: Option[Seq[KeyValuePair]] = None,
+                                   forcePullImage: Option[Boolean] = None,
+                                   portMappings: Option[Seq[DockerPortMapping]] = None)
 
-case class MarathonHealthCheck(path: Option[String],
-                               protocol: String,
-                               portIndex: Int,
-                               gracePeriodSeconds: Int,
-                               intervalSeconds: Int,
-                               timeoutSeconds: Int,
-                               maxConsecutiveFailures: Int)
+case class MarathonHealthCheck(path: Option[String] = None,
+                               protocol: Option[String] = None,
+                               port: Option[Int] = None,
+                               portIndex: Option[Int] = None,
+                               gracePeriodSeconds: Option[Int] = None,
+                               intervalSeconds: Option[Int] = None,
+                               timeoutSeconds: Option[Int] = None,
+                               maxConsecutiveFailures: Option[Int] = None)
 
-case class MarathonReadinessCheck(protocol: String = "HTTP",
-                                  path: String = "",
-                                  portName: String,
-                                  intervalSeconds: Int = 30,
-                                  timeoutSeconds: Int = 10,
-                                  httpStatusCodesForReady: Seq[Int] = Seq(200),
-                                  preserveLastResponse: Boolean = false)
+case class MarathonReadinessCheck(protocol: Option[String] = Some("HTTP"),
+                                  path: Option[String] = None,
+                                  portName: Option[String],
+                                  intervalSeconds: Option[Int] = None,
+                                  timeoutSeconds: Option[Int] = None,
+                                  httpStatusCodesForReady: Option[Seq[Int]] = Some(Seq(200)),
+                                  preserveLastResponse: Option[Boolean] = None)
 
 
-case class DiscoveryPortInfo(number: Int,
+case class DiscoveryPortInfo(number: Option[Int],
                              name: Option[String],
                              protocol: Option[String],
                              labels: Option[Map[String,String]])
@@ -65,7 +66,7 @@ case class DiscoveryInfo(ports: Option[Seq[DiscoveryPortInfo]])
 
 case class IPPerTaskInfo(discovery: Option[DiscoveryInfo])
 
-case class IPAddress(ipAddress: String, protocol: String)
+case class IPAddress(ipAddress: Option[String], protocol: Option[String])
 
 case class MarathonTask(id: Option[String],
                         slaveId: Option[String],
@@ -77,25 +78,25 @@ case class MarathonTask(id: Option[String],
                         ipAddresses: Option[Seq[IPAddress]],
                         appId: Option[String])
 
-case class Residency(taskLostBehavior: String, relaunchEscalationTimeoutSeconds: Int = 3600)
+case class Residency(taskLostBehavior: Option[String], relaunchEscalationTimeoutSeconds: Option[Int] = Some(3600))
 
 case object Residency {
   val WAIT_FOREVER: String = "WAIT_FOREVER"
 }
 
-case class MarathonAppPayload(id: String,
+case class MarathonAppPayload(id: Option[String],
                               cmd: Option[String] = None,
                               args: Option[Seq[String]] = None,
-                              env: JsObject = Json.obj(),
-                              instances: Int,
-                              cpus: Double,
-                              mem: Int,
-                              disk: Int = 0,
-                              container: MarathonContainerInfo,
+                              env: Option[JsObject] = None,
+                              instances: Option[Int] = None,
+                              cpus: Option[Double] = None,
+                              mem: Option[Int] = None,
+                              disk: Option[Int] = None,
+                              container: Option[MarathonContainerInfo] = None,
                               portDefinitions: Option[Seq[PortDefinition]] = None,
-                              requirePorts: Boolean = false,
-                              healthChecks: Seq[MarathonHealthCheck] = Seq.empty,
-                              labels: Map[String,String] = Map.empty,
+                              requirePorts: Option[Boolean] = None,
+                              healthChecks: Option[Seq[MarathonHealthCheck]] = None,
+                              labels: Option[Map[String,String]] = None,
                               readinessCheck: Option[MarathonReadinessCheck] = None,
                               residency: Option[Residency] = None,
                               tasksStaged: Option[Int] = None,
