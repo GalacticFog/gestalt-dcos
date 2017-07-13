@@ -15,7 +15,7 @@ import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.{JsObject, JsString, JsValue, Json}
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
@@ -268,7 +268,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     MarathonAppPayload(
       id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,
       args = app.args,
-      env = app.env,
+      env = JsObject(app.env.mapValues(JsString(_))),
       instances = app.numInstances,
       cpus = app.cpus,
       cmd = app.cmd,
@@ -316,9 +316,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       auth = launcherConfig.dcosAuth.map(
         auth => Json.obj(
           "scheme" -> "acs",
-          "service_account_id" -> auth.serviceAccountId,
-          "private_key" -> auth.privateKey,
-          "dcos_base_url" -> auth.dcosUrl
+          "service_account_id" -> auth.uid,
+          "private_key" -> auth.private_key,
+          "dcos_base_url" -> auth.login_endpoint.stripSuffix("/acs/api/v1/auth/login")
         )
       ),
       acceptAnyCert = launcherConfig.acceptAnyCertificate,
