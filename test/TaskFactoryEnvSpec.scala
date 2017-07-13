@@ -1,7 +1,7 @@
 import java.util.UUID
 
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
-import com.galacticfog.gestalt.dcos.LauncherConfig.{Dockerable, WellKnownLaserExecutor}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{DCOSACSServiceAccountCreds, Dockerable, WellKnownLaserExecutor}
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos._
 import modules.Module
@@ -11,7 +11,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.specs2.execute.Result
 import org.specs2.matcher.JsonMatchers
-import play.api.libs.json.JsValue
+import play.api.libs.json.{JsValue, Json}
 
 class TaskFactoryEnvSpec extends Specification with JsonMatchers {
 
@@ -68,6 +68,27 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
         lr => gtf.getExecutorProvider(lr) must haveLaserRuntimeImage(getImage(lr))
       }
     }
+
+  }
+
+  "LauncherConfig" should {
+
+    "properly parse acs credentials from environment variables" in {
+
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val expectedConfig = (for {
+        method <- sys.env.get("DCOS_AUTH_METHOD")
+        if method == "acs"
+        creds <- sys.env.get("DCOS_ACS_SERVICE_ACCT_CREDS")
+      } yield Json.parse(creds).as[DCOSACSServiceAccountCreds])
+
+      lc.dcosAuth must_== expectedConfig
+    }
+
   }
 
   def haveLaserRuntimeImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("public") /("IMAGE" -> name)
