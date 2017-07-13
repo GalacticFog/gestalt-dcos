@@ -46,7 +46,7 @@ class DefaultWSClientFactory @Inject()(config: LauncherConfig, defaultClient: WS
   }
 
   def getClient: WSClient = {
-    if (config.acceptAnyCertificate) {
+    if (config.acceptAnyCertificate.contains(true)) {
       permissiveClient
     } else {
       defaultClient
