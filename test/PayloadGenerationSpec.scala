@@ -50,9 +50,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         prefix = "test-"
       ))
       val expected = MarathonAppPayload(
-        id = "/gestalt-framework/security",
+        id = Some("/gestalt-framework/security"),
         args = Some(Seq("-J-Xmx768m")),
-        env = Json.obj(
+        env = Some(Json.obj(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
           "DATABASE_HOSTNAME" -> "test-db.marathon.mesos",
@@ -60,58 +60,58 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           "DATABASE_NAME" -> "test-security",
           "DATABASE_USERNAME" -> "test-user",
           "DATABASE_PASSWORD" -> "test-password"
-        ),
-        instances = 1,
-        cpus = 0.5,
-        mem = 1536,
-        disk = 0,
-        requirePorts = true,
-        container = MarathonContainerInfo(
-          `type` = "DOCKER",
+        )),
+        instances = Some(1),
+        cpus = Some(0.5),
+        mem = Some(1536),
+        disk = Some(0),
+        requirePorts = Some(true),
+        container = Some(MarathonContainerInfo(
+          `type` = Some(MarathonContainerInfo.Types.DOCKER),
           volumes = None,
           docker = Some(MarathonDockerContainer(
-            image = "test-security:tag",
-            network = "BRIDGE",
-            privileged = false,
-            parameters = Seq.empty,
-            forcePullImage = true,
+            image = Some("test-security:tag"),
+            network = Some("BRIDGE"),
+            privileged = Some(false),
+            forcePullImage = Some(true),
             portMappings = Some(Seq(
               DockerPortMapping(
-                containerPort = 9000,
-                protocol = "tcp",
+                containerPort = Some(9000),
+                protocol = Some("tcp"),
                 name = Some("http-api"),
                 labels = Some(Map("VIP_0" -> "/gestalt-framework-security:9455"))
               ),
               DockerPortMapping(
-                containerPort = 9000,
-                protocol = "tcp",
+                containerPort = Some(9000),
+                protocol = Some("tcp"),
                 name = Some("http-api-dupe"),
                 labels = Some(Map())
               )
             ))
           ))
-        ),
-        labels = Map(
+        )),
+        labels = Some(Map(
           "HAPROXY_GROUP" -> "external",
           "HAPROXY_0_VHOST" -> "security.galacticfog.com",
           "HAPROXY_1_VHOST" -> "galacticfog.com",
           "HAPROXY_1_PATH" -> "/security",
           "HAPROXY_1_HTTP_BACKEND_PROXYPASS_PATH" -> "/security"
-        ),
-        healthChecks = Seq(MarathonHealthCheck(
-          path = Some("/health"),
-          protocol = "HTTP",
-          portIndex = 0,
-          gracePeriodSeconds = 300,
-          intervalSeconds = 30,
-          timeoutSeconds = 15,
-          maxConsecutiveFailures = 4
         )),
+        healthChecks = Some(Seq(MarathonHealthCheck(
+          path = Some("/health"),
+          protocol = Some("HTTP"),
+          portIndex = Some(0),
+          gracePeriodSeconds = Some(300),
+          intervalSeconds = Some(30),
+          timeoutSeconds = Some(15),
+          maxConsecutiveFailures = Some(4)
+        ))),
         readinessCheck = Some(MarathonReadinessCheck(
-          protocol = "HTTP",
-          path = "/init",
-          portName = "http-api",
-          intervalSeconds = 5
+          protocol = Some("HTTP"),
+          path = Some("/init"),
+          portName = Some("http-api"),
+          intervalSeconds = Some(5),
+          timeoutSeconds = Some(10)
         ))
       )
       val security = gtf.getMarathonPayload(SECURITY, globalConfig)
@@ -141,7 +141,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
 
       val realm = "https://security.galacticfog.com"
-      gtf.getMarathonPayload(META, global).env.toString must /("GESTALT_SECURITY_REALM" -> realm)
+      gtf.getMarathonPayload(META, global).env.get.toString must /("GESTALT_SECURITY_REALM" -> realm)
       gtf.getSecurityProvider(global.secConfig.get).toString must /("properties") /("config") /("env") /("public") /("REALM" -> realm)
     }
 
@@ -233,8 +233,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
-      data.container.docker must beSome
-      val Some(docker) = data.container.docker
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(1)
       val Some(Seq(pd)) = docker.portMappings
       pd.hostPort must beSome(5432)
@@ -247,8 +247,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
       val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
-      data.container.docker must beSome
-      val Some(docker) = data.container.docker
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(2)
       val Some(Seq(pd1,_)) = docker.portMappings
       pd1.hostPort must beSome(5672)
@@ -261,10 +261,10 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
       val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
-      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
+      data.residency must beSome(Residency(Some(Residency.WAIT_FOREVER)))
       data.taskKillGracePeriodSeconds must beSome(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD)
-      data.container.volumes must beSome(containTheSameElementsAs(
-        Seq(Volume("pgdata", "RW", Some(VolumePersistence(config.database.provisionedSize))))
+      data.container.flatMap(_.volumes) must beSome(containTheSameElementsAs(
+        Seq(Volume(Some("pgdata"), Some("RW"), Some(VolumePersistence(Some(config.database.provisionedSize)))))
       ))
     }
 
@@ -276,9 +276,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
-      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
-      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
     }
 
     "acknowledge the appropriate number of DATA stages and services according to config" in {
@@ -314,7 +314,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val payload = gtf.getMarathonPayload(DATA(0), testGlobalVars)
-      payload.env.toString must /("PGREPL_ROLE" -> "PRIMARY")
+      payload.env.get.toString must /("PGREPL_ROLE" -> "PRIMARY")
       Json.toJson(payload).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-primary:5432")
     }
 
@@ -328,8 +328,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val pay0 = gtf.getMarathonPayload(DATA(0), testGlobalVars)
       val pay1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)
-      pay0.env.toString must /("PGREPL_TOKEN" -> "thetoken")
-      pay1.env.toString must /("PGREPL_TOKEN" -> "thetoken")
+      pay0.env.get.toString must /("PGREPL_TOKEN" -> "thetoken")
+      pay1.env.get.toString must /("PGREPL_TOKEN" -> "thetoken")
     }
 
     "configure later database containers as secondary" in {
@@ -349,10 +349,10 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val p2 = gtf.getMarathonPayload(DATA(2), testGlobalVars)
       val p3 = gtf.getMarathonPayload(DATA(3), testGlobalVars)
       val p10 = gtf.getMarathonPayload(DATA(10), testGlobalVars)
-      p1.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p2.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p3.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p10.env.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p1.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p2.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p3.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p10.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
       Json.toJson(p1).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
       Json.toJson(p2).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
       Json.toJson(p3).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")

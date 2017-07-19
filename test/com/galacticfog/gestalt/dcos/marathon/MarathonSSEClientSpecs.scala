@@ -38,11 +38,11 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
   val testAppId = "/test/test/test-app"
 
   val dummyAppPayload = MarathonAppPayload(
-    id = testAppId,
-    instances = 1,
-    cpus = 1,
-    mem = 1,
-    container = MarathonContainerInfo()
+    id = Some(testAppId),
+    instances = Some(1),
+    cpus = Some(1),
+    mem = Some(1),
+    container = Some(MarathonContainerInfo())
   )
 
   object TestConfigs {
@@ -166,34 +166,33 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
   "MarathonSSEClient" should {
 
     val baseFakeSec = MarathonAppPayload(
-      id = "/security",
-      env = Json.obj(),
-      instances = 1,
-      cpus = 0.1,
-      mem = 128,
-      disk = 0,
-      container = MarathonContainerInfo(
-        `type` = "docker",
-        volumes = None,
+      id = Some("/security"),
+      env = Some(Json.obj()),
+      instances = Some(1),
+      cpus = Some(0.1),
+      mem = Some(128),
+      disk = Some(0),
+      container = Some(MarathonContainerInfo(
+        `type` = Some(MarathonContainerInfo.Types.DOCKER),
         docker = Some(MarathonDockerContainer(
-          image = "image",
-          network = "BRIDGE",
-          privileged = false,
-          parameters = Seq.empty,
-          forcePullImage = false,
+          image = Some("image"),
+          network = Some("BRIDGE"),
+          privileged = Some(false),
+          parameters = Some(Seq.empty),
+          forcePullImage = Some(false),
           portMappings = Some(Seq(
-            DockerPortMapping(containerPort = 9000, hostPort = None, servicePort = Some(9455), name = Some("api"), protocol = "tcp")
+            DockerPortMapping(containerPort = Some(9000), hostPort = None, servicePort = Some(9455), name = Some("api"), protocol = Some("tcp"))
           ))
         ))
-      ),
-      portDefinitions = Some(Seq(
-        PortDefinition(port = 9455, None, "tcp", None)
       )),
-      requirePorts = false,
-      healthChecks = Seq.empty,
-      labels = Map(
+      portDefinitions = Some(Seq(
+        PortDefinition(port = Some(9455), None, Some("tcp"), None)
+      )),
+      requirePorts = Some(false),
+      healthChecks = Some(Seq.empty),
+      labels = Some(Map(
         "HAPROXY_GROUP" -> "external"
-      ),
+      )),
       tasksHealthy = Some(0),
       tasksStaged = Some(0),
       tasksRunning = Some(0),
@@ -213,7 +212,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
     def mockMarVhostApp(lbls: (String, String)*): MarathonAppPayload = {
       val mockApp = mock[MarathonAppPayload]
-      mockApp.labels returns Map(lbls: _*) ++ Map("HAPROXY_GROUP" -> "external")
+      mockApp.labels returns Some(Map(lbls: _*) ++ Map("HAPROXY_GROUP" -> "external"))
       mockApp
     }
 

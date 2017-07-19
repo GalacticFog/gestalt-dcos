@@ -120,13 +120,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ) else Map.empty
     appSpec(DATA(index)).copy(
       volumes = Some(Seq(marathon.Volume(
-        containerPath = "pgdata",
-        mode = "RW",
+        containerPath = Some("pgdata"),
+        mode = Some("RW"),
         persistent = Some(VolumePersistence(
-          size = launcherConfig.database.provisionedSize
+          size = Some(launcherConfig.database.provisionedSize)
         ))
       ))),
-      residency = Some(Residency(Residency.WAIT_FOREVER)),
+      residency = Some(Residency(taskLostBehavior = Some(Residency.WAIT_FOREVER))),
       taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
       env = replEnv ++ Map(
         "POSTGRES_USER" -> dbConfig.username,
@@ -153,11 +153,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       ))
     )
   }
@@ -182,11 +182,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health")
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/init",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/init"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       )),
       labels = getVhostLabels(SECURITY)
     )
@@ -216,11 +216,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health"))),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/health",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200,401,403),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/health"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200,401,403)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       )),
       labels = getVhostLabels(META)
     )
@@ -241,9 +241,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/#/login",
-        portName = "http",
-        intervalSeconds = 5
+        path = Some("/#/login"),
+        portName = Some("http"),
+        intervalSeconds = Some(5)
       )),
       labels = getVhostLabels(UI)
     )
@@ -266,43 +266,43 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def toMarathonPayload(app: AppSpec): MarathonAppPayload = {
     val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
     MarathonAppPayload(
-      id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,
+      id = Some("/" + launcherConfig.marathon.appGroup + "/" + app.name),
       args = app.args,
-      env = JsObject(app.env.mapValues(JsString(_))),
-      instances = app.numInstances,
-      cpus = app.cpus,
+      env = Some(JsObject(app.env.mapValues(JsString(_)))),
+      instances = Some(app.numInstances),
+      cpus = Some(app.cpus),
       cmd = app.cmd,
-      mem = app.mem,
-      disk = 0,
-      requirePorts = true,
+      mem = Some(app.mem),
+      disk = Some(0),
+      requirePorts = Some(true),
       residency = app.residency,
-      container = MarathonContainerInfo(
-        `type` = "DOCKER",
+      container = Some(MarathonContainerInfo(
+        `type` = Some(MarathonContainerInfo.Types.DOCKER),
         volumes = app.volumes,
         docker = Some(MarathonDockerContainer(
-          image = app.image,
-          network = app.network.getValueDescriptor.getName,
-          privileged = false,
-          parameters = Seq(),
-          forcePullImage = true,
+          image = Some(app.image),
+          network = Some(app.network.getValueDescriptor.getName),
+          privileged = Some(false),
+          forcePullImage = Some(true),
           portMappings = if (isBridged) app.ports.map {_.map(
-            p => DockerPortMapping(containerPort = p.number, name = Some(p.name), protocol = "tcp", labels = Some(p.labels), hostPort = p.hostPort)
+            p => DockerPortMapping(containerPort = Some(p.number), name = Some(p.name), protocol = Some("tcp"), labels = Some(p.labels), hostPort = p.hostPort)
           ) } else None
         ))
-      ),
-      labels = app.labels,
-      healthChecks = app.healthChecks.map( hc => MarathonHealthCheck(
+      )),
+      labels = Some(app.labels),
+      healthChecks = Some(app.healthChecks.map( hc => MarathonHealthCheck(
         path = hc.path,
-        protocol = hc.protocol.toString,
-        portIndex = hc.portIndex,
-        gracePeriodSeconds = 300,
-        intervalSeconds = 30,
-        timeoutSeconds = 15,
-        maxConsecutiveFailures = 4
-      ) ),
+        protocol = Some(hc.protocol.toString),
+        portIndex = Some(hc.portIndex),
+        port = None,
+        gracePeriodSeconds = Some(300),
+        intervalSeconds = Some(30),
+        timeoutSeconds = Some(15),
+        maxConsecutiveFailures = Some(4)
+      ))),
       readinessCheck = app.readinessCheck,
       portDefinitions = if (!isBridged) app.ports.map {_.map(
-        p => PortDefinition(port = p.number, protocol = "tcp", name = Some(p.name), labels = Some(p.labels))
+        p => PortDefinition(port = Some(p.number), protocol = Some("tcp"), name = Some(p.name), labels = Some(p.labels))
       )} else None,
       taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds
     )
@@ -399,7 +399,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         dbName = "default-kong-db",
         gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
         serviceVHost = None,
-        externalProtocol = Some("https")
+        externalProtocol = Some("https"),
+        servicePort = None
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
