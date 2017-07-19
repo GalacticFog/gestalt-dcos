@@ -399,7 +399,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         dbName = "default-kong-db",
         gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
         serviceVHost = None,
-        externalProtocol = Some("https")
+        externalProtocol = Some("https"),
+        servicePort = None
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
