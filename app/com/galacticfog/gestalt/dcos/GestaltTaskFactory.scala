@@ -275,9 +275,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                           globalConfig: GlobalConfig ): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globalConfig))
 
   def toMarathonPayload(app: AppSpec): MarathonAppPayload = {
-    val userNetwork = app.network match {
+    val ipPerTask = app.network match {
       case AppSpec.HOST | AppSpec.BRIDGE => None
-      case USER(net)                     => Some(net)
+      case USER(net)                     => Some(
+        IPPerTaskInfo(
+          networkName = Some(net)
+        )
+      )
     }
     val isPortMapped = app.network != AppSpec.HOST
     MarathonAppPayload(
@@ -289,7 +293,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       cmd = app.cmd,
       mem = Some(app.mem),
       disk = Some(0),
-      requirePorts = Some(true),
       residency = app.residency,
       container = Some(MarathonContainerInfo(
         `type` = Some(MarathonContainerInfo.Types.DOCKER),
@@ -316,11 +319,12 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         maxConsecutiveFailures = Some(4)
       ))),
       readinessCheck = app.readinessCheck,
+      requirePorts = Some(!isPortMapped),
       portDefinitions = if (!isPortMapped) app.ports.map {_.map(
         p => PortDefinition(port = Some(p.number), protocol = Some("tcp"), name = Some(p.name), labels = Some(p.labels))
       )} else None,
       taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds,
-      ipAddress = userNetwork.map(net => IPPerTaskInfo(networkName = Some(net)))
+      ipAddress = ipPerTask
     )
   }
 

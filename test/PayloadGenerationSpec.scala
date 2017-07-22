@@ -65,7 +65,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         cpus = Some(0.5),
         mem = Some(1536),
         disk = Some(0),
-        requirePorts = Some(true),
+        requirePorts = Some(false),
         container = Some(MarathonContainerInfo(
           `type` = Some(MarathonContainerInfo.Types.DOCKER),
           volumes = None,
