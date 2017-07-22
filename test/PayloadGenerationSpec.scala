@@ -2,6 +2,7 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
+import com.galacticfog.gestalt.dcos.marathon.MarathonAppPayload.IPPerTaskInfo
 import com.galacticfog.gestalt.dcos.marathon._
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import modules.Module
@@ -65,7 +66,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         cpus = Some(0.5),
         mem = Some(1536),
         disk = Some(0),
-        requirePorts = Some(false),
+        requirePorts = Some(true),
         container = Some(MarathonContainerInfo(
           `type` = Some(MarathonContainerInfo.Types.DOCKER),
           volumes = None,
@@ -112,10 +113,51 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           portName = Some("http-api"),
           intervalSeconds = Some(5),
           timeoutSeconds = Some(10)
-        ))
+        )),
+        portDefinitions = Some(Seq.empty)
       )
       val security = gtf.getMarathonPayload(SECURITY, globalConfig)
       security must_== expected
+    }
+
+    "run database ports/portDefinitions appropriately for USER networking" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globalConfig = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      ))
+      val data0 = gtf.getMarathonPayload(DATA(0), globalConfig)
+      data0.ipAddress must beSome(IPPerTaskInfo(networkName = Some("user-network")))
+      data0.portDefinitions.get must beEmpty
+    }
+
+    "pass ports/portDefinitions appropriately for USER networking" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globalConfig = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      ))
+      val data0 = gtf.getMarathonPayload(DATA(0), globalConfig)
+      data0.ipAddress must beSome(IPPerTaskInfo(networkName = Some("user-network")))
+      data0.portDefinitions.get must beEmpty
     }
 
     "appropriately set realm override for security consumer services" in {
@@ -300,6 +342,40 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       docker.portMappings.get must haveSize(2)
       val Some(Seq(pd1,_)) = docker.portMappings
       pd1.hostPort must beSome(5672)
+    }
+
+    "not request host port for database in USER networking mode" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "marathon.network-name" -> "some-user-network"
+        )
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
+      docker.portMappings.get must haveSize(1)
+      val Some(Seq(pm)) = docker.portMappings
+      pm.hostPort must beNone
+      data.portDefinitions.get must beEmpty
+    }
+
+    "not request host port for rabbit in USER networking mode" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "marathon.network-name" -> "some-user-network"
+        )
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
+      docker.portMappings.get must haveSize(2)
+      val Some(Seq(pm1,_)) = docker.portMappings
+      pm1.hostPort must beNone
+      data.portDefinitions.get must beEmpty
     }
 
     "set database container residency and grace period along with persistent storage" in {

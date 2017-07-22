@@ -130,6 +130,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       "PGREPL_MASTER_IP" -> serviceHostname(DATA(0)),
       "PGREPL_MASTER_PORT" -> vipPort(DATA(0))
     ) else Map.empty
+    val hostPortMapping = launcherConfig.marathon.networkName match {
+      case Some(net) if net != "BRIDGE" => None
+      case _ if index == 0 => Some(5432)
+      case _ => None
+    }
     appSpec(DATA(index)).copy(
       volumes = Some(Seq(marathon.Volume(
         containerPath = Some("pgdata"),
@@ -147,7 +152,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY"),
         "PGREPL_TOKEN" -> launcherConfig.database.pgreplToken
       ),
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index))), hostPort = if (index == 0) Some(5432) else None))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index))), hostPort = hostPortMapping))),
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = MARATHON_TCP, path = None
       ))
@@ -155,10 +160,14 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   }
 
   private[this] def getRabbit: AppSpec = {
+    val hostPortMapping = launcherConfig.marathon.networkName match {
+      case Some(net) if net != "BRIDGE" => (_: Int) => None
+      case _ => Some[Int](_)
+    }
     appSpec(RABBIT).copy(
       ports = Some(Seq(
-        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = Some(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = Some(15672))
+        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = hostPortMapping(5672)),
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = None)
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
@@ -319,10 +328,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         maxConsecutiveFailures = Some(4)
       ))),
       readinessCheck = app.readinessCheck,
-      requirePorts = Some(!isPortMapped),
+      requirePorts = Some(true),
       portDefinitions = if (!isPortMapped) app.ports.map {_.map(
         p => PortDefinition(port = Some(p.number), protocol = Some("tcp"), name = Some(p.name), labels = Some(p.labels))
-      )} else None,
+      )} else Some(Seq.empty),
       taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds,
       ipAddress = ipPerTask
     )
