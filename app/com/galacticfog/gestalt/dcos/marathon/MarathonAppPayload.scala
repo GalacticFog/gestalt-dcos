@@ -64,8 +64,6 @@ case class DiscoveryPortInfo(number: Option[Int],
 
 case class DiscoveryInfo(ports: Option[Seq[DiscoveryPortInfo]])
 
-case class IPPerTaskInfo(discovery: Option[DiscoveryInfo])
-
 case class IPAddress(ipAddress: Option[String], protocol: Option[String])
 
 case class MarathonTask(id: Option[String],
@@ -103,6 +101,11 @@ case class MarathonAppPayload(id: Option[String],
                               tasksRunning: Option[Int] = None,
                               tasksHealthy: Option[Int] = None,
                               tasksUnhealthy: Option[Int] = None,
+                              ipAddress: Option[MarathonAppPayload.IPPerTaskInfo] = None,
                               tasks: Option[Seq[MarathonTask]] = None,
                               taskKillGracePeriodSeconds: Option[Int] = None)
 
+case object MarathonAppPayload {
+  case class IPPerTaskInfo( discovery: Option[DiscoveryInfo] = None,
+                            networkName: Option[String] = None )
+}

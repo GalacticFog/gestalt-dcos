@@ -36,7 +36,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
     frameworkName = getString("marathon.framework-name", "marathon"),
     clusterName = getString("marathon.cluster-name", "thisdcos"),
-    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
+    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
+    networkName = config.getString("marathon.network-name")
   )
 
   val database = DatabaseConfig(
@@ -178,7 +179,8 @@ class LauncherConfig @Inject()(config: Configuration) {
         image = dockerImage(e)
       )
     }).toSeq,
-    ethernetPort = config.getString("laser.ethernet-port")
+    ethernetPort = config.getString("laser.ethernet-port"),
+    advertiseHost = config.getString("laser.advertise-hostname")
   )
 
 
@@ -293,7 +295,8 @@ object LauncherConfig {
                              baseUrl: String,
                              frameworkName: String,
                              clusterName: String,
-                             jvmOverheadFactor: Double )
+                             jvmOverheadFactor: Double,
+                             networkName: Option[String] )
 
   case class SecurityConfig( username: String,
                              password: Option[String],
@@ -305,7 +308,8 @@ object LauncherConfig {
                           minPortRange: Int,
                           maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime],
-                          ethernetPort: Option[String] )
+                          ethernetPort: Option[String],
+                          advertiseHost: Option[String] )
 
   implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
 
