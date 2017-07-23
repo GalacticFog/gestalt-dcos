@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.dcos
 
 import javax.inject.{Inject, Singleton}
 
+import com.galacticfog.gestalt.dcos.HealthCheck.HealthCheckProtocol
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
 import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
@@ -37,7 +38,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     frameworkName = getString("marathon.framework-name", "marathon"),
     clusterName = getString("marathon.cluster-name", "thisdcos"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
-    networkName = config.getString("marathon.network-name")
+    networkName = config.getString("marathon.network-name"),
+    mesosHealthChecks = config.getBoolean("marathon.mesos-health-checks")
   )
 
   val database = DatabaseConfig(
@@ -185,6 +187,15 @@ class LauncherConfig @Inject()(config: Configuration) {
     advertiseHost = config.getString("laser.advertise-hostname")
   )
 
+  def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
+    import HealthCheck._
+    healthCheck match {
+      case MARATHON_HTTP  | MESOS_HTTP  => if (marathon.mesosHealthChecks.contains(true)) MESOS_HTTP  else MARATHON_HTTP
+      case MARATHON_HTTPS | MESOS_HTTPS => if (marathon.mesosHealthChecks.contains(true)) MESOS_HTTPS else MARATHON_HTTPS
+      case MARATHON_TCP   | MESOS_TCP   => if (marathon.mesosHealthChecks.contains(true)) MESOS_TCP   else MARATHON_TCP
+      case COMMAND => COMMAND
+    }
+  }
 
 }
 
@@ -270,9 +281,6 @@ object LauncherConfig {
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
   }
-  case class MesosConfig( master: String,
-                          schedulerHostname: String,
-                          schedulerName: String )
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
@@ -298,7 +306,8 @@ object LauncherConfig {
                              frameworkName: String,
                              clusterName: String,
                              jvmOverheadFactor: Double,
-                             networkName: Option[String] )
+                             networkName: Option[String],
+                             mesosHealthChecks: Option[Boolean] )
 
   case class SecurityConfig( username: String,
                              password: Option[String],

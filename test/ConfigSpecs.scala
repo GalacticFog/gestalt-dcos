@@ -1,5 +1,6 @@
 package test
 
+import com.galacticfog.gestalt.dcos.HealthCheck._
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, RABBIT_AMQP, SECURITY}
@@ -92,6 +93,35 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
       launcherConfig.provisionedServices must containAllOf( (0 to 3).map(DATA(_)) )
     }
 
+    "provision mesos health checks if instructed " in new WithConfig("marathon.mesos-health-checks" -> true) {
+      launcherConfig(MARATHON_HTTP) must_== MESOS_HTTP
+      launcherConfig(MESOS_HTTP) must_== MESOS_HTTP
+      launcherConfig(MARATHON_HTTPS) must_== MESOS_HTTPS
+      launcherConfig(MESOS_HTTPS) must_== MESOS_HTTPS
+      launcherConfig(MARATHON_TCP) must_== MESOS_TCP
+      launcherConfig(MESOS_TCP) must_== MESOS_TCP
+      launcherConfig(COMMAND) must_== COMMAND
+    }
+
+    "provision marathon health checks if instructed " in new WithConfig("marathon.mesos-health-checks" -> false) {
+      launcherConfig(MARATHON_HTTP) must_== MARATHON_HTTP
+      launcherConfig(MESOS_HTTP) must_== MARATHON_HTTP
+      launcherConfig(MARATHON_HTTPS) must_== MARATHON_HTTPS
+      launcherConfig(MESOS_HTTPS) must_== MARATHON_HTTPS
+      launcherConfig(MARATHON_TCP) must_== MARATHON_TCP
+      launcherConfig(MESOS_TCP) must_== MARATHON_TCP
+      launcherConfig(COMMAND) must_== COMMAND
+    }
+
+    "provision marathon health checks by default" in new WithConfig( /* "marathon.mesos-health-checks" -> false */ ) {
+      launcherConfig(MARATHON_HTTP) must_== MARATHON_HTTP
+      launcherConfig(MESOS_HTTP) must_== MARATHON_HTTP
+      launcherConfig(MARATHON_HTTPS) must_== MARATHON_HTTPS
+      launcherConfig(MESOS_HTTPS) must_== MARATHON_HTTPS
+      launcherConfig(MARATHON_TCP) must_== MARATHON_TCP
+      launcherConfig(MESOS_TCP) must_== MARATHON_TCP
+      launcherConfig(COMMAND) must_== COMMAND
+    }
   }
 
 }
