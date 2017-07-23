@@ -170,7 +170,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     appSpec(RABBIT).copy(
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = hostPortMapping(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = None)
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = launcherConfig(MARATHON_HTTP), path = Some("/")
@@ -187,7 +187,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getSecurity(dbConfig: GlobalDBConfig): AppSpec = {
     appSpec(SECURITY).copy(
-      args = Some(Seq(s"-J-Xmx${(SECURITY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+      args = Some(Seq(
+        s"-J-Xmx${(SECURITY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m",
+        "-Dhttp.port=9455"
+      )),
       env = Map(
         "DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "DATABASE_PORT"     -> s"${dbConfig.port}",
@@ -198,8 +201,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "OAUTH_RATE_LIMITING_PERIOD" -> "1"
       ),
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
-        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+        PortSpec(number = 9455, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
+        PortSpec(number = 9455, name = "http-api-dupe", labels = Map())
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 0, protocol = launcherConfig(MARATHON_HTTP), path = Some("/health")
@@ -217,7 +220,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getMeta(dbConfig: GlobalDBConfig, secConfig: GlobalSecConfig): AppSpec = {
     appSpec(META).copy(
-      args = Some(Seq(s"-J-Xmx${(META.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+      args = Some(Seq(
+        s"-J-Xmx${(META.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m",
+        "-Dhttp.port=14374"
+      )),
       env = gestaltSecurityEnvVars(secConfig) ++ Map(
         "META_POLICY_CALLBACK_URL" -> s"http://${vipDestination(META)}",
         //
@@ -234,8 +240,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_ROUTE"     -> RABBIT_POLICY_ROUTE
       ),
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
-        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+        PortSpec(number = 14374, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
+        PortSpec(number = 14374, name = "http-api-dupe", labels = Map())
       )),
       healthChecks = Seq(HealthCheck(portIndex = 0, protocol = launcherConfig(MARATHON_HTTP), path = Some("/health"))),
       readinessCheck = Some(MarathonReadinessCheck(
