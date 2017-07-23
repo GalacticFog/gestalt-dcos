@@ -9,6 +9,7 @@ import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.test._
 import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.libs.json.{JsObject, Json}
 
 class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
 
@@ -30,6 +31,7 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
         .configure(config:_*)
         .injector
     val launcherConfig = injector.instanceOf[LauncherConfig]
+    val gtf = injector.instanceOf[GestaltTaskFactory]
   }
 
   "LauncherConfig" should {
@@ -93,6 +95,22 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
       launcherConfig.provisionedServices must containAllOf( (0 to 3).map(DATA(_)) )
     }
 
+    "provision network list from config" in new WithConfig("marathon.network-list" -> "network-1,network-2") {
+      launcherConfig.marathon.networkList must beSome("network-1,network-2")
+      (gtf.getCaasProvider() \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
+        Json.obj("name" -> "network-1"),
+        Json.obj("name" -> "network-2")
+      ))
+    }
+
+    "provision network list with defaults if not configured" in new WithConfig( /* "marathon.network-list" -> "network-1,network-2" */ ) {
+      launcherConfig.marathon.networkList must beNone
+      (gtf.getCaasProvider() \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
+        Json.obj("name" -> "HOST"),
+        Json.obj("name" -> "BRIDGE")
+      ))
+    }
+
     "provision mesos health checks if instructed " in new WithConfig("marathon.mesos-health-checks" -> true) {
       launcherConfig(MARATHON_HTTP) must_== MESOS_HTTP
       launcherConfig(MESOS_HTTP) must_== MESOS_HTTP
@@ -122,6 +140,8 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
       launcherConfig(MESOS_TCP) must_== MARATHON_TCP
       launcherConfig(COMMAND) must_== COMMAND
     }
+
+
   }
 
 }

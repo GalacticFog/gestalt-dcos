@@ -120,6 +120,16 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       lc.marathon.mesosHealthChecks must_== maybeMesosHealthCheck
     }
 
+    "properly parse caas provider network list from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeNetList = sys.env.get("MARATHON_NETWORK_LIST")
+      lc.marathon.networkList must_== maybeNetList
+    }
+
   }
 
   def haveLaserRuntimeImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("public") /("IMAGE" -> name)

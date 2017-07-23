@@ -35,6 +35,7 @@ export DCOS_ACS_SERVICE_ACCT_CREDS='{"uid":"service-account-id","login_endpoint"
 export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
 export MARATHON_NETWORK_NAME=user-network-1
 export MESOS_HEALTH_CHECKS=true
+export MARATHON_NETWORK_LIST="user-network-1,user-network-2"
 
 sbt 'testOnly TaskFactoryEnvSpec'
 

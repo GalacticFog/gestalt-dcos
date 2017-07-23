@@ -363,7 +363,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       kubeconfig = None,
       appGroupPrefix = Some(launcherConfig.marathon.appGroup),
       marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
-      dcosClusterName = Some(launcherConfig.marathon.clusterName)
+      dcosClusterName = Some(launcherConfig.marathon.clusterName),
+      networks = launcherConfig.marathon.networkList
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
