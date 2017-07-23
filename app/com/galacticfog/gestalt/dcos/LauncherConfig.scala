@@ -131,6 +131,8 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipHostname(service: ServiceEndpoint): String = {
     service match {
+      case _ if marathon.networkName.exists(_ != "BRIDGE") =>
+        vipBase(service) + s".${marathon.frameworkName}.containerip.dcos.${marathon.clusterName}.directory"
       case DATA(_) | RABBIT_AMQP =>
         marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + "." + marathon.frameworkName + ".mesos"
       case _ =>

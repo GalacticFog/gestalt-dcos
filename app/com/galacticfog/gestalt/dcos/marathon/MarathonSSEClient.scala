@@ -25,7 +25,8 @@ import scala.util.{Failure, Success, Try}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{RABBIT, RABBIT_AMQP, RABBIT_HTTP}
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
 import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
@@ -242,10 +243,24 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
     val vhosts = getVHosts(app)
 
-    val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
-    val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.map(_.toString)) getOrElse Seq.empty
+    val (hostname,ports) = {
+      if (launcherConfig.marathon.networkName.exists(_ != "BRIDGE")) {
+        service match {
+          case endpoint: ServiceEndpoint =>
+            ( Some(launcherConfig.vipHostname(endpoint)), Seq(endpoint.port) )
+          case RABBIT =>
+            ( Some(launcherConfig.vipHostname(RABBIT_AMQP)), Seq(RABBIT_AMQP.port, RABBIT_HTTP.port) )
+        }
+      } else {
+        val task0 = app.tasks.flatMap(_.headOption)
+        (
+          task0.flatMap(_.host),
+          task0.flatMap(_.ports).getOrElse(Seq.empty)
+        )
+      }
+    }
 
-    ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports,status)
+    ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports.map(_.toString),status)
   }
 
   def getServices(): Future[Seq[ServiceInfo]] = {
