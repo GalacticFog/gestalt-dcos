@@ -23,10 +23,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
-import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
-import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, ServiceEndpoint}
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{RABBIT, RABBIT_AMQP, RABBIT_HTTP}
+import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
 import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
@@ -243,20 +241,24 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
     val vhosts = getVHosts(app)
 
+    // there ideally is one health task. may be multiple tasks if:
+    // - they're all healthy (in which case, the first is as good as any)
+    // - unhealthy one is being killed for a new one, in which case, maybe we'll eventually converge
+    // (TODO: could put in logic to pick newest one or healthy one if we need to)
+    val task0 = app.tasks.flatMap(_.headOption)
     val (hostname,ports) = {
-      if (launcherConfig.marathon.networkName.exists(_ != "BRIDGE")) {
-        service match {
-          case endpoint: ServiceEndpoint =>
-            ( Some(launcherConfig.vipHostname(endpoint)), Seq(endpoint.port) )
-          case RABBIT =>
-            ( Some(launcherConfig.vipHostname(RABBIT_AMQP)), Seq(RABBIT_AMQP.port, RABBIT_HTTP.port) )
-        }
+      if ( app.container.flatMap(_.docker).flatMap(_.network).contains("USER") ) {
+        // ip-per-task: use first container IP we find
+        val containerIp = task0.flatMap(_.ipAddresses.getOrElse(Seq.empty).collectFirst({
+          case IPAddress(Some(ipaddress), _) => ipaddress
+        }))
+        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings).getOrElse(Seq.empty).flatMap(_.containerPort)
+        ( containerIp,
+          pmPorts )
       } else {
-        val task0 = app.tasks.flatMap(_.headOption)
-        (
-          task0.flatMap(_.host),
-          task0.flatMap(_.ports).getOrElse(Seq.empty)
-        )
+        // use host ip and host port mapping
+        ( task0.flatMap(_.host),
+          task0.flatMap(_.ports).getOrElse(Seq.empty) )
       }
     }
 
