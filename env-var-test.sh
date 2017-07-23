@@ -34,6 +34,7 @@ export DCOS_AUTH_METHOD=acs
 export DCOS_ACS_SERVICE_ACCT_CREDS='{"uid":"service-account-id","login_endpoint":"https://leader.mesos/acs/api/v1/auth/login","scheme":"RS256","private_key":"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAI..."}'
 export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
 export MARATHON_NETWORK_NAME=user-network-1
+export MESOS_HEALTH_CHECKS=true
 
 sbt 'testOnly TaskFactoryEnvSpec'
 

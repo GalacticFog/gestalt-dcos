@@ -13,6 +13,8 @@ import org.specs2.execute.Result
 import org.specs2.matcher.JsonMatchers
 import play.api.libs.json.{JsValue, Json}
 
+import scala.util.Try
+
 class TaskFactoryEnvSpec extends Specification with JsonMatchers {
 
   "GestaltTaskFactory" should {
@@ -106,6 +108,16 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
 
       val maybeNetworkName = sys.env.get("MARATHON_NETWORK_NAME")
       lc.marathon.networkName must_== maybeNetworkName
+    }
+
+    "properly parse mesos health check from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeMesosHealthCheck = sys.env.get("MESOS_HEALTH_CHECKS").flatMap(s => Try(s.toBoolean).toOption)
+      lc.marathon.mesosHealthChecks must_== maybeMesosHealthCheck
     }
 
   }
