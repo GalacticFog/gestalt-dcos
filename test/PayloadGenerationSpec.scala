@@ -588,7 +588,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
 
-    "configure base services and payload services to launch with user-specified network if provided" in {
+    "configure base services to launch with user-specified network if provided" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -609,7 +609,22 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       } ^ br
     }
 
-    "configure base services and payload services to launch appropriately" in {
+    "configure base services to be compatible with marathon 1.8 payloads" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      Fragment.foreach(config.provisionedServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
+        svc.name ! {
+          payload.cmd.isDefined must_!= payload.args.isDefined // XOR: Marathon 1.8 requires that exactly one of these must be present
+        }
+      } ^ br
+    }
+
+    "configure base services to launch with bridge networking if no user-specified network" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -624,7 +639,26 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         svc.name ! {
           payload.ipAddress.flatMap(_.networkName) must beNone
           payload.container.flatMap(_.docker).flatMap(_.network) must beSome("BRIDGE")
-          payload.cmd.isDefined must_!= payload.args.isDefined // XOR: Marathon 1.8 requires that exactly one of these must be present
+        }
+      } ^ br
+    }
+
+    "configure base services to launch with mesos health checks if specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.mesos-health-checks" -> "true"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      def uuid = UUID.randomUUID()
+
+      Fragment.foreach(config.provisionedServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
+        svc.name ! {
+          payload.healthChecks.getOrElse(Seq.empty).flatMap(_.protocol) must contain(beOneOf("MESOS_TCP","MESOS_HTTP")).foreach
         }
       } ^ br
     }
