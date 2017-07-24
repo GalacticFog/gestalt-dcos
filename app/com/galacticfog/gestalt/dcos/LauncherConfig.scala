@@ -39,7 +39,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     clusterName = getString("marathon.cluster-name", "thisdcos"),
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
     networkName = config.getString("marathon.network-name"),
-    mesosHealthChecks = config.getBoolean("marathon.mesos-health-checks"),
+    mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
     networkList = config.getString("marathon.network-list")
   )
 
@@ -191,9 +191,9 @@ class LauncherConfig @Inject()(config: Configuration) {
   def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
     import HealthCheck._
     healthCheck match {
-      case MARATHON_HTTP  | MESOS_HTTP  => if (marathon.mesosHealthChecks.contains(true)) MESOS_HTTP  else MARATHON_HTTP
-      case MARATHON_HTTPS | MESOS_HTTPS => if (marathon.mesosHealthChecks.contains(true)) MESOS_HTTPS else MARATHON_HTTPS
-      case MARATHON_TCP   | MESOS_TCP   => if (marathon.mesosHealthChecks.contains(true)) MESOS_TCP   else MARATHON_TCP
+      case MARATHON_HTTP  | MESOS_HTTP  => if (marathon.mesosHealthChecks) MESOS_HTTP  else MARATHON_HTTP
+      case MARATHON_HTTPS | MESOS_HTTPS => if (marathon.mesosHealthChecks) MESOS_HTTPS else MARATHON_HTTPS
+      case MARATHON_TCP   | MESOS_TCP   => if (marathon.mesosHealthChecks) MESOS_TCP   else MARATHON_TCP
       case COMMAND => COMMAND
     }
   }
@@ -308,7 +308,7 @@ object LauncherConfig {
                              clusterName: String,
                              jvmOverheadFactor: Double,
                              networkName: Option[String],
-                             mesosHealthChecks: Option[Boolean],
+                             mesosHealthChecks: Boolean,
                              networkList: Option[String] )
 
   case class SecurityConfig( username: String,

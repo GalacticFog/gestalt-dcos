@@ -414,7 +414,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",
           computeUsername = apiKey.apiKey,
           computePassword = apiKey.apiSecret.get,
-          network = launcherConfig.marathon.networkName
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
         ),
         queueConfig = LaserSecrets.QueueConfig(
           monitorExchange = "default-monitor-exchange",
@@ -450,7 +451,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceVHost = None,
         externalProtocol = Some("https"),
         servicePort = None,
-        network = launcherConfig.marathon.networkName
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
@@ -469,7 +471,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         rabbitRoute = RABBIT_POLICY_ROUTE,
         laserUser = apiKey.apiKey,
         laserPassword = apiKey.apiSecret.get,
-        network = launcherConfig.marathon.networkName
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       computeId = caasProviderId.toString,
       laserId = laserProviderId.toString,
@@ -484,7 +487,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         image = launcherConfig.dockerImage(API_GATEWAY),
         dbName = "default-gateway-db",
         gatewayVHost = None,
-        network = launcherConfig.marathon.networkName
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       kongId = kongProviderId.toString,
       dbId = dbProviderId.toString,

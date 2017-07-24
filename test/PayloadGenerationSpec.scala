@@ -683,6 +683,33 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       } ^ br
     }
 
+    "configure payload services to launch with mesos health checks" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.mesos-health-checks" -> "true"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+      val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
+      val kong = gtf.getKongProvider(uuid, uuid)
+      Fragment.foreach( Seq(
+        "gestalt-laser" -> laser,
+        "gestalt-api-gateway" -> gtw,
+        "gestalt-policy" -> policy,
+        "kong" -> kong ) ) {
+        case (lbl, payload) => lbl ! {
+          val v = (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "health_checks" \\ "protocol").map(_.as[String])
+          v must contain(be_==("MESOS_HTTP")).foreach
+        }
+      } ^ br
+    }
+
   }
 
 

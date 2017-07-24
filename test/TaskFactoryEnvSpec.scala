@@ -116,8 +116,8 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
         .injector
       val lc  = injector.instanceOf[LauncherConfig]
 
-      val maybeMesosHealthCheck = sys.env.get("MESOS_HEALTH_CHECKS").flatMap(s => Try(s.toBoolean).toOption)
-      lc.marathon.mesosHealthChecks must_== maybeMesosHealthCheck
+      val mesosHealthCheck = sys.env.get("MESOS_HEALTH_CHECKS").flatMap(s => Try(s.toBoolean).toOption).getOrElse(false)
+      lc.marathon.mesosHealthChecks must_== mesosHealthCheck
     }
 
     "properly parse caas provider network list from environment variables" in {
