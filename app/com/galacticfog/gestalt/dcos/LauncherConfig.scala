@@ -40,7 +40,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
     networkName = config.getString("marathon.network-name"),
     mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
-    networkList = config.getString("marathon.network-list")
+    networkList = config.getString("marathon.network-list"),
+    haproxyGroups = config.getString("marathon.haproxy-groups")
   )
 
   val database = DatabaseConfig(
@@ -309,7 +310,9 @@ object LauncherConfig {
                              jvmOverheadFactor: Double,
                              networkName: Option[String],
                              mesosHealthChecks: Boolean,
-                             networkList: Option[String] )
+                             networkList: Option[String],
+                             haproxyGroups: Option[String]
+                           )
 
   case class SecurityConfig( username: String,
                              password: Option[String],

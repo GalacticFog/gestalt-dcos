@@ -560,6 +560,30 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
     }
 
+    "configure meta caas provider for custom haproxy exposure groups" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "custom-group-1,custom-group-2"
+    }
+
+    "configure meta caas provider for default haproxy exposure group if neglected" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "external"
+    }
+
     "configure meta caas provider with support for marathon-under-marathon and custom dcos cluster name" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

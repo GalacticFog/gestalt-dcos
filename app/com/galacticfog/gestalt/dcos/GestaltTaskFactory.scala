@@ -364,7 +364,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       appGroupPrefix = Some(launcherConfig.marathon.appGroup),
       marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
       dcosClusterName = Some(launcherConfig.marathon.clusterName),
-      networks = launcherConfig.marathon.networkList
+      networks = launcherConfig.marathon.networkList,
+      loadBalancerGroups = launcherConfig.marathon.haproxyGroups.map(_.split(","))
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
