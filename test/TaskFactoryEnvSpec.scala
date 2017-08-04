@@ -130,6 +130,16 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       lc.marathon.networkList must_== maybeNetList
     }
 
+    "properly parse caas provider exposure groups from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeNetList = sys.env.get("MARATHON_HAPROXY_GROUPS")
+      lc.marathon.haproxyGroups must_== maybeNetList
+    }
+
   }
 
   def haveLaserRuntimeImage(name: => String) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("public") /("IMAGE" -> name)

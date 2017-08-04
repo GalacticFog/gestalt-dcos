@@ -36,6 +36,7 @@ export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
 export MARATHON_NETWORK_NAME=user-network-1
 export MESOS_HEALTH_CHECKS=true
 export MARATHON_NETWORK_LIST="user-network-1,user-network-2"
+export MARATHON_HAPROXY_GROUPS="custom-haproxy-1,custom-haproxy-2"
 
 sbt 'testOnly TaskFactoryEnvSpec'
 
