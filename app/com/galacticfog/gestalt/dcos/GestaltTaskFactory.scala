@@ -3,15 +3,16 @@ package com.galacticfog.gestalt.dcos
 import java.util.UUID
 
 import scala.language.implicitConversions
-import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, LaserExecutors, ServiceEndpoint}
 import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
 
 import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
 import com.galacticfog.gestalt.cli._
+import com.galacticfog.gestalt.dcos.AppSpec.USER
 import com.galacticfog.gestalt.dcos.HealthCheck.{MARATHON_HTTP, MARATHON_TCP}
+import com.galacticfog.gestalt.dcos.marathon.MarathonAppPayload.IPPerTaskInfo
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
-import org.apache.mesos.Protos
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
@@ -22,18 +23,21 @@ case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol
 case object HealthCheck {
   sealed trait HealthCheckProtocol
   case object MARATHON_TCP   extends HealthCheckProtocol {override def toString: String = "TCP"}
+  case object MESOS_TCP      extends HealthCheckProtocol {override def toString: String = "MESOS_TCP"}
+
   case object MARATHON_HTTP  extends HealthCheckProtocol {override def toString: String = "HTTP"}
+  case object MESOS_HTTP     extends HealthCheckProtocol {override def toString: String = "MESOS_HTTP"}
+
   case object MARATHON_HTTPS extends HealthCheckProtocol {override def toString: String = "HTTPS"}
-  // case object MESOS_TCP      extends HealthCheckProtocol {override def toString: String = "MESOS_TCP"}
-  // case object MESOS_HTTP     extends HealthCheckProtocol {override def toString: String = "MESOS_HTTP"}
-  // case object MESOS_HTTPS    extends HealthCheckProtocol {override def toString: String = "MESOS_HTTPS"}
+  case object MESOS_HTTPS    extends HealthCheckProtocol {override def toString: String = "MESOS_HTTPS"}
+
   case object COMMAND        extends HealthCheckProtocol {override def toString: String = "COMMAND"}
 }
 
 case class AppSpec(name: String,
                    image: String,
                    numInstances: Int = 1,
-                   network: Protos.ContainerInfo.DockerInfo.Network,
+                   network: AppSpec.Network,
                    ports: Option[Seq[PortSpec]] = None,
                    dockerParameters: Seq[KeyValuePair] = Seq.empty,
                    cpus: Double,
@@ -47,6 +51,13 @@ case class AppSpec(name: String,
                    healthChecks: Seq[HealthCheck] = Seq.empty,
                    taskKillGracePeriodSeconds: Option[Int] = None,
                    readinessCheck: Option[MarathonReadinessCheck] = None)
+
+case object AppSpec {
+  sealed trait Network
+  case object HOST   extends Network {override def toString = "HOST"}
+  case object BRIDGE extends Network {override def toString = "BRIDGE"}
+  case class  USER(network: String) extends Network {override def toString = "USER"}
+}
 
 @Singleton
 class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
@@ -64,7 +75,11 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     image = launcherConfig.dockerImage(service),
     cpus = launcherConfig.debug.cpu.getOrElse(service.cpu),
     mem = launcherConfig.debug.mem.getOrElse(service.mem),
-    network = ContainerInfo.DockerInfo.Network.BRIDGE
+    network = launcherConfig.marathon.networkName match {
+      case Some("HOST")          => AppSpec.HOST
+      case Some("BRIDGE") | None => AppSpec.BRIDGE
+      case Some(net)             => AppSpec.USER(net)
+    }
   )
 
   def getVhostLabels(service: FrameworkService): Map[String,String] = {
@@ -118,15 +133,20 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       "PGREPL_MASTER_IP" -> serviceHostname(DATA(0)),
       "PGREPL_MASTER_PORT" -> vipPort(DATA(0))
     ) else Map.empty
+    val hostPortMapping = launcherConfig.marathon.networkName match {
+      case Some(net) if net != "BRIDGE" => None
+      case _ if index == 0 => Some(5432)
+      case _ => None
+    }
     appSpec(DATA(index)).copy(
       volumes = Some(Seq(marathon.Volume(
-        containerPath = "pgdata",
-        mode = "RW",
+        containerPath = Some("pgdata"),
+        mode = Some("RW"),
         persistent = Some(VolumePersistence(
-          size = launcherConfig.database.provisionedSize
+          size = Some(launcherConfig.database.provisionedSize)
         ))
       ))),
-      residency = Some(Residency(Residency.WAIT_FOREVER)),
+      residency = Some(Residency(taskLostBehavior = Some(Residency.WAIT_FOREVER))),
       taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
       env = replEnv ++ Map(
         "POSTGRES_USER" -> dbConfig.username,
@@ -135,36 +155,42 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "PGREPL_ROLE" -> (if (index == 0) "PRIMARY" else "STANDBY"),
         "PGREPL_TOKEN" -> launcherConfig.database.pgreplToken
       ),
-      network = ContainerInfo.DockerInfo.Network.BRIDGE,
-      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index))), hostPort = if (index == 0) Some(5432) else None))),
+      ports = Some(Seq(PortSpec(number = 5432, name = "sql", labels = Map("VIP_0" -> vipLabel(DATA(index))), hostPort = hostPortMapping))),
       healthChecks = Seq(HealthCheck(
-        portIndex = 0, protocol = MARATHON_TCP, path = None
+        portIndex = 0, protocol = launcherConfig(MARATHON_TCP), path = None
       ))
     )
   }
 
   private[this] def getRabbit: AppSpec = {
+    val hostPortMapping = launcherConfig.marathon.networkName match {
+      case Some(net) if net != "BRIDGE" => (_: Int) => None
+      case _ => Some[Int](_)
+    }
     appSpec(RABBIT).copy(
       ports = Some(Seq(
-        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = Some(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = Some(15672))
+        PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = hostPortMapping(5672)),
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
       )),
       healthChecks = Seq(HealthCheck(
-        portIndex = 1, protocol = MARATHON_HTTP, path = Some("/")
+        portIndex = 1, protocol = launcherConfig(MARATHON_HTTP), path = Some("/")
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       ))
     )
   }
 
   private[this] def getSecurity(dbConfig: GlobalDBConfig): AppSpec = {
     appSpec(SECURITY).copy(
-      args = Some(Seq(s"-J-Xmx${(SECURITY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+      args = Some(Seq(
+        s"-J-Xmx${(SECURITY.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m",
+        "-Dhttp.port=9455"
+      )),
       env = Map(
         "DATABASE_HOSTNAME" -> s"${dbConfig.hostname}",
         "DATABASE_PORT"     -> s"${dbConfig.port}",
@@ -175,18 +201,18 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "OAUTH_RATE_LIMITING_PERIOD" -> "1"
       ),
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
-        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+        PortSpec(number = 9455, name = "http-api",      labels = Map("VIP_0" -> vipLabel(SECURITY))),
+        PortSpec(number = 9455, name = "http-api-dupe", labels = Map())
       )),
       healthChecks = Seq(HealthCheck(
-        portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health")
+        portIndex = 0, protocol = launcherConfig(MARATHON_HTTP), path = Some("/health")
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/init",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/init"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       )),
       labels = getVhostLabels(SECURITY)
     )
@@ -194,7 +220,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
 
   private[this] def getMeta(dbConfig: GlobalDBConfig, secConfig: GlobalSecConfig): AppSpec = {
     appSpec(META).copy(
-      args = Some(Seq(s"-J-Xmx${(META.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m")),
+      args = Some(Seq(
+        s"-J-Xmx${(META.mem / launcherConfig.marathon.jvmOverheadFactor).toInt}m",
+        "-Dhttp.port=14374"
+      )),
       env = gestaltSecurityEnvVars(secConfig) ++ Map(
         "META_POLICY_CALLBACK_URL" -> s"http://${vipDestination(META)}",
         //
@@ -211,16 +240,16 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         "RABBIT_ROUTE"     -> RABBIT_POLICY_ROUTE
       ),
       ports = Some(Seq(
-        PortSpec(number = 9000, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
-        PortSpec(number = 9000, name = "http-api-dupe", labels = Map())
+        PortSpec(number = 14374, name = "http-api", labels = Map("VIP_0" -> vipLabel(META))),
+        PortSpec(number = 14374, name = "http-api-dupe", labels = Map())
       )),
-      healthChecks = Seq(HealthCheck(portIndex = 0, protocol = MARATHON_HTTP, path = Some("/health"))),
+      healthChecks = Seq(HealthCheck(portIndex = 0, protocol = launcherConfig(MARATHON_HTTP), path = Some("/health"))),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/health",
-        portName = "http-api",
-        httpStatusCodesForReady = Seq(200,401,403),
-        intervalSeconds = 5,
-        timeoutSeconds = 10
+        path = Some("/health"),
+        portName = Some("http-api"),
+        httpStatusCodesForReady = Some(Seq(200,401,403)),
+        intervalSeconds = Some(5),
+        timeoutSeconds = Some(10)
       )),
       labels = getVhostLabels(META)
     )
@@ -237,13 +266,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       )),
       healthChecks = Seq(HealthCheck(
         path = Some("/#/login"),
-        protocol = MARATHON_HTTP,
+        protocol = launcherConfig(MARATHON_HTTP),
         portIndex = 0
       )),
       readinessCheck = Some(MarathonReadinessCheck(
-        path = "/#/login",
-        portName = "http",
-        intervalSeconds = 5
+        path = Some("/#/login"),
+        portName = Some("http"),
+        intervalSeconds = Some(5)
       )),
       labels = getVhostLabels(UI)
     )
@@ -264,47 +293,56 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                           globalConfig: GlobalConfig ): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globalConfig))
 
   def toMarathonPayload(app: AppSpec): MarathonAppPayload = {
-    val isBridged = app.network.getValueDescriptor.getName == "BRIDGE"
+    val ipPerTask = app.network match {
+      case AppSpec.HOST | AppSpec.BRIDGE => None
+      case USER(net)                     => Some(
+        IPPerTaskInfo(
+          networkName = Some(net)
+        )
+      )
+    }
+    val isPortMapped = app.network != AppSpec.HOST
     MarathonAppPayload(
-      id = "/" + launcherConfig.marathon.appGroup + "/" + app.name,
+      id = Some("/" + launcherConfig.marathon.appGroup + "/" + app.name),
       args = app.args,
-      env = JsObject(app.env.mapValues(JsString(_))),
-      instances = app.numInstances,
-      cpus = app.cpus,
+      env = Some(JsObject(app.env.mapValues(JsString(_)))),
+      instances = Some(app.numInstances),
+      cpus = Some(app.cpus),
       cmd = app.cmd,
-      mem = app.mem,
-      disk = 0,
-      requirePorts = true,
+      mem = Some(app.mem),
+      disk = Some(0),
       residency = app.residency,
-      container = MarathonContainerInfo(
-        `type` = "DOCKER",
+      container = Some(MarathonContainerInfo(
+        `type` = Some(MarathonContainerInfo.Types.DOCKER),
         volumes = app.volumes,
         docker = Some(MarathonDockerContainer(
-          image = app.image,
-          network = app.network.getValueDescriptor.getName,
-          privileged = false,
-          parameters = Seq(),
-          forcePullImage = true,
-          portMappings = if (isBridged) app.ports.map {_.map(
-            p => DockerPortMapping(containerPort = p.number, name = Some(p.name), protocol = "tcp", labels = Some(p.labels), hostPort = p.hostPort)
+          image = Some(app.image),
+          network = Some(app.network.toString),
+          privileged = Some(false),
+          forcePullImage = Some(true),
+          portMappings = if (isPortMapped) app.ports.map {_.map(
+            p => DockerPortMapping(containerPort = Some(p.number), name = Some(p.name), protocol = Some("tcp"), labels = Some(p.labels), hostPort = p.hostPort)
           ) } else None
         ))
-      ),
-      labels = app.labels,
-      healthChecks = app.healthChecks.map( hc => MarathonHealthCheck(
+      )),
+      labels = Some(app.labels),
+      healthChecks = Some(app.healthChecks.map( hc => MarathonHealthCheck(
         path = hc.path,
-        protocol = hc.protocol.toString,
-        portIndex = hc.portIndex,
-        gracePeriodSeconds = 300,
-        intervalSeconds = 30,
-        timeoutSeconds = 15,
-        maxConsecutiveFailures = 4
-      ) ),
+        protocol = Some(hc.protocol.toString),
+        portIndex = Some(hc.portIndex),
+        port = None,
+        gracePeriodSeconds = Some(300),
+        intervalSeconds = Some(30),
+        timeoutSeconds = Some(15),
+        maxConsecutiveFailures = Some(4)
+      ))),
       readinessCheck = app.readinessCheck,
-      portDefinitions = if (!isBridged) app.ports.map {_.map(
-        p => PortDefinition(port = p.number, protocol = "tcp", name = Some(p.name), labels = Some(p.labels))
-      )} else None,
-      taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds
+      requirePorts = Some(true),
+      portDefinitions = if (!isPortMapped) app.ports.map {_.map(
+        p => PortDefinition(port = Some(p.number), protocol = Some("tcp"), name = Some(p.name), labels = Some(p.labels))
+      )} else Some(Seq.empty),
+      taskKillGracePeriodSeconds = app.taskKillGracePeriodSeconds,
+      ipAddress = ipPerTask
     )
   }
 
@@ -325,7 +363,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       kubeconfig = None,
       appGroupPrefix = Some(launcherConfig.marathon.appGroup),
       marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
-      dcosClusterName = Some(launcherConfig.marathon.clusterName)
+      dcosClusterName = Some(launcherConfig.marathon.clusterName),
+      networks = launcherConfig.marathon.networkList,
+      loadBalancerGroups = launcherConfig.marathon.haproxyGroups.map(_.split(","))
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
@@ -363,24 +403,35 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                        laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
     GestaltProviderBuilder.laserProvider(
       secrets = LaserSecrets(
-        dbName = "default-laser-provider",
-        monitorExchange = "default-monitor-exchange",
-        monitorTopic = "default-monitor-topic",
-        responseExchange = "default-response-exchange",
-        responseTopic = "default-response-topic",
-        listenExchange = "default-listen-exchange",
-        listenRoute = "default-listen-route",
-        computeUsername = apiKey.apiKey,
-        computePassword = apiKey.apiSecret.get,
-        computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",
-        laserImage = launcherConfig.dockerImage(LASER),
-        laserCpu = LASER.cpu,
-        laserMem = LASER.mem,
-        laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
-        laserEthernetPort = launcherConfig.laser.ethernetPort,
-        executors = Seq.empty,
-        globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
-        globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout)
+        serviceConfig = LaserSecrets.ServiceConfig(
+          dbName = "default-laser-provider",
+          laserImage = launcherConfig.dockerImage(LASER),
+          laserCpu = LASER.cpu,
+          laserMem = LASER.mem,
+          laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
+          laserEthernetPort = launcherConfig.laser.ethernetPort
+        ),
+        caasConfig = LaserSecrets.CaaSConfig(
+          computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",
+          computeUsername = apiKey.apiKey,
+          computePassword = apiKey.apiSecret.get,
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        ),
+        queueConfig = LaserSecrets.QueueConfig(
+          monitorExchange = "default-monitor-exchange",
+          monitorTopic = "default-monitor-topic",
+          responseExchange = "default-response-exchange",
+          responseTopic = "default-response-topic",
+          listenExchange = "default-listen-exchange",
+          listenRoute = "default-listen-route"
+        ),
+        schedulerConfig = LaserSecrets.SchedulerConfig(
+          globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
+          globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout),
+          laserAdvertiseHostname = launcherConfig.laser.advertiseHost
+        ),
+        executors = Seq.empty
       ),
       executorIds = laserExecutorIds.map(_.toString),
       laserFQON = s"/root/environments/$laserEnvId/containers",
@@ -399,7 +450,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         dbName = "default-kong-db",
         gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
         serviceVHost = None,
-        externalProtocol = Some("https")
+        externalProtocol = Some("https"),
+        servicePort = None,
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
@@ -417,7 +471,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         rabbitExchange = RABBIT_POLICY_EXCHANGE,
         rabbitRoute = RABBIT_POLICY_ROUTE,
         laserUser = apiKey.apiKey,
-        laserPassword = apiKey.apiSecret.get
+        laserPassword = apiKey.apiSecret.get,
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       computeId = caasProviderId.toString,
       laserId = laserProviderId.toString,
@@ -431,7 +487,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       secrets = GatewaySecrets(
         image = launcherConfig.dockerImage(API_GATEWAY),
         dbName = "default-gateway-db",
-        gatewayVHost = None
+        gatewayVHost = None,
+        network = launcherConfig.marathon.networkName,
+        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
       ),
       kongId = kongProviderId.toString,
       dbId = dbProviderId.toString,

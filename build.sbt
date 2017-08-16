@@ -1,6 +1,6 @@
 name := """gestalt-dcos"""
 
-version := "1.3.0-SNAPSHOT"
+version := "1.2.1"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala).
@@ -48,7 +48,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.1.2-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.2.0-SNAPSHOT" withSources()
 )
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")

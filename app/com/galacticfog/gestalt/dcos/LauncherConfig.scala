@@ -2,6 +2,7 @@ package com.galacticfog.gestalt.dcos
 
 import javax.inject.{Inject, Singleton}
 
+import com.galacticfog.gestalt.dcos.HealthCheck.HealthCheckProtocol
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
 import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
@@ -36,7 +37,11 @@ class LauncherConfig @Inject()(config: Configuration) {
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
     frameworkName = getString("marathon.framework-name", "marathon"),
     clusterName = getString("marathon.cluster-name", "thisdcos"),
-    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0)
+    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
+    networkName = config.getString("marathon.network-name"),
+    mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
+    networkList = config.getString("marathon.network-list"),
+    haproxyGroups = config.getString("marathon.haproxy-groups")
   )
 
   val database = DatabaseConfig(
@@ -130,6 +135,8 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   def vipHostname(service: ServiceEndpoint): String = {
     service match {
+      case _ if marathon.networkName.exists(_ != "BRIDGE") =>
+        marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "-" + _) + ".%s.containerip.dcos.%s.directory".format(marathon.frameworkName, marathon.clusterName)
       case DATA(_) | RABBIT_AMQP =>
         marathon.appGroup.split("/").reverse.foldLeft(service.name)(_ + "." + _) + "." + marathon.frameworkName + ".mesos"
       case _ =>
@@ -178,9 +185,19 @@ class LauncherConfig @Inject()(config: Configuration) {
         image = dockerImage(e)
       )
     }).toSeq,
-    ethernetPort = config.getString("laser.ethernet-port")
+    ethernetPort = config.getString("laser.ethernet-port"),
+    advertiseHost = config.getString("laser.advertise-hostname")
   )
 
+  def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
+    import HealthCheck._
+    healthCheck match {
+      case MARATHON_HTTP  | MESOS_HTTP  => if (marathon.mesosHealthChecks) MESOS_HTTP  else MARATHON_HTTP
+      case MARATHON_HTTPS | MESOS_HTTPS => if (marathon.mesosHealthChecks) MESOS_HTTPS else MARATHON_HTTPS
+      case MARATHON_TCP   | MESOS_TCP   => if (marathon.mesosHealthChecks) MESOS_TCP   else MARATHON_TCP
+      case COMMAND => COMMAND
+    }
+  }
 
 }
 
@@ -266,9 +283,6 @@ object LauncherConfig {
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
   }
-  case class MesosConfig( master: String,
-                          schedulerHostname: String,
-                          schedulerName: String )
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
@@ -293,7 +307,12 @@ object LauncherConfig {
                              baseUrl: String,
                              frameworkName: String,
                              clusterName: String,
-                             jvmOverheadFactor: Double )
+                             jvmOverheadFactor: Double,
+                             networkName: Option[String],
+                             mesosHealthChecks: Boolean,
+                             networkList: Option[String],
+                             haproxyGroups: Option[String]
+                           )
 
   case class SecurityConfig( username: String,
                              password: Option[String],
@@ -305,7 +324,8 @@ object LauncherConfig {
                           minPortRange: Int,
                           maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime],
-                          ethernetPort: Option[String] )
+                          ethernetPort: Option[String],
+                          advertiseHost: Option[String] )
 
   implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
 
