@@ -12,6 +12,7 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.specs2.execute.Result
 import org.specs2.matcher.JsonMatchers
 import play.api.libs.json.{JsValue, Json}
+import scala.util.Try
 
 class TaskFactoryEnvSpec extends Specification with JsonMatchers {
 
@@ -74,7 +75,6 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
   "LauncherConfig" should {
 
     "properly parse acs credentials from environment variables" in {
-
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -87,6 +87,56 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       } yield Json.parse(creds).as[DCOSACSServiceAccountCreds])
 
       lc.dcosAuth must_== expectedConfig
+    }
+
+    "properly parse laser config from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
+      lc.laser.advertiseHost  must_== maybeAdvertHost
+    }
+
+    "properly parse marathon user network from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeNetworkName = sys.env.get("MARATHON_NETWORK_NAME")
+      lc.marathon.networkName must_== maybeNetworkName
+    }
+
+    "properly parse mesos health check from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val mesosHealthCheck = sys.env.get("MESOS_HEALTH_CHECKS").flatMap(s => Try(s.toBoolean).toOption).getOrElse(false)
+      lc.marathon.mesosHealthChecks must_== mesosHealthCheck
+    }
+
+    "properly parse caas provider network list from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeNetList = sys.env.get("MARATHON_NETWORK_LIST")
+      lc.marathon.networkList must_== maybeNetList
+    }
+
+    "properly parse caas provider exposure groups from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val maybeNetList = sys.env.get("MARATHON_HAPROXY_GROUPS")
+      lc.marathon.haproxyGroups must_== maybeNetList
     }
 
   }

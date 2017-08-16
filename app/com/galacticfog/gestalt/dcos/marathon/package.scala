@@ -17,7 +17,7 @@ package object marathon {
   implicit val healthCheckFmt: OFormat[MarathonHealthCheck] = Json.format[MarathonHealthCheck]
   implicit val discoverPortInfoFmt: OFormat[DiscoveryPortInfo] = Json.format[DiscoveryPortInfo]
   implicit val discoveryInfoFmt: OFormat[DiscoveryInfo] = Json.format[DiscoveryInfo]
-  implicit val ipPerTaskInfoFmt: OFormat[IPPerTaskInfo] = Json.format[IPPerTaskInfo]
+  implicit val ipPerTaskInfoFmt: OFormat[MarathonAppPayload.IPPerTaskInfo] = Json.format[MarathonAppPayload.IPPerTaskInfo]
   implicit val ipAddressFmt: OFormat[IPAddress] = Json.format[IPAddress]
   implicit val marTaskFmt: OFormat[MarathonTask] = Json.format[MarathonTask]
   implicit val marContainerInfoFmt: OFormat[MarathonContainerInfo] = Json.format[MarathonContainerInfo]

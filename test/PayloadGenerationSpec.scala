@@ -2,10 +2,11 @@ import java.util.UUID
 
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
+import com.galacticfog.gestalt.dcos.marathon.MarathonAppPayload.IPPerTaskInfo
 import com.galacticfog.gestalt.dcos.marathon._
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import modules.Module
-import org.specs2.matcher.{JsonMap, JsonMatchers}
+import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.core.Fragment
 import play.api.inject.guice.GuiceApplicationBuilder
@@ -17,21 +18,21 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   def haveEnvVar(pair: => (String, String)) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("private") /(pair)
 
-  "Payload generation" should {
+  val testGlobalVars = GlobalConfig().withDb(GlobalDBConfig(
+    hostname = "test-db.marathon.mesos",
+    port = 5432,
+    username = "test-user",
+    password = "test-password",
+    prefix = "test-"
+  )).withSec(GlobalSecConfig(
+    hostname = "security",
+    port = 9455,
+    apiKey = "key",
+    apiSecret = "secret",
+    realm = Some("192.168.1.50:12345")
+  ))
 
-    val testGlobalVars = GlobalConfig().withDb(GlobalDBConfig(
-      hostname = "test-db.marathon.mesos",
-      port = 5432,
-      username = "test-user",
-      password = "test-password",
-      prefix = "test-"
-    )).withSec(GlobalSecConfig(
-      hostname = "security",
-      port = 9455,
-      apiKey = "key",
-      apiSecret = "secret",
-      realm = Some("192.168.1.50:12345")
-    ))
+  "Payload generation" should {
 
     "work from global config (BRIDGE)" in {
       val injector = new GuiceApplicationBuilder()
@@ -50,9 +51,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         prefix = "test-"
       ))
       val expected = MarathonAppPayload(
-        id = "/gestalt-framework/security",
-        args = Some(Seq("-J-Xmx768m")),
-        env = Json.obj(
+        id = Some("/gestalt-framework/security"),
+        args = Some(Seq("-J-Xmx768m", "-Dhttp.port=9455")),
+        env = Some(Json.obj(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
           "DATABASE_HOSTNAME" -> "test-db.marathon.mesos",
@@ -60,62 +61,103 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           "DATABASE_NAME" -> "test-security",
           "DATABASE_USERNAME" -> "test-user",
           "DATABASE_PASSWORD" -> "test-password"
-        ),
-        instances = 1,
-        cpus = 0.5,
-        mem = 1536,
-        disk = 0,
-        requirePorts = true,
-        container = MarathonContainerInfo(
-          `type` = "DOCKER",
+        )),
+        instances = Some(1),
+        cpus = Some(0.5),
+        mem = Some(1536),
+        disk = Some(0),
+        requirePorts = Some(true),
+        container = Some(MarathonContainerInfo(
+          `type` = Some(MarathonContainerInfo.Types.DOCKER),
           volumes = None,
           docker = Some(MarathonDockerContainer(
-            image = "test-security:tag",
-            network = "BRIDGE",
-            privileged = false,
-            parameters = Seq.empty,
-            forcePullImage = true,
+            image = Some("test-security:tag"),
+            network = Some("BRIDGE"),
+            privileged = Some(false),
+            forcePullImage = Some(true),
             portMappings = Some(Seq(
               DockerPortMapping(
-                containerPort = 9000,
-                protocol = "tcp",
+                containerPort = Some(9455),
+                protocol = Some("tcp"),
                 name = Some("http-api"),
                 labels = Some(Map("VIP_0" -> "/gestalt-framework-security:9455"))
               ),
               DockerPortMapping(
-                containerPort = 9000,
-                protocol = "tcp",
+                containerPort = Some(9455),
+                protocol = Some("tcp"),
                 name = Some("http-api-dupe"),
                 labels = Some(Map())
               )
             ))
           ))
-        ),
-        labels = Map(
+        )),
+        labels = Some(Map(
           "HAPROXY_GROUP" -> "external",
           "HAPROXY_0_VHOST" -> "security.galacticfog.com",
           "HAPROXY_1_VHOST" -> "galacticfog.com",
           "HAPROXY_1_PATH" -> "/security",
           "HAPROXY_1_HTTP_BACKEND_PROXYPASS_PATH" -> "/security"
-        ),
-        healthChecks = Seq(MarathonHealthCheck(
-          path = Some("/health"),
-          protocol = "HTTP",
-          portIndex = 0,
-          gracePeriodSeconds = 300,
-          intervalSeconds = 30,
-          timeoutSeconds = 15,
-          maxConsecutiveFailures = 4
         )),
+        healthChecks = Some(Seq(MarathonHealthCheck(
+          path = Some("/health"),
+          protocol = Some("HTTP"),
+          portIndex = Some(0),
+          gracePeriodSeconds = Some(300),
+          intervalSeconds = Some(30),
+          timeoutSeconds = Some(15),
+          maxConsecutiveFailures = Some(4)
+        ))),
         readinessCheck = Some(MarathonReadinessCheck(
-          protocol = "HTTP",
-          path = "/init",
-          portName = "http-api",
-          intervalSeconds = 5
-        ))
+          protocol = Some("HTTP"),
+          path = Some("/init"),
+          portName = Some("http-api"),
+          intervalSeconds = Some(5),
+          timeoutSeconds = Some(10)
+        )),
+        portDefinitions = Some(Seq.empty)
       )
       val security = gtf.getMarathonPayload(SECURITY, globalConfig)
       security must_== expected
+    }
+
+    "run database ports/portDefinitions appropriately for USER networking" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globalConfig = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      ))
+      val data0 = gtf.getMarathonPayload(DATA(0), globalConfig)
+      data0.ipAddress must beSome(IPPerTaskInfo(networkName = Some("user-network")))
+      data0.portDefinitions.get must beEmpty
+    }
+
+    "pass ports/portDefinitions appropriately for USER networking" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globalConfig = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      ))
+      val data0 = gtf.getMarathonPayload(DATA(0), globalConfig)
+      data0.ipAddress must beSome(IPPerTaskInfo(networkName = Some("user-network")))
+      data0.portDefinitions.get must beEmpty
     }
 
     "appropriately set realm override for security consumer services" in {
@@ -141,7 +183,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
 
       val realm = "https://security.galacticfog.com"
-      gtf.getMarathonPayload(META, global).env.toString must /("GESTALT_SECURITY_REALM" -> realm)
+      gtf.getMarathonPayload(META, global).env.get.toString must /("GESTALT_SECURITY_REALM" -> realm)
       gtf.getSecurityProvider(global.secConfig.get).toString must /("properties") /("config") /("env") /("public") /("REALM" -> realm)
     }
 
@@ -193,6 +235,54 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "ETHERNET_PORT").asOpt[String] must beNone
     }
 
+    "set advertise-host on laser scheduler if configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.advertise-hostname" -> "laser.gestalt.marathon.mesos"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("ADVERTISE_HOSTNAME" -> "laser.gestalt.marathon.mesos")
+    }
+
+    "not set advertise-host on laser scheduler if not configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.advertise-hostname" -> "laser.gestalt.marathon.mesos"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "ADVERTISE_HOSTNAME").asOpt[String] must beNone
+    }
+
+    "set meta-network-name on laser scheduler if configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("META_NETWORK_NAME" -> "user-network")
+    }
+
+    "fall back to HOST networking on laser scheduler if meta-network-name not configured" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.meta-network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "META_NETWORK_NAME").asOpt[String] must beSome("HOST")
+    }
+
     "set port range vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -233,8 +323,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
-      data.container.docker must beSome
-      val Some(docker) = data.container.docker
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(1)
       val Some(Seq(pd)) = docker.portMappings
       pd.hostPort must beSome(5432)
@@ -247,11 +337,45 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
       val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
-      data.container.docker must beSome
-      val Some(docker) = data.container.docker
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(2)
       val Some(Seq(pd1,_)) = docker.portMappings
       pd1.hostPort must beSome(5672)
+    }
+
+    "not request host port for database in USER networking mode" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "marathon.network-name" -> "some-user-network"
+        )
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
+      docker.portMappings.get must haveSize(1)
+      val Some(Seq(pm)) = docker.portMappings
+      pm.hostPort must beNone
+      data.portDefinitions.get must beEmpty
+    }
+
+    "not request host port for rabbit in USER networking mode" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "marathon.network-name" -> "some-user-network"
+        )
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
+      data.container.flatMap(_.docker) must beSome
+      val Some(docker) = data.container.flatMap(_.docker)
+      docker.portMappings.get must haveSize(2)
+      val Some(Seq(pm1,_)) = docker.portMappings
+      pm1.hostPort must beNone
+      data.portDefinitions.get must beEmpty
     }
 
     "set database container residency and grace period along with persistent storage" in {
@@ -261,10 +385,10 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
       val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
-      data.residency must beSome(Residency(Residency.WAIT_FOREVER))
+      data.residency must beSome(Residency(Some(Residency.WAIT_FOREVER)))
       data.taskKillGracePeriodSeconds must beSome(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD)
-      data.container.volumes must beSome(containTheSameElementsAs(
-        Seq(Volume("pgdata", "RW", Some(VolumePersistence(config.database.provisionedSize))))
+      data.container.flatMap(_.volumes) must beSome(containTheSameElementsAs(
+        Seq(Volume(Some("pgdata"), Some("RW"), Some(VolumePersistence(Some(config.database.provisionedSize)))))
       ))
     }
 
@@ -276,9 +400,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
-      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
-      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.docker must beSome((d: MarathonDockerContainer) => d.image.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(0), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(1), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
+      gtf.getMarathonPayload(DATA(2), testGlobalVars).container.flatMap(_.docker) must beSome((d: MarathonDockerContainer) => d.image.get.startsWith("galacticfog/postgres_repl:"))
     }
 
     "acknowledge the appropriate number of DATA stages and services according to config" in {
@@ -314,7 +438,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val payload = gtf.getMarathonPayload(DATA(0), testGlobalVars)
-      payload.env.toString must /("PGREPL_ROLE" -> "PRIMARY")
+      payload.env.get.toString must /("PGREPL_ROLE" -> "PRIMARY")
       Json.toJson(payload).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-primary:5432")
     }
 
@@ -328,8 +452,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val pay0 = gtf.getMarathonPayload(DATA(0), testGlobalVars)
       val pay1 = gtf.getMarathonPayload(DATA(1), testGlobalVars)
-      pay0.env.toString must /("PGREPL_TOKEN" -> "thetoken")
-      pay1.env.toString must /("PGREPL_TOKEN" -> "thetoken")
+      pay0.env.get.toString must /("PGREPL_TOKEN" -> "thetoken")
+      pay1.env.get.toString must /("PGREPL_TOKEN" -> "thetoken")
     }
 
     "configure later database containers as secondary" in {
@@ -349,10 +473,10 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val p2 = gtf.getMarathonPayload(DATA(2), testGlobalVars)
       val p3 = gtf.getMarathonPayload(DATA(3), testGlobalVars)
       val p10 = gtf.getMarathonPayload(DATA(10), testGlobalVars)
-      p1.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p2.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p3.env.as[Map[String,String]] must havePairs(standbyvars:_*)
-      p10.env.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p1.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p2.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p3.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
+      p10.env.get.as[Map[String,String]] must havePairs(standbyvars:_*)
       Json.toJson(p1).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
       Json.toJson(p2).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
       Json.toJson(p3).toString must /("container") /("docker") /("portMappings") /#(0) /("labels") /("VIP_0" -> "/gestalt-data-secondary:5432")
@@ -436,6 +560,30 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
     }
 
+    "configure meta caas provider for custom haproxy exposure groups" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "custom-group-1,custom-group-2"
+    }
+
+    "configure meta caas provider for default haproxy exposure group if neglected" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "external"
+    }
+
     "configure meta caas provider with support for marathon-under-marathon and custom dcos cluster name" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -464,7 +612,28 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
 
-    "set either args or cmd on marathon payloads to satisfy DCOS 1.8 schema" in {
+    "configure base services to launch with user-specified network if provided" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      def uuid = UUID.randomUUID()
+
+      Fragment.foreach(config.provisionedServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
+        svc.name ! {
+          payload.ipAddress.flatMap(_.networkName) must beSome("user-network")
+          payload.container.flatMap(_.docker).flatMap(_.network) must beSome("USER")
+        }
+      } ^ br
+    }
+
+    "configure base services to be compatible with marathon 1.8 payloads" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -473,10 +642,133 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       Fragment.foreach(config.provisionedServices) { svc =>
         val payload = gtf.getMarathonPayload(svc, testGlobalVars)
-        svc.name ! {(payload.cmd must beSome) or (payload.args must beSome)}
+        svc.name ! {
+          payload.cmd.isDefined must_!= payload.args.isDefined // XOR: Marathon 1.8 requires that exactly one of these must be present
+        }
+      } ^ br
+    }
+
+    "configure base services to launch with bridge networking if no user-specified network" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      Fragment.foreach(config.provisionedServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
+        svc.name ! {
+          payload.ipAddress.flatMap(_.networkName) must beNone
+          payload.container.flatMap(_.docker).flatMap(_.network) must beSome("BRIDGE")
+        }
+      } ^ br
+    }
+
+    "configure base services to launch with mesos health checks if specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.mesos-health-checks" -> "true"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      def uuid = UUID.randomUUID()
+
+      Fragment.foreach(config.provisionedServices) { svc =>
+        val payload = gtf.getMarathonPayload(svc, testGlobalVars)
+        svc.name ! {
+          payload.healthChecks.getOrElse(Seq.empty).flatMap(_.protocol) must contain(beOneOf("MESOS_TCP","MESOS_HTTP")).foreach
+        }
+      } ^ br
+    }
+
+    "configure payload services to launch with default network in absence of user-specified network" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+      val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
+      val kong = gtf.getKongProvider(uuid, uuid)
+      "gestalt-laser" ! {
+        (laser \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").asOpt[String] must beSome("HOST")
       }
+      Fragment.foreach( Seq(
+        "gestalt-api-gateway" -> gtw,
+        "gestalt-policy" -> policy,
+        "kong" -> kong ) ) {
+        case (lbl, payload) => lbl ! {
+          (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").asOpt[String] must beSome("BRIDGE")
+        }
+      } ^ br
+    }
+
+    "configure payload services to launch with specified user network" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+      val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
+      val kong = gtf.getKongProvider(uuid, uuid)
+      Fragment.foreach( Seq(
+        "gestalt-laser" -> laser,
+        "gestalt-api-gateway" -> gtw,
+        "gestalt-policy" -> policy,
+        "kong" -> kong ) ) {
+        case (lbl, payload) => lbl ! {
+          (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").asOpt[String] must beSome("user-network")
+        }
+      } ^ br
+    }
+
+    "configure payload services to launch with mesos health checks" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.mesos-health-checks" -> "true"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val config = injector.instanceOf[LauncherConfig]
+
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+      val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
+      val kong = gtf.getKongProvider(uuid, uuid)
+      Fragment.foreach( Seq(
+        "gestalt-laser" -> laser,
+        "gestalt-api-gateway" -> gtw,
+        "gestalt-policy" -> policy,
+        "kong" -> kong ) ) {
+        case (lbl, payload) => lbl ! {
+          val v = (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "health_checks" \\ "protocol").map(_.as[String])
+          v must contain(be_==("MESOS_HTTP")).foreach
+        }
+      } ^ br
     }
 
   }
+
 
 }

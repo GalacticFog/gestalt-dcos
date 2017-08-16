@@ -23,7 +23,6 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
-import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
@@ -149,7 +148,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   }
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
-    val appId = appPayload.id.stripPrefix("/")
+    val appId = appPayload.id.getOrElse(throw new RuntimeException("launchApp missing appId")).stripPrefix("/")
     val endpoint = s"/v2/apps/${appId}"
     for {
       req <- genRequest(endpoint)
@@ -211,7 +210,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val running = app.tasksRunning.get
     val healthy = app.tasksHealthy.get
     val sickly  = app.tasksUnhealthy.get
-    val target  = app.instances
+    val target  = app.instances.getOrElse(0)
 
     val status = if (staged != 0) STAGING
     else if (target != running) WAITING
@@ -220,10 +219,10 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     else if (target == healthy) HEALTHY
     else RUNNING
 
-    val lbExposed = app.labels.filterKeys(_.matches("HAPROXY_GROUP")).nonEmpty
+    val lbExposed = app.labels.exists(_.filterKeys(_.matches("HAPROXY_GROUP")).nonEmpty)
 
     val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
-    val lbDisabledPortIndices = app.labels.collect({
+    val lbDisabledPortIndices = app.labels.getOrElse(Map.empty).collect({
       case (HAPROXY_N_ENABLED(portNumber),v) if v == "false" => portNumber.toInt
     }).toSet
 
@@ -234,7 +233,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           .map(_.port)
           .zipWithIndex
           .collect({
-            case (portNumber, index) if !lbDisabledPortIndices.contains(index) => portNumber
+            case (Some(portNumber), index) if !lbDisabledPortIndices.contains(index) => portNumber
           })
           .map(lbUrl + ":" + _)
       case _ => Seq.empty
@@ -242,10 +241,28 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
     val vhosts = getVHosts(app)
 
-    val hostname = app.tasks.flatMap(_.headOption).flatMap(_.host)
-    val ports = app.tasks.flatMap(_.headOption).flatMap(_.ports).map(_.map(_.toString)) getOrElse Seq.empty
+    // there ideally is one health task. may be multiple tasks if:
+    // - they're all healthy (in which case, the first is as good as any)
+    // - unhealthy one is being killed for a new one, in which case, maybe we'll eventually converge
+    // (TODO: could put in logic to pick newest one or healthy one if we need to)
+    val task0 = app.tasks.flatMap(_.headOption)
+    val (hostname,ports) = {
+      if ( app.container.flatMap(_.docker).flatMap(_.network).contains("USER") ) {
+        // ip-per-task: use first container IP we find
+        val containerIp = task0.flatMap(_.ipAddresses.getOrElse(Seq.empty).collectFirst({
+          case IPAddress(Some(ipaddress), _) => ipaddress
+        }))
+        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings).getOrElse(Seq.empty).flatMap(_.containerPort)
+        ( containerIp,
+          pmPorts )
+      } else {
+        // use host ip and host port mapping
+        ( task0.flatMap(_.host),
+          task0.flatMap(_.ports).getOrElse(Seq.empty) )
+      }
+    }
 
-    ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports,status)
+    ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports.map(_.toString),status)
   }
 
   def getServices(): Future[Seq[ServiceInfo]] = {
@@ -259,7 +276,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           case 200 =>
             Future.fromTry(Try {
               (resp.json \ "apps").as[Seq[MarathonAppPayload]].flatMap {
-                app => appIdWithGroup.unapplySeq(app.id) flatMap (_.headOption) flatMap (LauncherConfig.Services.fromName) map (service => (service, app))
+                app => appIdWithGroup.unapplySeq(app.id.getOrElse("")) flatMap (_.headOption) flatMap (LauncherConfig.Services.fromName) map (service => (service, app))
               } map { case (service, app) => toServiceInfo(service, app) }
             })
           case 404 => Future.successful(Seq.empty)
@@ -305,14 +322,14 @@ object MarathonSSEClient {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
     lazy val HAPROXY_N_VPATH = "HAPROXY_([0-9]+)_PATH".r
     lazy val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
-    if ( app.labels.get("HAPROXY_GROUP").contains("external") ) {
-      val vhosts = app.labels.collect({
+    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).contains("external") ) {
+      val vhosts = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_VHOST(index), vhost) => (index.toInt -> vhost)
       })
-      val vpaths = app.labels.collect({
+      val vpaths = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_VPATH(index), vpath) => (index.toInt -> vpath)
       })
-      val disabled = app.labels.collect({
+      val disabled = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_ENABLED(index), enabled) if ! Set("t","true","yes","y").contains(enabled.toLowerCase) => index.toInt
       }).toSet
       // don't care about vpaths for which there is no corresponding vhost
