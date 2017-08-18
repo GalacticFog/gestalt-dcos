@@ -90,13 +90,18 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
     }
 
     "properly parse laser config from environment variables" in {
+      import LauncherConfig.LaserConfig
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val lc  = injector.instanceOf[LauncherConfig]
 
       val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
+      val minPortRange     = sys.env.get("LASER_MIN_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MIN_PORT_RANGE)
+      val maxPortRange     = sys.env.get("LASER_MAX_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MAX_PORT_RANGE)
       lc.laser.advertiseHost  must_== maybeAdvertHost
+      lc.laser.minPortRange   must_== minPortRange
+      lc.laser.maxPortRange   must_== maxPortRange
     }
 
     "properly parse marathon user network from environment variables" in {
@@ -133,10 +138,53 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
+
       val lc  = injector.instanceOf[LauncherConfig]
 
       val maybeNetList = sys.env.get("MARATHON_HAPROXY_GROUPS")
       lc.marathon.haproxyGroups must_== maybeNetList
+    }
+
+    "properly parse marathon-lb url from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+      val maybeLbUrl = sys.env.get("MARATHON_LB_URL")
+      lc.marathon.marathonLbUrl must_== maybeLbUrl
+    }
+
+    "properly parse TLD url from environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val lc  = injector.instanceOf[LauncherConfig]
+      val maybeTLD = sys.env.get("MARATHON_TLD")
+      lc.marathon.tld must_== maybeTLD
+    }
+
+    "proper parse database config from environment variables" in {
+      import LauncherConfig.DatabaseConfig
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val dbconfig = DatabaseConfig(
+        provision = sys.env.get("DATABASE_PROVISION").map(_.toBoolean).getOrElse(true),
+        provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_DISK),
+        provisionedCpu = sys.env.get("DATABASE_PROVISIONED_CPU").map(_.toDouble).getOrElse(DatabaseConfig.DEFAULT_CPU),
+        provisionedMemory = sys.env.get("DATABASE_PROVISIONED_MEMORY").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_MEMORY),
+        numSecondaries = sys.env.get("DATABASE_NUM_SECONDARIES").map(_.toInt).getOrElse(0),
+        pgreplToken = sys.env.get("DATABASE_PGREPL_TOKEN").getOrElse("iw4nn4b3likeu"),
+        hostname = sys.env.get("DATABASE_HOSTNAME").getOrElse("gestalt-framework-data"),
+        port = sys.env.get("DATABASE_PORT").map(_.toInt).getOrElse(5432),
+        username = sys.env.get("DATABASE_USERNAME").getOrElse("gestaltdev"),
+        password = sys.env.get("DATABASE_PASSWORD").getOrElse("letmein"),
+        prefix = sys.env.get("DATABASE_PREFIX").getOrElse("gestalt-")
+      )
+      lc.database must_== dbconfig
     }
 
   }

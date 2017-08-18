@@ -46,7 +46,9 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val database = DatabaseConfig(
     provision = getBool("database.provision", true),
-    provisionedSize = getInt("database.provisioned-size", 100),
+    provisionedCpu = getDouble("database.provisioned-cpu", DatabaseConfig.DEFAULT_CPU),
+    provisionedMemory = getInt("database.provisioned-memory", DatabaseConfig.DEFAULT_MEMORY),
+    provisionedSize = getInt("database.provisioned-size", DatabaseConfig.DEFAULT_DISK),
     numSecondaries = getInt("database.num-secondaries", DatabaseConfig.DEFAULT_NUM_SECONDARIES),
     pgreplToken = getString("database.pgrepl-token", "iw4nn4b3likeu"),
     hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
@@ -286,6 +288,8 @@ object LauncherConfig {
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
+                             provisionedCpu: Double,
+                             provisionedMemory: Int,
                              numSecondaries: Int,
                              pgreplToken: String,
                              hostname: String,
@@ -295,6 +299,10 @@ object LauncherConfig {
                              prefix: String )
 
   case object DatabaseConfig {
+    val DEFAULT_CPU: Double = 1.0
+    val DEFAULT_MEMORY: Int = 1024
+    val DEFAULT_DISK: Int = 100
+
     val DEFAULT_NUM_SECONDARIES = 0
     val DEFAULT_KILL_GRACE_PERIOD = 300
   }

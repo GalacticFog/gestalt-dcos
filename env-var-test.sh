@@ -32,11 +32,28 @@ sbt 'testOnly TaskFactoryEnvSpec'
 
 export DCOS_AUTH_METHOD=acs
 export DCOS_ACS_SERVICE_ACCT_CREDS='{"uid":"service-account-id","login_endpoint":"https://leader.mesos/acs/api/v1/auth/login","scheme":"RS256","private_key":"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAI..."}'
-export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
 export MARATHON_NETWORK_NAME=user-network-1
 export MESOS_HEALTH_CHECKS=true
 export MARATHON_NETWORK_LIST="user-network-1,user-network-2"
 export MARATHON_HAPROXY_GROUPS="custom-haproxy-1,custom-haproxy-2"
+export MARATHON_LB_URL="marathon-lb.myco.com"
+export MARATHON_TLD="myco.com"
+
+export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
+export LASER_MIN_PORT_RANGE=10000
+export LASER_MAX_PORT_RANGE=20000
+
+export DATABASE_USERNAME=dbuser
+export DATABASE_PASSWORD=dbpass
+export DATABASE_PROVISION=true
+export DATABASE_HOSTNAME=dbhost
+export DATABASE_NUM_SECONDARIES=10
+export DATABASE_PGREPL_TOKEN=sharingisgood
+export DATABASE_PORT=5555
+export DATABASE_PREFIX=dbprefix-
+export DATABASE_PROVISIONED_CPU=5.0
+export DATABASE_PROVISIONED_MEMORY=8192
+export DATABASE_PROVISIONED_SIZE=1000
 
 sbt 'testOnly TaskFactoryEnvSpec'
 
