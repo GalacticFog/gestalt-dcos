@@ -138,7 +138,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case _ if index == 0 => Some(5432)
       case _ => None
     }
-    appSpec(DATA(index)).copy(
+    val proto = DATA(index)
+    appSpec(proto).copy(
       volumes = Some(Seq(marathon.Volume(
         containerPath = Some("pgdata"),
         mode = Some("RW"),
@@ -146,6 +147,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           size = Some(launcherConfig.database.provisionedSize)
         ))
       ))),
+      cpus = launcherConfig.database.provisionedCpu.getOrElse(proto.cpu),
+      mem = launcherConfig.database.provisionedMemory.getOrElse(proto.mem),
       residency = Some(Residency(taskLostBehavior = Some(Residency.WAIT_FOREVER))),
       taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
       env = replEnv ++ Map(

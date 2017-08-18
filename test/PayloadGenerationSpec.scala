@@ -324,6 +324,30 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       pd.hostPort must beSome(5432)
     }
 
+    "request appropriate cpu allocation for database" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.provisioned-cpu" -> 16.0
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.cpus must beSome(16.0)
+    }
+
+    "request appropriate memory allocation for database" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.provisioned-memory" -> 16384
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.mem must beSome(16384)
+    }
+
     "request appropriate host port for rabbit" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

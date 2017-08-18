@@ -174,8 +174,8 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       val dbconfig = DatabaseConfig(
         provision = sys.env.get("DATABASE_PROVISION").map(_.toBoolean).getOrElse(true),
         provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_DISK),
-        provisionedCpu = sys.env.get("DATABASE_PROVISIONED_CPU").map(_.toDouble).getOrElse(DatabaseConfig.DEFAULT_CPU),
-        provisionedMemory = sys.env.get("DATABASE_PROVISIONED_MEMORY").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_MEMORY),
+        provisionedCpu = sys.env.get("DATABASE_PROVISIONED_CPU").map(_.toDouble),
+        provisionedMemory = sys.env.get("DATABASE_PROVISIONED_MEMORY").map(_.toInt),
         numSecondaries = sys.env.get("DATABASE_NUM_SECONDARIES").map(_.toInt).getOrElse(0),
         pgreplToken = sys.env.get("DATABASE_PGREPL_TOKEN").getOrElse("iw4nn4b3likeu"),
         hostname = sys.env.get("DATABASE_HOSTNAME").getOrElse("gestalt-framework-data"),
