@@ -173,7 +173,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     appSpec(RABBIT).copy(
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = hostPortMapping(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = hostPortMapping(15672))
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = launcherConfig(MARATHON_HTTP), path = Some("/")

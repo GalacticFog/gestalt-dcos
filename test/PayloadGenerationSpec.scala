@@ -358,8 +358,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       data.container.flatMap(_.docker) must beSome
       val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(2)
-      val Some(Seq(pd1,_)) = docker.portMappings
+      val Some(Seq(pd1,pd2)) = docker.portMappings
       pd1.hostPort must beSome(5672)
+      pd2.hostPort must beSome(15672)
     }
 
     "not request host port for database in USER networking mode" in {
