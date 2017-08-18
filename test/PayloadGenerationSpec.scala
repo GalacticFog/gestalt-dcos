@@ -292,26 +292,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_PORT_RANGE" -> "100",
-//        "MAX_PORT_RANGE" -> "200"
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome("100")
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome("200")
+    }
 
     "set default port range vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString,
-//        "MAX_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString)
+    }
 
     val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(
       hostname = "", port = 0, username = "", password = "", prefix = ""

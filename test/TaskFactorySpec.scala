@@ -127,7 +127,6 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     }
 
     "default to current version" in {
-
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -164,18 +163,18 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       }
     }
 
-    "enable and disabled runtimes per command line configuration" in {
-      val runtimeNames = Map(
-        "js"     -> Seq("nodejs"),
-        "jvm"    -> Seq("java", "scala"),
-        "dotnet" -> Seq("csharp", "dotnet"),
-        "golang" -> Seq("golang"),
-        "python" -> Seq("python"),
-        "ruby"   -> Seq("ruby")
-      )
-      val allNames: Seq[String] = runtimeNames.values.toSeq.flatten
-
-      ko("fix me")
+// TODO: need a new way to test this, harder now because executors are just linked providers in the laser container
+//    "enable and disabled runtimes per command line configuration" in {
+//      val runtimeNames = Map(
+//        "js"     -> Seq("nodejs"),
+//        "jvm"    -> Seq("java", "scala"),
+//        "dotnet" -> Seq("csharp", "dotnet"),
+//        "golang" -> Seq("golang"),
+//        "python" -> Seq("python"),
+//        "ruby"   -> Seq("ruby")
+//      )
+//      val allNames: Seq[String] = runtimeNames.values.toSeq.flatten
+//
 //      Fragment.foreach(runtimeNames.keys.toSeq) { runtime =>
 //        val injector = new GuiceApplicationBuilder()
 //          .disable[Module]
@@ -194,7 +193,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
 //          missingDisabled and presentEnabled
 //        }
 //      }
-    }.pendingUntilFixed
+//    }
 
     "only provision marathon health checks" in {
       val injector = new GuiceApplicationBuilder()
