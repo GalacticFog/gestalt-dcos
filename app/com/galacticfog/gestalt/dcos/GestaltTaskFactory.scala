@@ -98,7 +98,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       }
       case None => Map.empty
     }
-    Map("HAPROXY_GROUP" -> "external") ++ vhosts
+    Map("HAPROXY_GROUP" -> launcherConfig.marathon.haproxyGroups.getOrElse("external")) ++ vhosts
   }
 
   def serviceHostname: (ServiceEndpoint) => String = launcherConfig.vipHostname(_)
