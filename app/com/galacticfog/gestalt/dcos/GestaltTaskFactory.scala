@@ -98,7 +98,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       }
       case None => Map.empty
     }
-    Map("HAPROXY_GROUP" -> "external") ++ vhosts
+    Map("HAPROXY_GROUP" -> launcherConfig.marathon.haproxyGroups.getOrElse("external")) ++ vhosts
   }
 
   def serviceHostname: (ServiceEndpoint) => String = launcherConfig.vipHostname(_)
@@ -138,7 +138,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case _ if index == 0 => Some(5432)
       case _ => None
     }
-    appSpec(DATA(index)).copy(
+    val proto = DATA(index)
+    appSpec(proto).copy(
       volumes = Some(Seq(marathon.Volume(
         containerPath = Some("pgdata"),
         mode = Some("RW"),
@@ -146,6 +147,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           size = Some(launcherConfig.database.provisionedSize)
         ))
       ))),
+      cpus = launcherConfig.database.provisionedCpu.getOrElse(proto.cpu),
+      mem = launcherConfig.database.provisionedMemory.getOrElse(proto.mem),
       residency = Some(Residency(taskLostBehavior = Some(Residency.WAIT_FOREVER))),
       taskKillGracePeriodSeconds = Some(LauncherConfig.DatabaseConfig.DEFAULT_KILL_GRACE_PERIOD),
       env = replEnv ++ Map(
@@ -170,7 +173,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     appSpec(RABBIT).copy(
       ports = Some(Seq(
         PortSpec(number = 5672,  name = "service-api", labels = Map("VIP_0" -> vipLabel(RABBIT_AMQP)), hostPort = hostPortMapping(5672)),
-        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)))
+        PortSpec(number = 15672, name = "http-api",    labels = Map("VIP_0" -> vipLabel(RABBIT_HTTP)), hostPort = hostPortMapping(15672))
       )),
       healthChecks = Seq(HealthCheck(
         portIndex = 1, protocol = launcherConfig(MARATHON_HTTP), path = Some("/")
@@ -429,7 +432,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         schedulerConfig = LaserSecrets.SchedulerConfig(
           globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
           globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout),
-          laserAdvertiseHostname = launcherConfig.laser.advertiseHost
+          laserAdvertiseHostname = launcherConfig.laser.advertiseHost,
+          laserMinPortRange = Some(launcherConfig.laser.minPortRange),
+          laserMaxPortRange = Some(launcherConfig.laser.maxPortRange)
         ),
         executors = Seq.empty
       ),

@@ -5,6 +5,7 @@ import javax.inject.{Inject, Singleton}
 import com.galacticfog.gestalt.dcos.HealthCheck.HealthCheckProtocol
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services.DATA
 import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
 import com.galacticfog.gestalt.dcos.launcher.States._
 import play.api.{Configuration, Logger}
@@ -37,7 +38,7 @@ class LauncherConfig @Inject()(config: Configuration) {
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
     frameworkName = getString("marathon.framework-name", "marathon"),
     clusterName = getString("marathon.cluster-name", "thisdcos"),
-    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 2.0),
+    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 1.5),
     networkName = config.getString("marathon.network-name"),
     mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
     networkList = config.getString("marathon.network-list"),
@@ -46,7 +47,9 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val database = DatabaseConfig(
     provision = getBool("database.provision", true),
-    provisionedSize = getInt("database.provisioned-size", 100),
+    provisionedCpu = config.getDouble("database.provisioned-cpu"),
+    provisionedMemory = config.getInt("database.provisioned-memory"),
+    provisionedSize = getInt("database.provisioned-size", DatabaseConfig.DEFAULT_DISK),
     numSecondaries = getInt("database.num-secondaries", DatabaseConfig.DEFAULT_NUM_SECONDARIES),
     pgreplToken = getString("database.pgrepl-token", "iw4nn4b3likeu"),
     hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
@@ -229,7 +232,7 @@ object LauncherConfig {
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
-    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 3072; val port = 14374}
+    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 1536; val port = 14374}
     case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
@@ -286,6 +289,8 @@ object LauncherConfig {
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
+                             provisionedCpu: Option[Double],
+                             provisionedMemory: Option[Int],
                              numSecondaries: Int,
                              pgreplToken: String,
                              hostname: String,
@@ -295,6 +300,8 @@ object LauncherConfig {
                              prefix: String )
 
   case object DatabaseConfig {
+    val DEFAULT_DISK: Int = 100
+
     val DEFAULT_NUM_SECONDARIES = 0
     val DEFAULT_KILL_GRACE_PERIOD = 300
   }

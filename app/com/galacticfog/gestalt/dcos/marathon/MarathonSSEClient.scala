@@ -322,7 +322,7 @@ object MarathonSSEClient {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
     lazy val HAPROXY_N_VPATH = "HAPROXY_([0-9]+)_PATH".r
     lazy val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
-    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).contains("external") ) {
+    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).filter(_.trim.nonEmpty).isDefined ) {
       val vhosts = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_VHOST(index), vhost) => (index.toInt -> vhost)
       })

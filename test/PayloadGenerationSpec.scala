@@ -52,7 +52,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
       val expected = MarathonAppPayload(
         id = Some("/gestalt-framework/security"),
-        args = Some(Seq("-J-Xmx768m", "-Dhttp.port=9455")),
+        args = Some(Seq("-J-Xmx1024m", "-Dhttp.port=9455")),
         env = Some(Json.obj(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
@@ -292,26 +292,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_PORT_RANGE" -> "100",
-//        "MAX_PORT_RANGE" -> "200"
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome("100")
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome("200")
+    }
 
     "set default port range vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      ko("update me")
-//      val laserPayload = gtf.getMarathonPayload(LASER, testGlobalVars)
-//      laserPayload.env must havePairs(
-//        "MIN_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString,
-//        "MAX_PORT_RANGE" -> LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString
-//      )
-    }.pendingUntilFixed
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString)
+    }
 
     val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(
       hostname = "", port = 0, username = "", password = "", prefix = ""
@@ -330,6 +324,30 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       pd.hostPort must beSome(5432)
     }
 
+    "request appropriate cpu allocation for database" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.provisioned-cpu" -> 16.0
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.cpus must beSome(16.0)
+    }
+
+    "request appropriate memory allocation for database" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "database.provisioned-memory" -> 16384
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val data = gtf.getMarathonPayload(DATA(0), emptyDbConfig)
+      data.mem must beSome(16384)
+    }
+
     "request appropriate host port for rabbit" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -340,8 +358,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       data.container.flatMap(_.docker) must beSome
       val Some(docker) = data.container.flatMap(_.docker)
       docker.portMappings.get must haveSize(2)
-      val Some(Seq(pd1,_)) = docker.portMappings
+      val Some(Seq(pd1,pd2)) = docker.portMappings
       pd1.hostPort must beSome(5672)
+      pd2.hostPort must beSome(15672)
     }
 
     "not request host port for database in USER networking mode" in {
@@ -558,6 +577,66 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         "username" -> "unused",
         "password" -> "unused"
       )
+    }
+
+    "configure launched services for custom haproxy exposure groups" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      ))
+
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val security = gtf.getMarathonPayload(SECURITY, global)
+      val meta     = gtf.getMarathonPayload(META, global)
+      val ui       = gtf.getMarathonPayload(UI, global)
+      security.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+      meta.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+      ui.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+    }
+
+    "configure launched services for default haproxy exposure groups if neglected" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      ))
+
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val security = gtf.getMarathonPayload(SECURITY, global)
+      val meta     = gtf.getMarathonPayload(META, global)
+      val ui       = gtf.getMarathonPayload(UI, global)
+      security.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
+      meta.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
+      ui.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
     }
 
     "configure meta caas provider for custom haproxy exposure groups" in {
