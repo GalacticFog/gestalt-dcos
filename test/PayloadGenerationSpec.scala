@@ -560,6 +560,66 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       )
     }
 
+    "configure launched services for custom haproxy exposure groups" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      ))
+
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val security = gtf.getMarathonPayload(SECURITY, global)
+      val meta     = gtf.getMarathonPayload(META, global)
+      val ui       = gtf.getMarathonPayload(UI, global)
+      security.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+      meta.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+      ui.labels must beSome(havePair("HAPROXY_GROUP" -> "custom-group-1,custom-group-2"))
+    }
+
+    "configure launched services for default haproxy exposure groups if neglected" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "marathon.haproxy-groups" -> "custom-group-1,custom-group-2"
+        )
+        .injector
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      ))
+
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val security = gtf.getMarathonPayload(SECURITY, global)
+      val meta     = gtf.getMarathonPayload(META, global)
+      val ui       = gtf.getMarathonPayload(UI, global)
+      security.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
+      meta.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
+      ui.labels must beSome(havePair("HAPROXY_GROUP" -> "external"))
+    }
+
     "configure meta caas provider for custom haproxy exposure groups" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
