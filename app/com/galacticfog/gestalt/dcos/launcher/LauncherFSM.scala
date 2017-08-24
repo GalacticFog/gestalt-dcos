@@ -52,6 +52,8 @@ object LauncherFSM {
 
     private[launcher] case object AdvanceStage
 
+    private[launcher] case object Sync
+
     private[launcher] final case class UpdateServiceInfo(info: ServiceInfo)
 
     private[launcher] final case class UpdateAllServiceInfo(all: Seq[ServiceInfo])
@@ -520,6 +522,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       all.foreach {
         svcInfo => log.info(s"${svcInfo.service} : ${svcInfo.status}")
       }
+      this.context.system.scheduler.schedule(1 minute, 1 minute, self, Sync)
       if (config.database.provision) {
         goto(config.LAUNCH_ORDER.head) using d.update(all)
       } else {
@@ -856,6 +859,19 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       * miscellaneous events, mostly updates to state
       *
       *************************************************/
+
+    case Event(Sync, _) => {
+      log.info("performing period sync of apps in marathon")
+      val s = self
+      marClient.getServices() onComplete {
+        case Failure(t) =>
+          log.error(t, "error getting service statuses from Marathon REST API")
+        case Success(all) =>
+          log.info(s"received info on ${all.size} services, sending to self to update status")
+          s ! UpdateAllServiceInfo(all)
+      }
+      stay
+    }
 
     case Event(UpdateServiceInfo(status), d) =>
       stay using d.update(status)
