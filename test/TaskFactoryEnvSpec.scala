@@ -97,7 +97,13 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       val lc  = injector.instanceOf[LauncherConfig]
 
       val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
+      val maybeMaxConn  = sys.env.get("LASER_MAX_CONN_TIME").map(_.toInt)
+      val maybeHBTimeout  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_TIMEOUT").map(_.toInt)
+      val maybeHBPeriod  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_PERIOD").map(_.toInt)
       lc.laser.advertiseHost  must_== maybeAdvertHost
+      lc.laser.maxCoolConnectionTime    must_== maybeMaxConn
+      lc.laser.executorHeartbeatTimeout must_== maybeHBTimeout
+      lc.laser.executorHeartbeatPeriod  must_== maybeHBPeriod
     }
 
     "properly parse marathon user network from environment variables" in {

@@ -283,6 +283,42 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "META_NETWORK_NAME").asOpt[String] must beSome("HOST")
     }
 
+    "set max-connection-time on laser provider" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.max-cool-connection-time" -> 45
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_COOL_CONNECTION_TIME").asOpt[String] must beSome("45")
+    }
+
+    "set executor-heartbeat-timeout on laser provider" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.executor-heartbeat-timeout" -> 45000
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_TIMEOUT").asOpt[String] must beSome("45000")
+    }
+
+    "set executor-heartbeat-period on laser provider" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.executor-heartbeat-period" -> 30000
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_MILLIS").asOpt[String] must beSome("30000")
+    }
+
     "set port range vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

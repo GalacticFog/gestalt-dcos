@@ -186,7 +186,10 @@ class LauncherConfig @Inject()(config: Configuration) {
       )
     }).toSeq,
     ethernetPort = config.getString("laser.ethernet-port"),
-    advertiseHost = config.getString("laser.advertise-hostname")
+    advertiseHost = config.getString("laser.advertise-hostname"),
+    maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time"),
+    executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout"),
+    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period")
   )
 
   def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
@@ -325,7 +328,10 @@ object LauncherConfig {
                           maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime],
                           ethernetPort: Option[String],
-                          advertiseHost: Option[String] )
+                          advertiseHost: Option[String],
+                          maxCoolConnectionTime: Option[Int],
+                          executorHeartbeatTimeout: Option[Int],
+                          executorHeartbeatPeriod: Option[Int] )
 
   implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
 

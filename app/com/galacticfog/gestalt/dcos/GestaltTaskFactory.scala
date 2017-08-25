@@ -429,7 +429,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         schedulerConfig = LaserSecrets.SchedulerConfig(
           globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
           globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout),
-          laserAdvertiseHostname = launcherConfig.laser.advertiseHost
+          laserAdvertiseHostname = launcherConfig.laser.advertiseHost,
+          laserMaxCoolConnectionTime = launcherConfig.laser.maxCoolConnectionTime,
+          laserExecutorHeartbeatTimeout = launcherConfig.laser.executorHeartbeatTimeout,
+          laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod
         ),
         executors = Seq.empty
       ),
