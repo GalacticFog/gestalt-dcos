@@ -21,6 +21,7 @@ export GESTALT_LASER_IMG="lambda:override"
 export GESTALT_API_GATEWAY_IMG="gateway:override"
 export GESTALT_API_PROXY_IMG="proxy:override"
 export GESTALT_UI_IMG="ui:override"
+export LASER_EXECUTOR_NODEJS_IMG="nodejs:override"
 export LASER_EXECUTOR_JS_IMG="js:override"
 export LASER_EXECUTOR_JVM_IMG="jvm:override"
 export LASER_EXECUTOR_DOTNET_IMG="dotnet:override"
@@ -40,8 +41,6 @@ export MARATHON_LB_URL="marathon-lb.myco.com"
 export MARATHON_TLD="myco.com"
 
 export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
-export LASER_MIN_PORT_RANGE=10000
-export LASER_MAX_PORT_RANGE=20000
 
 export DATABASE_USERNAME=dbuser
 export DATABASE_PASSWORD=dbpass

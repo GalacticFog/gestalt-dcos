@@ -168,12 +168,12 @@ class LauncherConfig @Inject()(config: Configuration) {
   }
 
   val disabledRuntimes = Map(
-    EXECUTOR_JS     -> getBool("laser.enable-js-runtime", true),
-    EXECUTOR_JVM    -> getBool("laser.enable-jvm-runtime", true),
-    EXECUTOR_DOTNET -> getBool("laser.enable-dotnet-runtime", true),
-    EXECUTOR_RUBY   -> getBool("laser.enable-ruby-runtime", true),
-    EXECUTOR_PYTHON -> getBool("laser.enable-python-runtime", true),
-    EXECUTOR_GOLANG -> getBool("laser.enable-golang-runtime", true)
+    EXECUTOR_NASHORN -> getBool("laser.enable-js-runtime", true),
+    EXECUTOR_JVM     -> getBool("laser.enable-jvm-runtime", true),
+    EXECUTOR_DOTNET  -> getBool("laser.enable-dotnet-runtime", true),
+    EXECUTOR_RUBY    -> getBool("laser.enable-ruby-runtime", true),
+    EXECUTOR_PYTHON  -> getBool("laser.enable-python-runtime", true),
+    EXECUTOR_GOLANG  -> getBool("laser.enable-golang-runtime", true)
   ).collect({
     case (exec,false) => exec
   })
@@ -181,8 +181,6 @@ class LauncherConfig @Inject()(config: Configuration) {
   val laser = LaserConfig(
     minCoolExecutors = getInt("laser.min-cool-executors", LaserConfig.DEFAULT_MIN_COOL_EXECS),
     scaleDownTimeout = getInt("laser.scale-down-timeout", LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT),
-    minPortRange     = getInt("laser.min-port-range", LaserConfig.DEFAULT_MIN_PORT_RANGE),
-    maxPortRange     = getInt("laser.max-port-range", LaserConfig.DEFAULT_MAX_PORT_RANGE),
     enabledRuntimes = (LaserConfig.KNOWN_LASER_RUNTIMES -- disabledRuntimes).map({
       case (e,r) => r.copy(
         image = dockerImage(e)
@@ -261,12 +259,13 @@ object LauncherConfig {
   sealed trait WellKnownLaserExecutor extends Dockerable
 
   object LaserExecutors {
-    case object EXECUTOR_DOTNET extends WellKnownLaserExecutor {val name = "laser-executor-dotnet"}
-    case object EXECUTOR_JS     extends WellKnownLaserExecutor {val name = "laser-executor-js"}
-    case object EXECUTOR_JVM    extends WellKnownLaserExecutor {val name = "laser-executor-jvm"}
-    case object EXECUTOR_PYTHON extends WellKnownLaserExecutor {val name = "laser-executor-python"}
-    case object EXECUTOR_GOLANG extends WellKnownLaserExecutor {val name = "laser-executor-golang"}
-    case object EXECUTOR_RUBY   extends WellKnownLaserExecutor {val name = "laser-executor-ruby"}
+    case object EXECUTOR_DOTNET  extends WellKnownLaserExecutor {val name = "laser-executor-dotnet"}
+    case object EXECUTOR_NASHORN extends WellKnownLaserExecutor {val name = "laser-executor-js"}
+    case object EXECUTOR_NODEJS  extends WellKnownLaserExecutor {val name = "laser-executor-nodejs"}
+    case object EXECUTOR_JVM     extends WellKnownLaserExecutor {val name = "laser-executor-jvm"}
+    case object EXECUTOR_PYTHON  extends WellKnownLaserExecutor {val name = "laser-executor-python"}
+    case object EXECUTOR_GOLANG  extends WellKnownLaserExecutor {val name = "laser-executor-golang"}
+    case object EXECUTOR_RUBY    extends WellKnownLaserExecutor {val name = "laser-executor-ruby"}
   }
 
   def defaultDockerImages(service: Dockerable): String = service match {
@@ -280,7 +279,8 @@ object LauncherConfig {
     case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:release-${BuildInfo.version}"
     case Services.UI                  => s"galacticfog/gestalt-ui-react:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:release-${BuildInfo.version}"
-    case LaserExecutors.EXECUTOR_JS        => s"galacticfog/gestalt-laser-executor-js:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_NODEJS    => s"galacticfog/gestalt-laser-executor-nodejs:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_NASHORN   => s"galacticfog/gestalt-laser-executor-js:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_JVM       => s"galacticfog/gestalt-laser-executor-jvm:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_PYTHON    => s"galacticfog/gestalt-laser-executor-python:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
@@ -328,8 +328,6 @@ object LauncherConfig {
 
   case class LaserConfig( minCoolExecutors: Int,
                           scaleDownTimeout: Int,
-                          minPortRange: Int,
-                          maxPortRange: Int,
                           enabledRuntimes: Seq[LaserRuntime],
                           ethernetPort: Option[String],
                           advertiseHost: Option[String] )
@@ -342,20 +340,19 @@ object LauncherConfig {
                                          scheme: String )
 
   case object LaserConfig {
-    val DEFAULT_MIN_PORT_RANGE = 60000
-    val DEFAULT_MAX_PORT_RANGE = 60500
     val DEFAULT_MIN_COOL_EXECS = 1
     val DEFAULT_SCALE_DOWN_TIMEOUT = 15
 
     case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String)
 
     val KNOWN_LASER_RUNTIMES: Map[WellKnownLaserExecutor, LaserRuntime] = Map(
-      EXECUTOR_JS     -> LaserRuntime("js-executor",     "nodejs",        "", "bin/gestalt-laser-executor-js"    , "NodeJS"),
-      EXECUTOR_JVM    -> LaserRuntime("jvm-executor",    "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java"),
-      EXECUTOR_DOTNET -> LaserRuntime("dotnet-executor", "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp"),
-      EXECUTOR_PYTHON -> LaserRuntime("python-executor", "python",        "", "bin/gestalt-laser-executor-python", "Python"),
-      EXECUTOR_RUBY   -> LaserRuntime("ruby-executor",   "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby"),
-      EXECUTOR_GOLANG -> LaserRuntime("golang-executor", "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang")
+      EXECUTOR_NODEJS   -> LaserRuntime("nodejs-executor",  "nodejs",        "", "bin/gestalt-laser-executor-nodejs", "NodeJS"),
+      EXECUTOR_NASHORN  -> LaserRuntime("nashorn-executor", "nashorn",       "", "bin/gestalt-laser-executor-js",     "Nashorn"),
+      EXECUTOR_JVM      -> LaserRuntime("jvm-executor",     "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java"),
+      EXECUTOR_DOTNET   -> LaserRuntime("dotnet-executor",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp"),
+      EXECUTOR_PYTHON   -> LaserRuntime("python-executor",  "python",        "", "bin/gestalt-laser-executor-python", "Python"),
+      EXECUTOR_RUBY     -> LaserRuntime("ruby-executor",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby"),
+      EXECUTOR_GOLANG   -> LaserRuntime("golang-executor",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang")
     )
   }
 

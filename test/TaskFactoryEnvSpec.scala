@@ -56,12 +56,13 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "js-executor"     => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
-        case "jvm-executor"    => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
-        case "dotnet-executor" => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
-        case "python-executor" => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
-        case "ruby-executor"   => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
-        case "golang-executor" => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
+        case "nashorn-executor" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
+        case "nodejs-executor"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
+        case "jvm-executor"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
+        case "dotnet-executor"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
+        case "python-executor"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
+        case "ruby-executor"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
+        case "golang-executor"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -97,11 +98,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       val lc  = injector.instanceOf[LauncherConfig]
 
       val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
-      val minPortRange     = sys.env.get("LASER_MIN_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MIN_PORT_RANGE)
-      val maxPortRange     = sys.env.get("LASER_MAX_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MAX_PORT_RANGE)
       lc.laser.advertiseHost  must_== maybeAdvertHost
-      lc.laser.minPortRange   must_== minPortRange
-      lc.laser.maxPortRange   must_== maxPortRange
     }
 
     "properly parse marathon user network from environment variables" in {
