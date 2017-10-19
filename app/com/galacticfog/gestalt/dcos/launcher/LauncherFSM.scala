@@ -227,7 +227,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       log.info("meta.sync response: {}",resp.status)
       log.debug("meta.sync response body: {}",resp.body)
       resp.status match {
-        case 204 => Future.successful(MetaSyncFinished)
+        case t if Range(200,299).contains(t) => Future.successful(MetaSyncFinished)
         case _ => futureFailureWithMessage
       }
     }
