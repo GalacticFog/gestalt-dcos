@@ -203,13 +203,13 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val rootUrl = s"http://${metaUrl}/root"
     for {
       check <- genRequest(rootUrl, apiKey).get()
-      done <- if (check.status == 500) {
+      done <- if (check.status != 200) {
         log.info("attempting to bootstrap meta")
         genRequest(initUrl, apiKey).post("") flatMap { implicit resp =>
           log.info("meta.bootstrap response: {}",resp.status)
           log.debug("meta.bootstrap response body: {}",resp.body)
           resp.status match {
-            case 204 => Future.successful(MetaBootstrapFinished)
+            case s if Range(200,209).contains(s) => Future.successful(MetaBootstrapFinished)
             case _ => futureFailureWithMessage
           }
         }
