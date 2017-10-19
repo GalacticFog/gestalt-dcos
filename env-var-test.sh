@@ -41,6 +41,9 @@ export MARATHON_LB_URL="marathon-lb.myco.com"
 export MARATHON_TLD="myco.com"
 
 export LASER_ADVERTISE_HOSTNAME=laser.marathon.mesos
+export LASER_MAX_CONN_TIME=45
+export LASER_EXECUTOR_HEARTBEAT_TIMEOUT=15000
+export LASER_EXECUTOR_HEARTBEAT_PERIOD=30000
 
 export DATABASE_USERNAME=dbuser
 export DATABASE_PASSWORD=dbpass
