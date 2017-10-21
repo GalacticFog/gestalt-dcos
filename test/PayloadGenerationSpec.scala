@@ -584,11 +584,27 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val payload = gtf.getCaasProvider()
-      (Json.toJson(payload) \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
+      (payload \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
         "scheme" -> "Basic",
         "username" -> "unused",
         "password" -> "unused"
       )
+    }
+
+    "configure meta caas provider with secret support" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "dcos.secret-support" -> true,
+          "dcos.secret-url"     -> "https://secrets.are/here",
+          "dcos.secret-store"   -> "not-default"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (payload \ "properties" \ "config" \ "secret_support").asOpt[Boolean] must beSome(true)
+      (payload \ "properties" \ "config" \ "secret_url").asOpt[String] must beSome("https://secrets.are/here")
+      (payload \ "properties" \ "config" \ "secret_store").asOpt[String] must beSome("not-default")
     }
 
     "configure launched services for custom haproxy exposure groups" in {

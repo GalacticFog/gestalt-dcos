@@ -45,6 +45,12 @@ class LauncherConfig @Inject()(config: Configuration) {
     haproxyGroups = config.getString("marathon.haproxy-groups")
   )
 
+  val dcos = DCOSConfig(
+    secretSupport = config.getBoolean("dcos.secret-support"),
+    secretUrl = config.getString("dcos.secret-url"),
+    secretStore = config.getString("dcos.secret-store")
+  )
+
   val database = DatabaseConfig(
     provision = getBool("database.provision", true),
     provisionedCpu = config.getDouble("database.provisioned-cpu"),
@@ -324,6 +330,11 @@ object LauncherConfig {
                              networkList: Option[String],
                              haproxyGroups: Option[String]
                            )
+
+  case class DCOSConfig( secretSupport: Option[Boolean],
+                         secretUrl: Option[String],
+                         secretStore: Option[String]
+                       )
 
   case class SecurityConfig( username: String,
                              password: Option[String],
