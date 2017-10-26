@@ -48,7 +48,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.2.3-SNAPSHOT" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.2.5-SNAPSHOT" withSources()
 )
 
 resolvers += Resolver.bintrayRepo("hseeberger", "maven")

@@ -22,6 +22,14 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
     // it needs to pass independent of the existence of the env vars by falling back on defaults
     "support environment variables for ensemble versioning or override" in {
       val injector = new GuiceApplicationBuilder()
+        .configure(
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
+        )
         .disable[Module]
         .injector
 
@@ -53,6 +61,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:release-${ensVer}"))
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:release-${ensVer}"))
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:release-${ensVer}"))
+      gtf.getLogProvider(uuid) must beSome(haveServiceImage(env("GESTALT_LOG_IMG").getOrElse(s"galacticfog/gestalt-log:release-${ensVer}")))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -91,7 +100,6 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
     }
 
     "properly parse laser config from environment variables" in {
-      import LauncherConfig.LaserConfig
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -166,7 +174,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       lc.marathon.tld must_== maybeTLD
     }
 
-    "proper parse database config from environment variables" in {
+    "properly parse database config from environment variables" in {
       import LauncherConfig.DatabaseConfig
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -188,6 +196,26 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
         prefix = sys.env.get("DATABASE_PREFIX").getOrElse("gestalt-")
       )
       lc.database must_== dbconfig
+    }
+
+    "properly parse elasticsearch config from environment variables" in {
+      import LauncherConfig.LoggingConfig
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val esconfig = LoggingConfig(
+        esClusterName = sys.env.get("LOGGING_ES_CLUSTER_NAME"),
+        esHost = sys.env.get("LOGGING_ES_HOST"),
+        esPortTransport = sys.env.get("LOGGING_ES_PORT_TRANSPORT").map(_.toInt),
+        esPortREST      = sys.env.get("LOGGING_ES_PORT_REST").map(_.toInt),
+        esProtocol = sys.env.get("LOGGING_ES_PROTOCOL"),
+        provisionProvider = sys.env.get("LOGGING_PROVISION_PROVIDER").map(_.toBoolean).getOrElse(false),
+        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").map(_.toBoolean).getOrElse(false)
+      )
+      lc.logging must_== esconfig
     }
 
   }

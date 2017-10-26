@@ -46,6 +46,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.meta" -> "test-meta:tag",
           "containers.policy" -> "test-policy:tag",
           "containers.laser" -> "test-laser:tag",
+          "containers.log" -> "test-log:tag",
           "containers.api-gateway" -> "test-api-gateway:tag",
           "containers.ui-react" -> "test-react-ui:tag",
           "containers.laser-executor-nodejs" -> "test-nodejs-executor:tag",
@@ -54,7 +55,13 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.laser-executor-dotnet" -> "test-dotnet-executor:tag",
           "containers.laser-executor-golang" -> "test-golang-executor:tag",
           "containers.laser-executor-python" -> "test-python-executor:tag",
-          "containers.laser-executor-ruby"   -> "test-ruby-executor:tag"
+          "containers.laser-executor-ruby"   -> "test-ruby-executor:tag",
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
         )
         .injector
 
@@ -71,6 +78,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("test-kong:tag")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("test-policy:tag")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("test-laser:tag")
+      gtf.getLogProvider(uuid) must beSome(haveServiceImage("test-log:tag"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -94,7 +102,13 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "gestalt-framework-version" -> "9.10.11.12"
+          "gestalt-framework-version" -> "9.10.11.12",
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
         )
         .injector
 
@@ -111,6 +125,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:release-9.10.11.12")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:release-9.10.11.12")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:release-9.10.11.12")
+      gtf.getLogProvider(uuid) must beSome(haveServiceImage("galacticfog/gestalt-log:release-9.10.11.12"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:release-9.10.11.12")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -132,6 +147,14 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     "default to current version" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
+        .configure(
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
+        )
         .injector
 
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -149,6 +172,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:release-${ver}")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:release-${ver}")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:release-${ver}")
+      gtf.getLogProvider(uuid) must beSome(haveServiceImage(s"galacticfog/gestalt-log:release-${ver}"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:release-${ver}")
 
       def getImage(lr: LaserRuntime) = lr.name match {

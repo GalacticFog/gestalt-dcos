@@ -441,6 +441,27 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       }
   }
 
+  private[this] def configureCaaSProviderWithLoggingProvider(metaUrl: String, apiKey: GestaltAPIKey, dcosProviderId: UUID, loggingProviderId: UUID): Future[Unit] = {
+    genRequest(s"http://$metaUrl/root/providers/${dcosProviderId}", apiKey)
+      .patch(Json.toJson(Seq(PatchOp.Replace(
+        path = "/properties/linked_providers",
+        value = Json.arr(Json.obj(
+          "id" -> loggingProviderId.toString,
+          "name" -> "logging",
+          "typeId" -> "e1782fef-4b7c-4f75-b8b8-6e6e2ecd82b2",
+          "type" -> "Gestalt::Configuration::Provider::Logging"
+        ))
+      ))))
+      .flatMap { implicit resp =>
+        log.info("meta.dcosProvider patch response: {}", resp.status)
+        log.debug("meta.dcosProvider patch response body: {}", resp.body)
+        resp.status match {
+          case r if 200 <= r && r <= 299 => Future.successful(())
+          case _ => futureFailureWithMessage
+        }
+      }
+  }
+
   private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
     val licenseBody = Json.obj(
       "name" -> "Default-License-1",
@@ -637,6 +658,13 @@ class LauncherFSM @Inject()( config: LauncherConfig,
                 gtf.getKongProvider(dbProviderId, dcosProviderId)
               ))
             )
+            maybeLogProvider <- Future.sequence(
+              provisionMetaProviders(metaUrl,apiKey, gtf.getLogProvider(dcosProviderId).toSeq )
+            )
+            _ <- Future.sequence(maybeLogProvider.map(
+              logProviderId => configureCaaSProviderWithLoggingProvider(metaUrl, apiKey, dcosProviderId, logProviderId)
+            ))
+            //
             Seq(policyProviderId,gtwProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
                 gtf.getPolicyProvider(apiKey, dcosProviderId, laserProviderId, rabbitProviderId),
