@@ -33,6 +33,7 @@ class LauncherConfig @Inject()(config: Configuration) {
 
   val marathon = MarathonConfig(
     marathonLbUrl = config.getString("marathon.lb-url"),
+    marathonLbProto = config.getString("marathon.lb-protocol"),
     appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
     tld = config.getString("marathon.tld"),
     baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
@@ -63,6 +64,16 @@ class LauncherConfig @Inject()(config: Configuration) {
     username = getString("database.username", "gestaltdev"),
     password = getString("database.password", "letmein"),
     prefix = getString("database.prefix", "gestalt-")
+  )
+
+  val logging = LoggingConfig(
+    esClusterName = config.getString("logging.es-cluster-name"),
+    esProtocol = config.getString("logging.es-protocol"),
+    esHost = config.getString("logging.es-host"),
+    esPortTransport = config.getInt("logging.es-port-transport"),
+    esPortREST      = config.getInt("logging.es-port-rest"),
+    provisionProvider = getBool("logging.provision-provider", false),
+    configureLaser = getBool("logging.configure-laser", false)
   )
 
   val meta = MetaConfig(
@@ -244,9 +255,10 @@ object LauncherConfig {
     case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
 
     case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
-    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1536; val port = 1111}
+    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1024; val port = 1111}
     case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
     case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
+    case object LOG                                    extends ServiceEndpoint with Dockerable {val name = "log";            val cpu = 0.25; val mem = 1024; val port = 9000}
 
     case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
     case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
@@ -286,6 +298,7 @@ object LauncherConfig {
     case Services.META                => s"galacticfog/gestalt-meta:release-${BuildInfo.version}"
     case Services.POLICY              => s"galacticfog/gestalt-policy:release-${BuildInfo.version}"
     case Services.LASER               => s"galacticfog/gestalt-laser:release-${BuildInfo.version}"
+    case Services.LOG                 => s"galacticfog/gestalt-log:release-${BuildInfo.version}"
     case Services.API_GATEWAY         => s"galacticfog/gestalt-api-gateway:release-${BuildInfo.version}"
     case Services.UI                  => s"galacticfog/gestalt-ui-react:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_DOTNET    => s"galacticfog/gestalt-laser-executor-dotnet:release-${BuildInfo.version}"
@@ -319,6 +332,7 @@ object LauncherConfig {
   case class Debug( cpu: Option[Double], mem: Option[Int] )
 
   case class MarathonConfig( marathonLbUrl: Option[String],
+                             marathonLbProto: Option[String],
                              appGroup: String,
                              tld: Option[String],
                              baseUrl: String,
@@ -340,6 +354,14 @@ object LauncherConfig {
                              password: Option[String],
                              key: Option[String],
                              secret: Option[String] )
+
+  case class LoggingConfig(esClusterName: Option[String],
+                           esProtocol: Option[String],
+                           esHost: Option[String],
+                           esPortTransport: Option[Int],
+                           esPortREST: Option[Int],
+                           provisionProvider: Boolean,
+                           configureLaser: Boolean )
 
   case class LaserConfig( minCoolExecutors: Int,
                           scaleDownTimeout: Int,

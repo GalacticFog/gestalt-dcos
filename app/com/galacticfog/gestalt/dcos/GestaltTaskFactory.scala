@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.dcos
 import java.util.UUID
 
 import scala.language.implicitConversions
-import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, LaserExecutors, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, ServiceEndpoint, acsServiceAcctFmt}
 import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
 
@@ -403,6 +403,44 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
+  def getLogProvider(caasProviderId: UUID): Option[JsValue] = {
+    for {
+      esHost <- launcherConfig.logging.esHost
+      esPort <- launcherConfig.logging.esPortTransport
+      esName <- launcherConfig.logging.esClusterName
+      if launcherConfig.logging.provisionProvider
+      js = GestaltProviderBuilder.loggingProvider(
+        secrets = LoggingSecrets(
+          esConfig = LoggingSecrets.ESConfig(
+            esClusterName = esName,
+            esComputeType = "dcos",
+            esServiceHost = esHost,
+            esServicePort = esPort,
+            esColdDays = 14,
+            esHotDays = 7,
+            esSnapshotRepo = "s3_repository"
+          ),
+          dcosConfig = Some(LoggingSecrets.DCOSConfig(
+            dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
+            dcosAuth = None,
+            dcosHost = "leader.mesos",
+            dcosProtocol = "http",
+            dcosPort = 80
+          )),
+          serviceConfig = LoggingSecrets.ServiceConfig(
+            image = launcherConfig.dockerImage(LOG),
+            network = launcherConfig.marathon.networkName,
+            healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+            vhost = launcherConfig.marathon.tld.map("default-logging." + _),
+            vhostProto = launcherConfig.marathon.marathonLbProto
+          )
+        ),
+        computeId = caasProviderId.toString,
+        caasType = CaaSTypes.DCOS
+      )
+    } yield js
+  }
+
   def getLaserProvider(apiKey: GestaltAPIKey,
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
@@ -438,7 +476,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserAdvertiseHostname = launcherConfig.laser.advertiseHost,
           laserMaxCoolConnectionTime = launcherConfig.laser.maxCoolConnectionTime,
           laserExecutorHeartbeatTimeout = launcherConfig.laser.executorHeartbeatTimeout,
-          laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod
+          laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod,
+          esHost = launcherConfig.logging.esHost.filter(_ => launcherConfig.logging.configureLaser),
+          esPort = launcherConfig.logging.esPortREST.filter(_ => launcherConfig.logging.configureLaser),
+          esProtocol = launcherConfig.logging.esProtocol.filter(_ => launcherConfig.logging.configureLaser)
         ),
         executors = Seq.empty
       ),

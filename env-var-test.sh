@@ -18,6 +18,7 @@ export GESTALT_SECURITY_IMG="security:override"
 export GESTALT_META_IMG="meta:override"
 export GESTALT_POLICY_IMG="policy:override"
 export GESTALT_LASER_IMG="lambda:override"
+export GESTALT_LOG_IMG="log:override"
 export GESTALT_API_GATEWAY_IMG="gateway:override"
 export GESTALT_API_PROXY_IMG="proxy:override"
 export GESTALT_UI_IMG="ui:override"
@@ -56,6 +57,13 @@ export DATABASE_PREFIX=dbprefix-
 export DATABASE_PROVISIONED_CPU=5.0
 export DATABASE_PROVISIONED_MEMORY=8192
 export DATABASE_PROVISIONED_SIZE=1000
+export LOGGING_ES_HOST=my-elastic-cluster.com
+export LOGGING_ES_PORT_REST=9200
+export LOGGING_ES_PORT_TRANSPORT=9300
+export LOGGING_ES_CLUSTER_NAME=my-es-cluster
+export LOGGING_ES_PROTOCOL=https
+export LOGGING_CONFIGURE_LASER=true
+export LOGGING_PROVISION_PROVIDER=true
 
 sbt 'testOnly TaskFactoryEnvSpec'
 
