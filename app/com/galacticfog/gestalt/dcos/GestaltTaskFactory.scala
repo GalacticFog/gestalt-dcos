@@ -436,7 +436,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           )
         ),
         computeId = caasProviderId.toString,
-        caasType = CaaSTypes.DCOS
+        caasType = CaaSTypes.DCOS,
+        providerName = Some("default-logging")
       )
     } yield js
   }
@@ -489,7 +490,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       computeId = caasProviderId.toString,
       rabbitId = rabbitProviderId.toString,
       dbId = dbProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("laser")
     )
   }
 
@@ -507,7 +509,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("kong")
     )
   }
 
@@ -528,7 +531,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       computeId = caasProviderId.toString,
       laserId = laserProviderId.toString,
       rabbitId = rabbitProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("policy")
     )
   }
 
@@ -544,7 +548,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       kongId = kongProviderId.toString,
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
-      securityId = secProviderId.toString
+      securityId = secProviderId.toString,
+      providerName = Some("gwm")
     )
   }
 

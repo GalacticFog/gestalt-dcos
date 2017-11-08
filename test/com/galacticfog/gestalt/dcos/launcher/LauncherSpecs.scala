@@ -297,42 +297,42 @@ class LauncherSpecs extends PlaySpecification with Mockito {
               "id" -> pid
             ))
           case _ => providerName match {
-            case "default-dcos-provider"  =>
+            case "default-dcos"  =>
               createdBaseDCOS.getAndIncrement()
               Created(Json.obj(
                 "id" -> dcosProvId
               ))
-            case "default-postgres-provider" =>
+            case "default-postgres" =>
               createdDbProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> dbProvId
               ))
-            case "default-rabbit-provider" =>
+            case "default-rabbit" =>
               createdRabbitProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> rabbitProvId
               ))
-            case "default-security-provider" =>
+            case "default-security" =>
               createdSecProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> secProvId
               ))
-            case "default-laser-provider" =>
+            case "laser" =>
               createdLaserProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> laserProvId
               ))
-            case "default-kong-provider" =>
+            case "kong" =>
               createdKongProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> kongProvId
               ))
-            case "default-policy-provider" =>
+            case "policy" =>
               createdPolicyProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> policyProvId
               ))
-            case "default-gateway-provider" =>
+            case "gwm" =>
               createdGatewayProvider.getAndIncrement()
               Created(Json.obj(
                 "id" -> gtwProvId
