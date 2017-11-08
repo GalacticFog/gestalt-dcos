@@ -454,7 +454,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserCpu = LASER.cpu,
           laserMem = LASER.mem,
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
-          laserEthernetPort = launcherConfig.laser.ethernetPort
+          laserEthernetPort = launcherConfig.laser.ethernetPort,
+          serviceHostOverride = launcherConfig.laser.serviceHostOverride,
+          servicePortOverride = launcherConfig.laser.servicePortOverride
         ),
         caasConfig = LaserSecrets.CaaSConfig(
           computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",

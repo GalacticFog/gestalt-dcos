@@ -208,7 +208,9 @@ class LauncherConfig @Inject()(config: Configuration) {
     advertiseHost = config.getString("laser.advertise-hostname"),
     maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time"),
     executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout"),
-    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period")
+    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period"),
+    serviceHostOverride = config.getString("laser.service-host-override"),
+    servicePortOverride = config.getInt("laser.service-port-override")
   )
 
   def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
@@ -370,7 +372,9 @@ object LauncherConfig {
                           advertiseHost: Option[String],
                           maxCoolConnectionTime: Option[Int],
                           executorHeartbeatTimeout: Option[Int],
-                          executorHeartbeatPeriod: Option[Int] )
+                          executorHeartbeatPeriod: Option[Int],
+                          serviceHostOverride: Option[String],
+                          servicePortOverride: Option[Int] )
 
   implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
 
