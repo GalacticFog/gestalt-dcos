@@ -152,14 +152,15 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val endpoint = s"/v2/apps/${appId}"
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("force" -> "true").put(
+      resp <- req.withQueryString("force" -> "true").post(
         Json.toJson(appPayload)
       )
       json <- {
         considerInvalidatingAuthToken(resp.status)
         resp.status match {
-          case 201 => Future.successful(resp.json)
-          case 200 => Future.successful(resp.json)
+          case 200 | 201 | 409 =>
+            if (resp.status == 409) logger.warn(s"launchApp(${appId}) response is 409: ${resp.body}, will ignore")
+            Future.successful(resp.json)
           case s =>
             logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
             Future.failed(new RuntimeException(

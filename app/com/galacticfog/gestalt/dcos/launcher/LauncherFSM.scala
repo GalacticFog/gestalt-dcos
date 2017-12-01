@@ -203,13 +203,13 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val rootUrl = s"http://${metaUrl}/root"
     for {
       check <- genRequest(rootUrl, apiKey).get()
-      done <- if (check.status == 500) {
+      done <- if (check.status != 200) {
         log.info("attempting to bootstrap meta")
         genRequest(initUrl, apiKey).post("") flatMap { implicit resp =>
           log.info("meta.bootstrap response: {}",resp.status)
           log.debug("meta.bootstrap response body: {}",resp.body)
           resp.status match {
-            case 204 => Future.successful(MetaBootstrapFinished)
+            case s if Range(200,209).contains(s) => Future.successful(MetaBootstrapFinished)
             case _ => futureFailureWithMessage
           }
         }
@@ -227,7 +227,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       log.info("meta.sync response: {}",resp.status)
       log.debug("meta.sync response body: {}",resp.body)
       resp.status match {
-        case 204 => Future.successful(MetaSyncFinished)
+        case t if Range(200,299).contains(t) => Future.successful(MetaSyncFinished)
         case _ => futureFailureWithMessage
       }
     }
@@ -441,12 +441,33 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       }
   }
 
+  private[this] def configureCaaSProviderWithLoggingProvider(metaUrl: String, apiKey: GestaltAPIKey, dcosProviderId: UUID, loggingProviderId: UUID): Future[Unit] = {
+    genRequest(s"http://$metaUrl/root/providers/${dcosProviderId}", apiKey)
+      .patch(Json.toJson(Seq(PatchOp.Replace(
+        path = "/properties/linked_providers",
+        value = Json.arr(Json.obj(
+          "id" -> loggingProviderId.toString,
+          "name" -> "logging",
+          "typeId" -> "e1782fef-4b7c-4f75-b8b8-6e6e2ecd82b2",
+          "type" -> "Gestalt::Configuration::Provider::Logging"
+        ))
+      ))))
+      .flatMap { implicit resp =>
+        log.info("meta.dcosProvider patch response: {}", resp.status)
+        log.debug("meta.dcosProvider patch response body: {}", resp.body)
+        resp.status match {
+          case r if 200 <= r && r <= 299 => Future.successful(())
+          case _ => futureFailureWithMessage
+        }
+      }
+  }
+
   private[this] def provisionMetaLicense(metaUrl: String, apiKey: GestaltAPIKey): Future[MetaProvisioned.type] = {
     val licenseBody = Json.obj(
       "name" -> "Default-License-1",
       "description" -> "Default GF license",
       "properties" -> Json.obj(
-        "data" -> "ABwwGgQU9EaKhQRbQ4DHDk+LQKqEUXDXCAQCAgQATrYKW+1dp9TnB+BNbk9PnCNvYhHe2rtVI+gnMZKt3age1m9+u3KYJZaYqKMicdDxqx9jYIM1ChNqBVNj66hR84wvpeRVyTcMxxxrPtkHUbZU8m6MnTJzx4FSKENfi60ALccJjQTrgEKBaBcuGjnXdn2J+IkwRd5iaZ3t3rJb+OnG9v8qpyI9kCHf4oPYnyHt74OqHwyrQ8G2zXbilSwFNo/aEyYNqlclXbkgQ2eZ8Dq8f05wuBLiyr96767/Sox8dU39X7Od53AdumuRmR+NCyYx9EEagKTz/9/B9MR9kC1R2MLFEcr/RAcPaZ8vjBMSCjbS8QXTsDfz/M2t6bFxIZ1C84zREpwRVxuI6fdmtVhzwQRV/UMoUddK48hKXBESF22uGoAzrfJPJ3agSlP+1Adju2/VcPiQ"
+        "data" -> "ABwwGgQUVS9uKF73AyeP06JhgH17LNOBxB8CAgQAPEWRItlr1xdoJnalqW2vcmujpdB2WfCG3ShwuovCtFO/mhMmhktOwYDl6xBKihC8lBhwLeAtyi61R2b6UwTSkMiRqyIdcRMGc+Eqozm3XanhVpCXATsUawQFfqGdu/rUVFCGRq1J129gwJ1EVVtYab1GvFjib30c8ZInWLI0PBazyZZyda9f5xdys2mqeLtSJDI3960c1xwBQJyRvXIG9ZZgceU0koG/5kF8+I/4fUrkjzSKdcy6iXgTIDyC+i3bictfaT2X3Yhoo63PSlXU4IFrZ8CMtWOmffpahmuwCBGPq0VIuvSVnZzYNw8yN/d8lbMarXp2wjU/Kd2HRP1nZ57l8GXF2H2iKj4rPGLAtNn8XYFPh7jviWD8RSS8eeeWMVPCaHsza10G8jhonLZEsAB+fkQdmb5R"
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
@@ -637,6 +658,13 @@ class LauncherFSM @Inject()( config: LauncherConfig,
                 gtf.getKongProvider(dbProviderId, dcosProviderId)
               ))
             )
+            maybeLogProvider <- Future.sequence(
+              provisionMetaProviders(metaUrl,apiKey, gtf.getLogProvider(dcosProviderId).toSeq )
+            )
+            _ <- Future.sequence(maybeLogProvider.map(
+              logProviderId => configureCaaSProviderWithLoggingProvider(metaUrl, apiKey, dcosProviderId, logProviderId)
+            ))
+            //
             Seq(policyProviderId,gtwProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
                 gtf.getPolicyProvider(apiKey, dcosProviderId, laserProviderId, rabbitProviderId),

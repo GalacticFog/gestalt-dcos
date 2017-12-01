@@ -3,7 +3,7 @@ package com.galacticfog.gestalt.dcos
 import java.util.UUID
 
 import scala.language.implicitConversions
-import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, LaserExecutors, ServiceEndpoint}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, ServiceEndpoint, acsServiceAcctFmt}
 import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
 
@@ -368,7 +368,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
       dcosClusterName = Some(launcherConfig.marathon.clusterName),
       networks = launcherConfig.marathon.networkList,
-      loadBalancerGroups = launcherConfig.marathon.haproxyGroups.map(_.split(","))
+      loadBalancerGroups = launcherConfig.marathon.haproxyGroups.map(_.split(",")),
+      dcosSecretSupport = launcherConfig.dcos.secretSupport,
+      dcosSecretUrl = launcherConfig.dcos.secretUrl,
+      dcosSecretStore = launcherConfig.dcos.secretStore
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
@@ -400,6 +403,45 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
+  def getLogProvider(caasProviderId: UUID): Option[JsValue] = {
+    for {
+      esHost <- launcherConfig.logging.esHost
+      esPort <- launcherConfig.logging.esPortTransport
+      esName <- launcherConfig.logging.esClusterName
+      if launcherConfig.logging.provisionProvider
+      js = GestaltProviderBuilder.loggingProvider(
+        secrets = LoggingSecrets(
+          esConfig = LoggingSecrets.ESConfig(
+            esClusterName = esName,
+            esComputeType = "dcos",
+            esServiceHost = esHost,
+            esServicePort = esPort,
+            esColdDays = 14,
+            esHotDays = 7,
+            esSnapshotRepo = "s3_repository"
+          ),
+          dcosConfig = Some(LoggingSecrets.DCOSConfig(
+            dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
+            dcosAuth = None,
+            dcosHost = "leader.mesos",
+            dcosProtocol = "http",
+            dcosPort = 80
+          )),
+          serviceConfig = LoggingSecrets.ServiceConfig(
+            image = launcherConfig.dockerImage(LOG),
+            network = launcherConfig.marathon.networkName,
+            healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+            vhost = launcherConfig.marathon.tld.map("default-logging." + _),
+            vhostProto = launcherConfig.marathon.marathonLbProto
+          )
+        ),
+        computeId = caasProviderId.toString,
+        caasType = CaaSTypes.DCOS,
+        providerName = Some("default-logging")
+      )
+    } yield js
+  }
+
   def getLaserProvider(apiKey: GestaltAPIKey,
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
@@ -412,7 +454,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserCpu = LASER.cpu,
           laserMem = LASER.mem,
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
-          laserEthernetPort = launcherConfig.laser.ethernetPort
+          laserEthernetPort = launcherConfig.laser.ethernetPort,
+          serviceHostOverride = launcherConfig.laser.serviceHostOverride,
+          servicePortOverride = launcherConfig.laser.servicePortOverride
         ),
         caasConfig = LaserSecrets.CaaSConfig(
           computeUrl = s"http://${launcherConfig.vipHostname(META)}:${META.port}",
@@ -433,8 +477,12 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
           globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout),
           laserAdvertiseHostname = launcherConfig.laser.advertiseHost,
-          laserMinPortRange = Some(launcherConfig.laser.minPortRange),
-          laserMaxPortRange = Some(launcherConfig.laser.maxPortRange)
+          laserMaxCoolConnectionTime = launcherConfig.laser.maxCoolConnectionTime,
+          laserExecutorHeartbeatTimeout = launcherConfig.laser.executorHeartbeatTimeout,
+          laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod,
+          esHost = launcherConfig.logging.esHost.filter(_ => launcherConfig.logging.configureLaser),
+          esPort = launcherConfig.logging.esPortREST.filter(_ => launcherConfig.logging.configureLaser),
+          esProtocol = launcherConfig.logging.esProtocol.filter(_ => launcherConfig.logging.configureLaser)
         ),
         executors = Seq.empty
       ),
@@ -444,7 +492,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       computeId = caasProviderId.toString,
       rabbitId = rabbitProviderId.toString,
       dbId = dbProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("laser")
     )
   }
 
@@ -462,7 +511,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("kong")
     )
   }
 
@@ -483,7 +533,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       computeId = caasProviderId.toString,
       laserId = laserProviderId.toString,
       rabbitId = rabbitProviderId.toString,
-      caasType = CaaSTypes.DCOS
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("policy")
     )
   }
 
@@ -499,7 +550,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       kongId = kongProviderId.toString,
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
-      securityId = secProviderId.toString
+      securityId = secProviderId.toString,
+      providerName = Some("gwm")
     )
   }
 

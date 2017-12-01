@@ -85,7 +85,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
     }
 
     def launchAuthed: MockWS.Routes = {
-      case (PUT, url) if url == marathonBaseUrl+s"/v2/apps${testAppId}" => Action{ request =>
+      case (POST, url) if url == marathonBaseUrl+s"/v2/apps${testAppId}" => Action{ request =>
         request match {
           case AuthedRequest(authToken) => Ok(Json.obj("id" -> testAppId))
           case _                        => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
@@ -94,7 +94,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
     }
 
     def launchUnauthed: MockWS.Routes = {
-      case (PUT, url) if url == marathonBaseUrl+s"/v2/apps${testAppId}" => Action{ request =>
+      case (POST, url) if url == marathonBaseUrl+s"/v2/apps${testAppId}" => Action{ request =>
         request match {
           case AuthedRequest(_) => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
           case _                => Ok(Json.obj("id" -> testAppId))

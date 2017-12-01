@@ -18,6 +18,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
   def haveEnvVar(pair: => (String, String)) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("private") /(pair)
 
+  def notHaveEnvVar(name: String) = ((_: JsValue).toString) ^^ not /("properties") /("config") /("env") /("private") /(name -> ".*".r)
+
   val testGlobalVars = GlobalConfig().withDb(GlobalDBConfig(
     hostname = "test-db.marathon.mesos",
     port = 5432,
@@ -201,6 +203,60 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> "300")
     }
 
+    "set elasticsearch config if requested" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-protocol" -> "https",
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.configure-laser" -> true
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must haveEnvVar("ES_PROTOCOL" -> "https")
+      laserPayload must haveEnvVar("ES_HOST" -> "my-es-cluster")
+      laserPayload must haveEnvVar("ES_PORT" -> "2222")
+    }
+
+    "not set elasticsearch config if requested" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-protocol" -> "https",
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.configure-laser" -> false
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must notHaveEnvVar("ES_PROTOCOL")
+      laserPayload must notHaveEnvVar("ES_HOST")
+      laserPayload must notHaveEnvVar("ES_PORT")
+    }
+
+    "not set elasticsearch config by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-protocol" -> "https",
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222"
+          // "logging.configure-laser" -> false
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must notHaveEnvVar("ES_PROTOCOL")
+      laserPayload must notHaveEnvVar("ES_HOST")
+      laserPayload must notHaveEnvVar("ES_PORT")
+    }
+
     "set default min-cool, scaledown-timeout vars on laser scheduler" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -283,28 +339,40 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "META_NETWORK_NAME").asOpt[String] must beSome("HOST")
     }
 
-    "set port range vars on laser scheduler per config" in {
+    "set max-connection-time on laser provider" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "laser.min-port-range" -> 100,
-          "laser.max-port-range" -> 200
+          "laser.max-cool-connection-time" -> 45
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome("100")
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome("200")
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_COOL_CONNECTION_TIME").asOpt[String] must beSome("45")
     }
 
-    "set default port range vars on laser scheduler" in {
+    "set executor-heartbeat-timeout on laser provider" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
+        .configure(
+          "laser.executor-heartbeat-timeout" -> 45000
+        )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MIN_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MIN_PORT_RANGE.toString)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_PORT_RANGE").asOpt[String] must beSome(LauncherConfig.LaserConfig.DEFAULT_MAX_PORT_RANGE.toString)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_TIMEOUT").asOpt[String] must beSome("45000")
+    }
+
+    "set executor-heartbeat-period on laser provider" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.executor-heartbeat-period" -> 30000
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_MILLIS").asOpt[String] must beSome("30000")
     }
 
     val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(
@@ -572,11 +640,27 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val payload = gtf.getCaasProvider()
-      (Json.toJson(payload) \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
+      (payload \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
         "scheme" -> "Basic",
         "username" -> "unused",
         "password" -> "unused"
       )
+    }
+
+    "configure meta caas provider with secret support" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "dcos.secret-support" -> true,
+          "dcos.secret-url"     -> "https://secrets.are/here",
+          "dcos.secret-store"   -> "not-default"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val payload = gtf.getCaasProvider()
+      (payload \ "properties" \ "config" \ "secret_support").asOpt[Boolean] must beSome(true)
+      (payload \ "properties" \ "config" \ "secret_url").asOpt[String] must beSome("https://secrets.are/here")
+      (payload \ "properties" \ "config" \ "secret_store").asOpt[String] must beSome("not-default")
     }
 
     "configure launched services for custom haproxy exposure groups" in {
@@ -691,6 +775,54 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
 
+    "provision logging provider if requested" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.es-cluster-name" -> "my-es-cluster-name",
+          "logging.provision-provider" -> true
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val Some(loggingPayload) = gtf.getLogProvider(uuid)
+      loggingPayload must haveEnvVar("ES_CLUSTER_NAME" -> "my-es-cluster-name")
+      loggingPayload must haveEnvVar("ES_SERVICE_HOST" -> "my-es-cluster")
+      loggingPayload must haveEnvVar("ES_SERVICE_PORT" -> "1111")
+    }
+
+    "not provision logging provider if requested" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.es-cluster-name" -> "my-es-cluster-name",
+          "logging.provision-provider" -> false
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      gtf.getLogProvider(uuid) must beNone
+    }
+
+    "not provision logging provider by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "logging.es-host"     -> "my-es-cluster",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.es-cluster-name" -> "my-es-cluster-name"
+          // "logging.provision-provider" -> false
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      gtf.getLogProvider(uuid) must beNone
+    }
+
     "configure base services to launch with user-specified network if provided" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -771,12 +903,19 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           // "marathon.network-name" -> "user-network"
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val Some(logging) = gtf.getLogProvider(uuid)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
@@ -786,6 +925,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       }
       Fragment.foreach( Seq(
         "gestalt-api-gateway" -> gtw,
+        "gestalt-log" -> logging,
         "gestalt-policy" -> policy,
         "kong" -> kong ) ) {
         case (lbl, payload) => lbl ! {
@@ -798,7 +938,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "marathon.network-name" -> "user-network"
+          "marathon.network-name" -> "user-network",
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -806,6 +952,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val Some(logging) = gtf.getLogProvider(uuid)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
       val kong = gtf.getKongProvider(uuid, uuid)
@@ -813,6 +960,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         "gestalt-laser" -> laser,
         "gestalt-api-gateway" -> gtw,
         "gestalt-policy" -> policy,
+        "gestalt-log" -> logging,
         "kong" -> kong ) ) {
         case (lbl, payload) => lbl ! {
           (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").asOpt[String] must beSome("user-network")
@@ -824,7 +972,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "marathon.mesos-health-checks" -> "true"
+          "marathon.mesos-health-checks" -> "true",
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -832,12 +986,14 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val Some(logging) = gtf.getLogProvider(uuid)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
       val kong = gtf.getKongProvider(uuid, uuid)
       Fragment.foreach( Seq(
         "gestalt-laser" -> laser,
         "gestalt-api-gateway" -> gtw,
+        "gestalt-log" -> logging,
         "gestalt-policy" -> policy,
         "kong" -> kong ) ) {
         case (lbl, payload) => lbl ! {

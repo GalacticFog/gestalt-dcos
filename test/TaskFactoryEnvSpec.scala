@@ -22,6 +22,14 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
     // it needs to pass independent of the existence of the env vars by falling back on defaults
     "support environment variables for ensemble versioning or override" in {
       val injector = new GuiceApplicationBuilder()
+        .configure(
+          // these are necessary so that the logging provider can be provisioned
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
+        )
         .disable[Module]
         .injector
 
@@ -53,15 +61,17 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:release-${ensVer}"))
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:release-${ensVer}"))
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:release-${ensVer}"))
+      gtf.getLogProvider(uuid) must beSome(haveServiceImage(env("GESTALT_LOG_IMG").getOrElse(s"galacticfog/gestalt-log:release-${ensVer}")))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "js-executor"     => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
-        case "jvm-executor"    => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
-        case "dotnet-executor" => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
-        case "python-executor" => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
-        case "ruby-executor"   => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
-        case "golang-executor" => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
+        case "nashorn-executor" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
+        case "nodejs-executor"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
+        case "jvm-executor"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
+        case "dotnet-executor"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
+        case "python-executor"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
+        case "ruby-executor"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
+        case "golang-executor"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -90,18 +100,23 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
     }
 
     "properly parse laser config from environment variables" in {
-      import LauncherConfig.LaserConfig
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val lc  = injector.instanceOf[LauncherConfig]
 
       val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
-      val minPortRange     = sys.env.get("LASER_MIN_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MIN_PORT_RANGE)
-      val maxPortRange     = sys.env.get("LASER_MAX_PORT_RANGE").map(_.toInt).getOrElse(LaserConfig.DEFAULT_MAX_PORT_RANGE)
+      val maybeMaxConn  = sys.env.get("LASER_MAX_CONN_TIME").map(_.toInt)
+      val maybeHBTimeout  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_TIMEOUT").map(_.toInt)
+      val maybeHBPeriod  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_PERIOD").map(_.toInt)
+      val maybeHostOx = sys.env.get("LASER_SERVICE_HOST_OVERRIDE")
+      val maybePortOx = sys.env.get("LASER_SERVICE_PORT_OVERRIDE").map(_.toInt)
       lc.laser.advertiseHost  must_== maybeAdvertHost
-      lc.laser.minPortRange   must_== minPortRange
-      lc.laser.maxPortRange   must_== maxPortRange
+      lc.laser.maxCoolConnectionTime    must_== maybeMaxConn
+      lc.laser.executorHeartbeatTimeout must_== maybeHBTimeout
+      lc.laser.executorHeartbeatPeriod  must_== maybeHBPeriod
+      lc.laser.serviceHostOverride      must_== maybeHostOx
+      lc.laser.servicePortOverride      must_== maybePortOx
     }
 
     "properly parse marathon user network from environment variables" in {
@@ -163,7 +178,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
       lc.marathon.tld must_== maybeTLD
     }
 
-    "proper parse database config from environment variables" in {
+    "properly parse database config from environment variables" in {
       import LauncherConfig.DatabaseConfig
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -185,6 +200,26 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
         prefix = sys.env.get("DATABASE_PREFIX").getOrElse("gestalt-")
       )
       lc.database must_== dbconfig
+    }
+
+    "properly parse elasticsearch config from environment variables" in {
+      import LauncherConfig.LoggingConfig
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+
+      val lc  = injector.instanceOf[LauncherConfig]
+
+      val esconfig = LoggingConfig(
+        esClusterName = sys.env.get("LOGGING_ES_CLUSTER_NAME"),
+        esHost = sys.env.get("LOGGING_ES_HOST"),
+        esPortTransport = sys.env.get("LOGGING_ES_PORT_TRANSPORT").map(_.toInt),
+        esPortREST      = sys.env.get("LOGGING_ES_PORT_REST").map(_.toInt),
+        esProtocol = sys.env.get("LOGGING_ES_PROTOCOL"),
+        provisionProvider = sys.env.get("LOGGING_PROVISION_PROVIDER").map(_.toBoolean).getOrElse(false),
+        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").map(_.toBoolean).getOrElse(false)
+      )
+      lc.logging must_== esconfig
     }
 
   }
