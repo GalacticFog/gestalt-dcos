@@ -149,9 +149,8 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.getOrElse(throw new RuntimeException("launchApp missing appId")).stripPrefix("/")
-    val endpoint = s"/v2/apps/${appId}"
     for {
-      req <- genRequest(endpoint)
+      req <- genRequest(s"/v2/apps")
       resp <- req.withQueryString("force" -> "true").post(
         Json.toJson(appPayload)
       )
