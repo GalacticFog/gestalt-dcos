@@ -1,6 +1,6 @@
 name := """gestalt-dcos"""
 
-version := "1.4.3"
+version := "1.4.5"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala).
