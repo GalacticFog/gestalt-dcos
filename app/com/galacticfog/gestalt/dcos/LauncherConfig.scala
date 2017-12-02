@@ -43,7 +43,9 @@ class LauncherConfig @Inject()(config: Configuration) {
     networkName = config.getString("marathon.network-name"),
     mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
     networkList = config.getString("marathon.network-list"),
-    haproxyGroups = config.getString("marathon.haproxy-groups")
+    haproxyGroups = config.getString("marathon.haproxy-groups"),
+    sseMaxLineSize = config.getInt("marathon.sseMaxLineSize") getOrElse 524288,
+    sseMaxEventSize = config.getInt("marathon.sseMaxEventSize") getOrElse 524288
   )
 
   val dcos = DCOSConfig(
@@ -344,7 +346,9 @@ object LauncherConfig {
                              networkName: Option[String],
                              mesosHealthChecks: Boolean,
                              networkList: Option[String],
-                             haproxyGroups: Option[String]
+                             haproxyGroups: Option[String],
+                             sseMaxLineSize: Int,
+                             sseMaxEventSize: Int
                            )
 
   case class DCOSConfig( secretSupport: Option[Boolean],

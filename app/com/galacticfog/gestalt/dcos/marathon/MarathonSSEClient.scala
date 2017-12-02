@@ -31,20 +31,17 @@ import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
 import modules.WSClientFactory
 import play.api.http.HeaderNames
 
-object BiggerUnmarshalling extends EventStreamUnmarshalling {
-  override protected def maxLineSize: Int = 524288
-  override protected def maxEventSize: Int = 524288
-}
-
 @Singleton
 class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
                                     wsFactory: WSClientFactory,
                                     @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef )
-                                  ( implicit system: ActorSystem ) {
+                                  ( implicit system: ActorSystem ) extends EventStreamUnmarshalling {
 
   import system.dispatcher
   import MarathonSSEClient._
-  import BiggerUnmarshalling._
+
+  override protected def maxLineSize: Int = launcherConfig.marathon.sseMaxLineSize
+  override protected def maxEventSize: Int = launcherConfig.marathon.sseMaxEventSize
 
   val logger: Logger = Logger(this.getClass())
 
