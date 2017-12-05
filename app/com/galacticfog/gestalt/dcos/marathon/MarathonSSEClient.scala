@@ -252,7 +252,10 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
         val containerIp = task0.flatMap(_.ipAddresses.getOrElse(Seq.empty).collectFirst({
           case IPAddress(Some(ipaddress), _) => ipaddress
         }))
-        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings).getOrElse(Seq.empty).flatMap(_.containerPort)
+        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings)
+          .orElse(app.container.flatMap(_.portMappings))
+          .getOrElse(Seq.empty)
+          .flatMap(_.containerPort)
         ( containerIp,
           pmPorts )
       } else {

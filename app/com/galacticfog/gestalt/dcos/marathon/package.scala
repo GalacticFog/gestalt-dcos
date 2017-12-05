@@ -73,12 +73,10 @@ package object marathon {
 
   val marAppPayloadFmt2: OFormat[(
     Option[Int],
-      Option[Seq[JsObject]],
-      Option[Seq[DockerPortMapping]]
+      Option[Seq[JsObject]]
   )] = (
     (__ \ "taskKillGracePeriodSeconds").formatNullable[Int] ~
-      (__ \ "networks").formatNullable[Seq[JsObject]] ~
-      (__ \ "portMappings").formatNullable[Seq[DockerPortMapping]]
+      (__ \ "networks").formatNullable[Seq[JsObject]]
   ).tupled
 
   implicit val marAppPayloadFmt: OFormat[MarathonAppPayload] = (marAppPayloadFmt1 ~ marAppPayloadFmt2)({
@@ -105,8 +103,7 @@ package object marathon {
       ipAddress,
       tasks),
       (taskKillGracePeriodSeconds,
-      networks,
-      portMappings)) => MarathonAppPayload(id,
+      networks)) => MarathonAppPayload(id,
       cmd,
       args,
       env,
@@ -128,8 +125,7 @@ package object marathon {
       ipAddress,
       tasks,
       taskKillGracePeriodSeconds,
-      networks,
-      portMappings)
+      networks)
   }, (p: MarathonAppPayload) =>
     ((p.id,
       p.cmd,
@@ -153,13 +149,8 @@ package object marathon {
       p.ipAddress,
       p.tasks),
     (p.taskKillGracePeriodSeconds,
-      p.networks,
-      p.portMappings))
+      p.networks))
   )
-
-
-
-
 
   implicit val statusUpdateEventRead: Reads[MarathonStatusUpdateEvent] = Json.reads[MarathonStatusUpdateEvent]
   implicit val deploymentSuccessRead: Reads[MarathonDeploymentSuccess] = Json.reads[MarathonDeploymentSuccess]

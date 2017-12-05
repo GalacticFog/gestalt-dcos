@@ -17,7 +17,9 @@ case class PortDefinition(port: Option[Int],
 
 case class MarathonContainerInfo(`type`: Option[String] = Some(MarathonContainerInfo.Types.DOCKER),
                                  volumes: Option[Seq[Volume]] = None,
-                                 docker: Option[MarathonDockerContainer] = None)
+                                 docker: Option[MarathonDockerContainer] = None,
+                                 portMappings: Option[Seq[DockerPortMapping]] = None
+                                )
 
 case object MarathonContainerInfo {
   object Types {
@@ -105,8 +107,7 @@ case class MarathonAppPayload(
                                ipAddress: Option[MarathonAppPayload.IPPerTaskInfo] = None,
                                tasks: Option[Seq[MarathonTask]] = None,
                                taskKillGracePeriodSeconds: Option[Int] = None,
-                               networks: Option[Seq[JsObject]] = None,
-                               portMappings: Option[Seq[DockerPortMapping]] = None
+                               networks: Option[Seq[JsObject]] = None
                              )
 
 case object MarathonAppPayload {
