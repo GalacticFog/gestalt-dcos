@@ -141,6 +141,168 @@ class ParsingSpec extends Specification with JsonMatchers {
       Json.toJson(expectedApp) must_== json
     }
 
+    "parse properly from Marathon 1.5 return" in {
+      val jsonStr =
+        """{
+          |  "args": [
+          |    "-J-Xmx512m"
+          |  ],
+          |  "backoffFactor": 1.15,
+          |  "backoffSeconds": 1,
+          |  "container": {
+          |    "docker": {
+          |      "forcePullImage": true,
+          |      "image": "galacticfog/gestalt-security:latest",
+          |      "parameters": [],
+          |      "privileged": false
+          |    },
+          |    "portMappings": [
+          |      {
+          |        "containerPort": 9000,
+          |        "labels": {
+          |          "VIP_0": "/gestalt-security:9455"
+          |        },
+          |        "name": "http",
+          |        "protocol": "tcp",
+          |        "servicePort": 10000
+          |      }
+          |    ],
+          |    "type": "DOCKER",
+          |    "volumes": []
+          |  },
+          |  "cpus": 0.2,
+          |  "deployments": [
+          |    {
+          |      "id": "88b076fb-9333-4e1d-80a0-17db810c1fcf"
+          |    }
+          |  ],
+          |  "disk": 0,
+          |  "env": {
+          |    "OAUTH_RATE_LIMITING_PERIOD": "1",
+          |    "DATABASE_HOSTNAME": "database",
+          |    "DATABASE_NAME": "gestalt-security",
+          |    "DATABASE_PASSWORD": "password",
+          |    "DATABASE_PORT": "5432",
+          |    "DATABASE_USERNAME": "gestalt-admin",
+          |    "OAUTH_RATE_LIMITING_AMOUNT": "100"
+          |  },
+          |  "executor": "",
+          |  "gpus": 0,
+          |  "healthChecks": [
+          |    {
+          |      "delaySeconds": 15,
+          |      "gracePeriodSeconds": 300,
+          |      "intervalSeconds": 30,
+          |      "maxConsecutiveFailures": 4,
+          |      "path": "/health",
+          |      "portIndex": 0,
+          |      "protocol": "MESOS_HTTP",
+          |      "timeoutSeconds": 15
+          |    }
+          |  ],
+          |  "id": "/gestalt-security",
+          |  "instances": 1,
+          |  "killSelection": "YOUNGEST_FIRST",
+          |  "labels": {
+          |    "HAPROXY_0_MODE": "http",
+          |    "HAPROXY_0_VHOST": "security.galacticfog.com",
+          |    "HAPROXY_GROUP": "external,internal"
+          |  },
+          |  "maxLaunchDelaySeconds": 3600,
+          |  "mem": 512,
+          |  "networks": [
+          |    {
+          |      "mode": "container",
+          |      "name": "dcos"
+          |    }
+          |  ],
+          |  "requirePorts": false,
+          |  "tasks": [],
+          |  "tasksHealthy": 0,
+          |  "tasksRunning": 0,
+          |  "tasksStaged": 0,
+          |  "tasksUnhealthy": 0,
+          |  "unreachableStrategy": {
+          |    "expungeAfterSeconds": 0,
+          |    "inactiveAfterSeconds": 0
+          |  },
+          |  "upgradeStrategy": {
+          |    "maximumOverCapacity": 1,
+          |    "minimumHealthCapacity": 1
+          |  },
+          |  "version": "2017-12-05T15:19:29.932Z"
+          |}
+        """.stripMargin
+
+      val json = Json.parse(jsonStr)
+
+      val expectedApp = MarathonAppPayload(
+        id = Some("/gestalt-security"),
+        args = Some(Seq("-J-Xmx512m")),
+        env = Some(Json.obj(
+          "OAUTH_RATE_LIMITING_PERIOD" -> "1",
+          "DATABASE_HOSTNAME" -> "database",
+          "DATABASE_NAME" -> "gestalt-security",
+          "DATABASE_PASSWORD" -> "password",
+          "DATABASE_PORT" -> "5432",
+          "DATABASE_USERNAME" -> "gestalt-admin",
+          "OAUTH_RATE_LIMITING_AMOUNT" -> "100"
+        )),
+        instances = Some(1),
+        cpus = Some(0.2),
+        mem = Some(512),
+        disk = Some(0),
+        requirePorts = Some(false),
+        container = Some(MarathonContainerInfo(
+          `type` = Some(MarathonContainerInfo.Types.DOCKER),
+          docker = Some(MarathonDockerContainer(
+            image = Some("galacticfog/gestalt-security:latest"),
+            network = None,
+            privileged = Some(false),
+            parameters = Some(Seq()),
+            forcePullImage = Some(true)
+          )),
+          portMappings = Some(Seq(DockerPortMapping(
+            containerPort = Some(9000),
+            hostPort = None,
+            servicePort = Some(10000),
+            protocol = Some("tcp"),
+            name = Some("http"),
+            labels = Some(Map(
+              "VIP_0" -> "/gestalt-security:9455"
+            ))
+          ))),
+          volumes = Some(Seq.empty)
+        )),
+        portDefinitions = None,
+        networks = Some(Seq(Json.obj(
+          "mode" -> "container",
+          "name" -> "dcos"
+        ))),
+        labels = Some(Map(
+          "HAPROXY_0_MODE" -> "http",
+          "HAPROXY_0_VHOST" -> "security.galacticfog.com",
+          "HAPROXY_GROUP" -> "external,internal"
+        )),
+        healthChecks = Some(Seq(MarathonHealthCheck(
+          path = Some("/health"),
+          protocol = Some("MESOS_HTTP"),
+          portIndex = Some(0),
+          gracePeriodSeconds = Some(300),
+          intervalSeconds = Some(30),
+          timeoutSeconds = Some(15),
+          maxConsecutiveFailures = Some(4)
+        ))),
+        tasksStaged = Some(0),
+        tasksHealthy = Some(0),
+        tasksRunning = Some(0),
+        tasksUnhealthy = Some(0),
+        tasks = Some(Seq.empty)
+
+      )
+      json.as[MarathonAppPayload] must_== expectedApp
+    }
+
     "parse Marathon apps with secrets" in {
       val jsonStr =
         """

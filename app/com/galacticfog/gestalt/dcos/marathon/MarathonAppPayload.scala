@@ -1,6 +1,6 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import play.api.libs.json.{JsObject, Json}
+import play.api.libs.json.{JsObject, JsValue, Json}
 
 case class KeyValuePair(key: Option[String], value: Option[String])
 
@@ -17,7 +17,9 @@ case class PortDefinition(port: Option[Int],
 
 case class MarathonContainerInfo(`type`: Option[String] = Some(MarathonContainerInfo.Types.DOCKER),
                                  volumes: Option[Seq[Volume]] = None,
-                                 docker: Option[MarathonDockerContainer] = None)
+                                 docker: Option[MarathonDockerContainer] = None,
+                                 portMappings: Option[Seq[DockerPortMapping]] = None
+                                )
 
 case object MarathonContainerInfo {
   object Types {
@@ -82,28 +84,31 @@ case object Residency {
   val WAIT_FOREVER: String = "WAIT_FOREVER"
 }
 
-case class MarathonAppPayload(id: Option[String],
-                              cmd: Option[String] = None,
-                              args: Option[Seq[String]] = None,
-                              env: Option[JsObject] = None,
-                              instances: Option[Int] = None,
-                              cpus: Option[Double] = None,
-                              mem: Option[Int] = None,
-                              disk: Option[Int] = None,
-                              container: Option[MarathonContainerInfo] = None,
-                              portDefinitions: Option[Seq[PortDefinition]] = None,
-                              requirePorts: Option[Boolean] = None,
-                              healthChecks: Option[Seq[MarathonHealthCheck]] = None,
-                              labels: Option[Map[String,String]] = None,
-                              readinessCheck: Option[MarathonReadinessCheck] = None,
-                              residency: Option[Residency] = None,
-                              tasksStaged: Option[Int] = None,
-                              tasksRunning: Option[Int] = None,
-                              tasksHealthy: Option[Int] = None,
-                              tasksUnhealthy: Option[Int] = None,
-                              ipAddress: Option[MarathonAppPayload.IPPerTaskInfo] = None,
-                              tasks: Option[Seq[MarathonTask]] = None,
-                              taskKillGracePeriodSeconds: Option[Int] = None)
+case class MarathonAppPayload(
+                               id: Option[String],
+                               cmd: Option[String] = None,
+                               args: Option[Seq[String]] = None,
+                               env: Option[JsObject] = None,
+                               instances: Option[Int] = None,
+                               cpus: Option[Double] = None,
+                               mem: Option[Int] = None,
+                               disk: Option[Int] = None,
+                               container: Option[MarathonContainerInfo] = None,
+                               portDefinitions: Option[Seq[PortDefinition]] = None,
+                               requirePorts: Option[Boolean] = None,
+                               healthChecks: Option[Seq[MarathonHealthCheck]] = None,
+                               labels: Option[Map[String,String]] = None,
+                               readinessCheck: Option[MarathonReadinessCheck] = None,
+                               residency: Option[Residency] = None,
+                               tasksStaged: Option[Int] = None,
+                               tasksRunning: Option[Int] = None,
+                               tasksHealthy: Option[Int] = None,
+                               tasksUnhealthy: Option[Int] = None,
+                               ipAddress: Option[MarathonAppPayload.IPPerTaskInfo] = None,
+                               tasks: Option[Seq[MarathonTask]] = None,
+                               taskKillGracePeriodSeconds: Option[Int] = None,
+                               networks: Option[Seq[JsObject]] = None
+                             )
 
 case object MarathonAppPayload {
   case class IPPerTaskInfo( discovery: Option[DiscoveryInfo] = None,

@@ -111,7 +111,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
 
   def provisionedDBHostIP: GlobalDBConfig = {
     val useHostIP = for {
-      url <- stateData.getUrl(DATA(0))
+      url <- stateData.getUrl(DATA(0), log)
       parts = url.split(":")
       if parts.length == 2
       host = parts(0)
@@ -511,9 +511,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
 
   def advanceState(newData: ServiceData): State = {
     stateName match {
-      case state: LaunchingState if newData.statuses.get(state.targetService).exists(isServiceActive) => {
+      case state: LaunchingState if newData.statuses.get(state.targetService).exists(isServiceActive) =>
         goto(nextState(state)) using newData
-      }
       case _ =>
         stay using newData
     }
@@ -597,7 +596,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
 
   onTransition {
     case _ -> RetrievingAPIKeys =>
-      nextStateData.getUrl(SECURITY) match {
+      nextStateData.getUrl(SECURITY, log) match {
         case None => self ! ErrorEvent("while initializing security, missing security URL after launching security", Some(RetrievingAPIKeys.toString))
         case Some(secUrl) => initSecurity(secUrl) onComplete {
           case Success(msg) => self ! msg
@@ -608,7 +607,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         }
       }
     case _ -> BootstrappingMeta =>
-      (nextStateData.getUrl(META), nextStateData.adminKey) match {
+      (nextStateData.getUrl(META, log), nextStateData.adminKey) match {
         case (None,_) => self ! ErrorEvent("while bootstrapping meta, missing meta URL after launching meta", Some(BootstrappingMeta.toString))
         case (_,None) => self ! ErrorEvent("while bootstrapping meta, missing admin API key after initializing security", Some(BootstrappingMeta.toString))
         case (Some(metaUrl),Some(apiKey)) => bootstrapMeta(metaUrl, apiKey) onComplete {
@@ -620,7 +619,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         }
       }
     case _ -> SyncingMeta =>
-      (nextStateData.getUrl(META), nextStateData.adminKey) match {
+      (nextStateData.getUrl(META, log), nextStateData.adminKey) match {
         case (None,_) => self ! ErrorEvent("while syncing meta, missing meta URL after launching meta", Some(SyncingMeta.toString))
         case (_,None) => self ! ErrorEvent("while syncing meta, missing admin API key after initializing security", Some(SyncingMeta.toString))
         case (Some(metaUrl),Some(apiKey)) => syncMeta(metaUrl, apiKey) onComplete {
@@ -632,7 +631,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         }
       }
     case _ -> ProvisioningMeta =>
-      (nextStateData.getUrl(META), nextStateData.adminKey) match {
+      (nextStateData.getUrl(META, log), nextStateData.adminKey) match {
         case (Some(metaUrl),Some(apiKey)) =>
           val gc = nextStateData.globalConfig
           val baseProviderPayloads = Seq(
@@ -889,7 +888,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       *************************************************/
 
     case Event(Sync, _) => {
-      log.info("performing period sync of apps in marathon")
+      log.info("performing periodic sync of apps in marathon")
       val s = self
       marClient.getServices() onComplete {
         case Failure(t) =>

@@ -244,12 +244,18 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     // (TODO: could put in logic to pick newest one or healthy one if we need to)
     val task0 = app.tasks.flatMap(_.headOption)
     val (hostname,ports) = {
-      if ( app.container.flatMap(_.docker).flatMap(_.network).contains("USER") ) {
+      if (
+        app.container.flatMap(_.docker).flatMap(_.network).contains("USER") ||
+          app.networks.getOrElse(Seq.empty).flatMap(n => (n \ "mode").asOpt[String]).contains("container")
+      ) {
         // ip-per-task: use first container IP we find
         val containerIp = task0.flatMap(_.ipAddresses.getOrElse(Seq.empty).collectFirst({
           case IPAddress(Some(ipaddress), _) => ipaddress
         }))
-        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings).getOrElse(Seq.empty).flatMap(_.containerPort)
+        val pmPorts = app.container.flatMap(_.docker).flatMap(_.portMappings)
+          .orElse(app.container.flatMap(_.portMappings))
+          .getOrElse(Seq.empty)
+          .flatMap(_.containerPort)
         ( containerIp,
           pmPorts )
       } else {
@@ -274,7 +280,9 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
             Future.fromTry(Try {
               (resp.json \ "apps").as[Seq[MarathonAppPayload]].flatMap {
                 app => appIdWithGroup.unapplySeq(app.id.getOrElse("")) flatMap (_.headOption) flatMap (LauncherConfig.Services.fromName) map (service => (service, app))
-              } map { case (service, app) => toServiceInfo(service, app) }
+              } map {
+                case (service, app) => toServiceInfo(service, app)
+              }
             })
           case 404 => Future.successful(Seq.empty)
           case _ => Future.failed(new RuntimeException(resp.statusText))
