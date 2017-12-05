@@ -21,7 +21,7 @@ final case class ServiceData(statuses: Map[FrameworkService, ServiceInfo],
         log.warning(s"ServiceData#getUrl(${service.name}): service not found")
         None
       case Some(otherServiceInfo) =>
-        log.warning(s"ServiceData#getUrl(${service.name}): service did not have sufficient data for constructing URL: ${service}")
+        log.warning(s"ServiceData#getUrl(${service.name}): service did not have sufficient data for constructing URL: ${otherServiceInfo}")
         None
     }
   }
