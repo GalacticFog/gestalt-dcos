@@ -363,6 +363,20 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_TIMEOUT").asOpt[String] must beSome("45000")
     }
 
+    "set default executor variables on laser provider" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.default-executor-cpu" -> 2.0,
+          "laser.default-executor-ram" -> 4096.0
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "DEFAULT_EXECUTOR_CPU").asOpt[String].map(_.toFloat) must beSome(2.0)
+      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "DEFAULT_EXECUTOR_RAM").asOpt[String].map(_.toFloat) must beSome(4096)
+    }
+
     "set executor-heartbeat-period on laser provider" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

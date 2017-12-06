@@ -16,7 +16,7 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.apache.mesos.Protos.Environment.Variable
 import org.apache.mesos.Protos._
 import play.api.Logger
-import play.api.libs.json.{JsObject, JsString, JsValue, Json}
+import play.api.libs.json._
 
 case class PortSpec(number: Int, name: String, labels: Map[String,String], hostPort: Option[Int] = None)
 case class HealthCheck(portIndex: Int, protocol: HealthCheck.HealthCheckProtocol, path: Option[String])
@@ -446,7 +446,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
                        laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
-    GestaltProviderBuilder.laserProvider(
+    val laser = GestaltProviderBuilder.laserProvider(
       secrets = LaserSecrets(
         serviceConfig = LaserSecrets.ServiceConfig(
           dbName = "default-laser-provider",
@@ -495,6 +495,19 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       caasType = CaaSTypes.DCOS,
       providerName = Some("laser")
     )
+    def addVar(json: JsValue, envVar: String, envVal: String) = {
+      json.transform((JsPath \ "properties" \ "config" \ "env" \ "private").json.update(
+        __.read[JsObject].map{ o => o ++ Json.obj(
+          envVar -> envVal
+        )}
+      )).get
+    }
+    val c1 = launcherConfig.laser.defaultExecutorRam.foldLeft(laser) {
+      case (js, ram) => addVar(js, "DEFAULT_EXECUTOR_RAM", ram.toString)
+    }
+    launcherConfig.laser.defaultExecutorCpu.foldLeft(c1) {
+      case (js, cpu) => addVar(js, "DEFAULT_EXECUTOR_CPU", cpu.toString)
+    }
   }
 
   def getKongProvider(dbProviderId: UUID, caasProviderId: UUID): JsValue = {
