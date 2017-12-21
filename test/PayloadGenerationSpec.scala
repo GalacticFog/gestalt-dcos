@@ -54,7 +54,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       ))
       val expected = MarathonAppPayload(
         id = Some("/gestalt-framework/security"),
-        args = Some(Seq("-J-Xmx1024m", "-Dhttp.port=9455")),
+        args = Some(Seq("-J-Xmx1365m", "-Dhttp.port=9455")),
         env = Some(Json.obj(
           "OAUTH_RATE_LIMITING_PERIOD" -> "1",
           "OAUTH_RATE_LIMITING_AMOUNT" -> "100",
@@ -65,8 +65,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
           "DATABASE_PASSWORD" -> "test-password"
         )),
         instances = Some(1),
-        cpus = Some(0.5),
-        mem = Some(1536),
+        cpus = Some(2.0),
+        mem = Some(2048),
         disk = Some(0),
         requirePorts = Some(true),
         container = Some(MarathonContainerInfo(
