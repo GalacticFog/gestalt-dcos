@@ -467,7 +467,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       "name" -> "Default-License-1",
       "description" -> "Default GF license",
       "properties" -> Json.obj(
-        "data" -> "ABwwGgQUVS9uKF73AyeP06JhgH17LNOBxB8CAgQAPEWRItlr1xdoJnalqW2vcmujpdB2WfCG3ShwuovCtFO/mhMmhktOwYDl6xBKihC8lBhwLeAtyi61R2b6UwTSkMiRqyIdcRMGc+Eqozm3XanhVpCXATsUawQFfqGdu/rUVFCGRq1J129gwJ1EVVtYab1GvFjib30c8ZInWLI0PBazyZZyda9f5xdys2mqeLtSJDI3960c1xwBQJyRvXIG9ZZgceU0koG/5kF8+I/4fUrkjzSKdcy6iXgTIDyC+i3bictfaT2X3Yhoo63PSlXU4IFrZ8CMtWOmffpahmuwCBGPq0VIuvSVnZzYNw8yN/d8lbMarXp2wjU/Kd2HRP1nZ57l8GXF2H2iKj4rPGLAtNn8XYFPh7jviWD8RSS8eeeWMVPCaHsza10G8jhonLZEsAB+fkQdmb5R"
+        "data" -> "ABwwGgQUSGnvMYdze8tYxeKHSrsrSDgSWxkCAgQACu95StKS8sL3quxhk3KzRhLqV3LPWliS+3NFGzq6jBbwbCdfKDeTKGP1XBWqFisIqB8R8nQq/oXx5GsZJ59+wkH4n+yDwg71JxFMZ4w3QXzIOjcCT85mdJSDz8MxpRQe8FuJxo8zb3cLkcPX14ioo7VD7PC6mORuSp8DkNHv1B3cP+K4tjDYI5gjzLZPb6S2BaNV5eEuSxo0V/9v3ieGaCrv9S3OOV4OAn+XccUlD4/uVkaaJBOfZjlXYzr0PS+6KLqplWOHqmgBPn5wNeNgwJJNj1Duw1OgfiHVsBO5dkFLyb6cmoXgJtpOJF+EDPj0ZnJDzGms9PwlP6xydTNvrDQI8+32gpdKvYgKFvCl9GHu1XBX1d0N78mfrDdPIlBgd/KYSCi4pv1ibGJmG31iDzSJPr5iwL9w"
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
