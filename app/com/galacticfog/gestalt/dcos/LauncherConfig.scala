@@ -254,17 +254,17 @@ object LauncherConfig {
   }
 
   object Services {
-    case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 0.50; val mem = 256;}
+    case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 2.00; val mem = 2048;}
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
-    case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 0.50; val mem = 1536; val port = 9455}
-    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 1536; val port = 14374}
-    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.25; val mem = 128;  val port = 80}
+    case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 2.00; val mem = 2048; val port = 9455}
+    case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 2048; val port = 14374}
+    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 2.00; val mem = 1024; val port = 80}
 
-    case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 0.50; val mem = 128;}
-    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 0.50; val mem = 1024; val port = 1111}
-    case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 0.25; val mem = 1024; val port = 9999}
-    case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 0.25; val mem = 1024; val port = 6473}
-    case object LOG                                    extends ServiceEndpoint with Dockerable {val name = "log";            val cpu = 0.25; val mem = 1024; val port = 9000}
+    case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 2.00; val mem = 1024;}
+    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 2.00; val mem = 2048; val port = 1111}
+    case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 2.00; val mem = 2048; val port = 9999}
+    case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 2.00; val mem = 2048; val port = 6473}
+    case object LOG                                    extends ServiceEndpoint with Dockerable {val name = "log";            val cpu = 2.00; val mem = 2048; val port = 9000}
 
     case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
     case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
