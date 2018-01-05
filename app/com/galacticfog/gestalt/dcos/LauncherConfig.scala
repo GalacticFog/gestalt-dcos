@@ -258,7 +258,7 @@ object LauncherConfig {
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 2.00; val mem = 2048; val port = 9455}
     case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 2048; val port = 14374}
-    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 2.00; val mem = 1024; val port = 80}
+    case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.50; val mem =  256; val port = 80}
 
     case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 2.00; val mem = 1024;}
     case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 2.00; val mem = 2048; val port = 1111}
