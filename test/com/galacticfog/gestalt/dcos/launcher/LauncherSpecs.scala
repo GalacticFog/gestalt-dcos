@@ -290,7 +290,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         val providerName = (request.body \ "name").as[String]
         val providerType = (request.body \ "resource_type").asOpt[String]
         providerType match {
-          case Some(pt) if pt.startsWith("Gestalt::Configuration::Provider::Lambda::Executor") =>
+          case Some(pt) if pt.startsWith("Gestalt::Configuration::Provider::Lambda::Executor::") =>
             val pid = UUID.randomUUID()
             createdExecProviders.synchronized { createdExecProviders += (providerName -> pid) }
             Created(Json.obj(

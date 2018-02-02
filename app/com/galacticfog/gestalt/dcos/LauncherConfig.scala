@@ -5,7 +5,6 @@ import javax.inject.{Inject, Singleton}
 import com.galacticfog.gestalt.dcos.HealthCheck.HealthCheckProtocol
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services.DATA
 import com.galacticfog.gestalt.dcos.launcher.{LauncherState, LaunchingState}
 import com.galacticfog.gestalt.dcos.launcher.States._
 import play.api.{Configuration, Logger}
@@ -199,23 +198,49 @@ class LauncherConfig @Inject()(config: Configuration) {
   })
 
   val laser = LaserConfig(
-    minCoolExecutors = getInt("laser.min-cool-executors", LaserConfig.DEFAULT_MIN_COOL_EXECS),
-    scaleDownTimeout = getInt("laser.scale-down-timeout", LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT),
+    scaleDownTimeout = config.getInt("laser.scale-down-timeout"),
     enabledRuntimes = (LaserConfig.KNOWN_LASER_RUNTIMES -- disabledRuntimes).map({
       case (e,r) => r.copy(
         image = dockerImage(e)
       )
     }).toSeq,
-    ethernetPort = config.getString("laser.ethernet-port"),
-    advertiseHost = config.getString("laser.advertise-hostname"),
     maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time"),
     executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout"),
     executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period"),
     serviceHostOverride = config.getString("laser.service-host-override"),
-    servicePortOverride = config.getInt("laser.service-port-override"),
-    defaultExecutorCpu = config.getDouble("laser.default-executor-cpu"),
-    defaultExecutorRam = config.getDouble("laser.default-executor-ram")
+    servicePortOverride = config.getInt("laser.service-port-override")
   )
+
+  val extraEnv: Map[Dockerable,Map[String,String]] = {
+    val prefixes: Map[Dockerable,String] = provisionedServices.collect({ case d @ DATA(i) => d -> s"DATA_${i}" }).toMap ++ Map(
+      RABBIT -> "RABBIT",
+      SECURITY -> "SECURITY",
+      META -> "META",
+      UI -> "UI",
+      KONG -> "KONG",
+      LASER -> "LASER",
+      POLICY -> "POLICY",
+      API_GATEWAY -> "API_GATEWAY",
+      LOG -> "LOG",
+      EXECUTOR_DOTNET  -> "EXECUTOR_DOTNET",
+      EXECUTOR_NASHORN -> "EXECUTOR_NASHORN",
+      EXECUTOR_NODEJS  -> "EXECUTOR_NODEJS",
+      EXECUTOR_JVM     -> "EXECUTOR_JVM",
+      EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
+      EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
+      EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
+    )
+    sys.env.flatMap({
+      case (k,v) if !wellKnownEnvVars.contains(k) =>
+        prefixes.find({case (_,pfx) => k.startsWith(pfx + "_")}) match {
+          case Some((svc,pfx)) => Some((svc,k.stripPrefix(pfx + "_"),v))
+          case _=> None
+        }
+      case _ => None
+    }).groupBy(_._1).map({
+      case (svc, env) => (svc,env.map({case (_,k,v) => (k,v)}).toMap)
+    }).withDefaultValue(Map.empty[String,String])
+  }
 
   def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
     import HealthCheck._
@@ -266,10 +291,10 @@ object LauncherConfig {
     case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 2.00; val mem = 2048; val port = 6473}
     case object LOG                                    extends ServiceEndpoint with Dockerable {val name = "log";            val cpu = 2.00; val mem = 2048; val port = 9000}
 
-    case object RABBIT_AMQP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 5672}
-    case object RABBIT_HTTP      extends ServiceEndpoint                        {val name: String = RABBIT.name;                                   val port = 15672}
-    case object KONG_GATEWAY     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8000}
-    case object KONG_SERVICE     extends ServiceEndpoint                        {val name: String = KONG.name;                                     val port = 8001}
+    case object RABBIT_AMQP                            extends ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 5672}
+    case object RABBIT_HTTP                            extends ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 15672}
+    case object KONG_GATEWAY                           extends ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8000}
+    case object KONG_SERVICE                           extends ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8001}
 
     case object DataFromName {
       private[this] val dataRegex = "data-([0-9]+)".r
@@ -371,18 +396,13 @@ object LauncherConfig {
                            provisionProvider: Boolean,
                            configureLaser: Boolean )
 
-  case class LaserConfig( minCoolExecutors: Int,
-                          scaleDownTimeout: Int,
+  case class LaserConfig( scaleDownTimeout: Option[Int],
                           enabledRuntimes: Seq[LaserRuntime],
-                          ethernetPort: Option[String],
-                          advertiseHost: Option[String],
                           maxCoolConnectionTime: Option[Int],
                           executorHeartbeatTimeout: Option[Int],
                           executorHeartbeatPeriod: Option[Int],
                           serviceHostOverride: Option[String],
-                          servicePortOverride: Option[Int],
-                          defaultExecutorRam: Option[Double],
-                          defaultExecutorCpu: Option[Double] )
+                          servicePortOverride: Option[Int] )
 
   implicit val acsServiceAcctFmt = Json.format[DCOSACSServiceAccountCreds]
 
@@ -392,19 +412,17 @@ object LauncherConfig {
                                          scheme: String )
 
   case object LaserConfig {
-    val DEFAULT_MIN_COOL_EXECS = 1
-    val DEFAULT_SCALE_DOWN_TIMEOUT = 15
 
-    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String)
+    case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String, laserExecutor: Option[WellKnownLaserExecutor] = None)
 
     val KNOWN_LASER_RUNTIMES: Map[WellKnownLaserExecutor, LaserRuntime] = Map(
-      EXECUTOR_NODEJS   -> LaserRuntime("nodejs-executor",  "nodejs",        "", "bin/gestalt-laser-executor-nodejs", "NodeJS"),
-      EXECUTOR_NASHORN  -> LaserRuntime("nashorn-executor", "nashorn",       "", "bin/gestalt-laser-executor-js",     "Nashorn"),
-      EXECUTOR_JVM      -> LaserRuntime("jvm-executor",     "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java"),
-      EXECUTOR_DOTNET   -> LaserRuntime("dotnet-executor",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp"),
-      EXECUTOR_PYTHON   -> LaserRuntime("python-executor",  "python",        "", "bin/gestalt-laser-executor-python", "Python"),
-      EXECUTOR_RUBY     -> LaserRuntime("ruby-executor",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby"),
-      EXECUTOR_GOLANG   -> LaserRuntime("golang-executor",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang")
+      EXECUTOR_NODEJS   -> LaserRuntime("nodejs-executor",  "nodejs",        "", "bin/gestalt-laser-executor-nodejs", "NodeJS", Some(EXECUTOR_NODEJS)),
+      EXECUTOR_NASHORN  -> LaserRuntime("nashorn-executor", "nashorn",       "", "bin/gestalt-laser-executor-js",     "Nashorn", Some(EXECUTOR_NASHORN)),
+      EXECUTOR_JVM      -> LaserRuntime("jvm-executor",     "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java", Some(EXECUTOR_JVM)),
+      EXECUTOR_DOTNET   -> LaserRuntime("dotnet-executor",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp", Some(EXECUTOR_DOTNET)),
+      EXECUTOR_PYTHON   -> LaserRuntime("python-executor",  "python",        "", "bin/gestalt-laser-executor-python", "Python", Some(EXECUTOR_PYTHON)),
+      EXECUTOR_RUBY     -> LaserRuntime("ruby-executor",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby", Some(EXECUTOR_RUBY)),
+      EXECUTOR_GOLANG   -> LaserRuntime("golang-executor",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang", Some(EXECUTOR_GOLANG))
     )
   }
 
@@ -413,8 +431,41 @@ object LauncherConfig {
   object MetaConfig {
     val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
 
-    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.2.0/js_lambda/demo-setup.js"
-    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.2.0/js_lambda/demo-teardown.js"
+    val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.5/js_lambda/demo-setup.js"
+    val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.5/js_lambda/demo-teardown.js"
   }
+
+  val wellKnownEnvVars = Set(
+    "LASER_EXECUTOR_NODEJS_IMG",
+    "LASER_EXECUTOR_JS_IMG",
+    "LASER_EXECUTOR_JVM_IMG",
+    "LASER_EXECUTOR_DOTNET_IMG",
+    "LASER_EXECUTOR_PYTHON_IMG",
+    "LASER_EXECUTOR_RUBY_IMG",
+    "LASER_EXECUTOR_GOLANG_IMG",
+
+    "LASER_ENABLE_NODEJS_RUNTIME",
+    "LASER_ENABLE_JS_RUNTIME",
+    "LASER_ENABLE_JVM_RUNTIME",
+    "LASER_ENABLE_DOTNET_RUNTIME",
+    "LASER_ENABLE_RUBY_RUNTIME",
+    "LASER_ENABLE_PYTHON_RUNTIME",
+    "LASER_ENABLE_GOLANG_RUNTIME",
+
+    "LASER_SCALE_DOWN_TIMEOUT",
+    "LASER_MAX_CONN_TIME",
+    "LASER_EXECUTOR_HEARTBEAT_TIMEOUT",
+    "LASER_EXECUTOR_HEARTBEAT_PERIOD",
+    "LASER_SERVICE_HOST_OVERRIDE",
+    "LASER_SERVICE_PORT_OVERRIDE",
+
+    "LOGGING_ES_CLUSTER_NAME",
+    "LOGGING_ES_HOST",
+    "LOGGING_ES_PORT_TRANSPORT",
+    "LOGGING_ES_PORT_REST",
+    "LOGGING_ES_PROTOCOL",
+    "LOGGING_PROVISION_PROVIDER",
+    "LOGGING_CONFIGURE_LASER"
+  )
 
 }
