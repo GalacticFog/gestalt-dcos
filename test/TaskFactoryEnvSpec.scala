@@ -1,7 +1,7 @@
 import java.util.UUID
 
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
-import com.galacticfog.gestalt.dcos.LauncherConfig.{DCOSACSServiceAccountCreds, Dockerable, WellKnownLaserExecutor}
+import com.galacticfog.gestalt.dcos.LauncherConfig.{DCOSACSServiceAccountCreds, Dockerable, FrameworkService, WellKnownLaserExecutor}
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos._
 import modules.Module
@@ -12,9 +12,10 @@ import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.specs2.execute.Result
 import org.specs2.matcher.JsonMatchers
 import play.api.libs.json.{JsValue, Json}
+
 import scala.util.Try
 
-class TaskFactoryEnvSpec extends Specification with JsonMatchers {
+class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUtils {
 
   "GestaltTaskFactory" should {
 
@@ -105,22 +106,160 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers {
         .injector
       val lc  = injector.instanceOf[LauncherConfig]
 
-      val maybeAdvertHost  = sys.env.get("LASER_ADVERTISE_HOSTNAME")
       val maybeMaxConn  = sys.env.get("LASER_MAX_CONN_TIME").map(_.toInt)
       val maybeHBTimeout  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_TIMEOUT").map(_.toInt)
       val maybeHBPeriod  = sys.env.get("LASER_EXECUTOR_HEARTBEAT_PERIOD").map(_.toInt)
       val maybeHostOx = sys.env.get("LASER_SERVICE_HOST_OVERRIDE")
       val maybePortOx = sys.env.get("LASER_SERVICE_PORT_OVERRIDE").map(_.toInt)
-      val maybeDefCpu = sys.env.get("LASER_DEFAULT_EXECUTOR_CPU").map(_.toFloat)
-      val maybeDefRam = sys.env.get("LASER_DEFAULT_EXECUTOR_RAM").map(_.toFloat)
-      lc.laser.advertiseHost  must_== maybeAdvertHost
+      val maybeScaleDown = sys.env.get("LASER_SCALE_DOWN_TIMEOUT").map(_.toInt)
       lc.laser.maxCoolConnectionTime    must_== maybeMaxConn
       lc.laser.executorHeartbeatTimeout must_== maybeHBTimeout
       lc.laser.executorHeartbeatPeriod  must_== maybeHBPeriod
       lc.laser.serviceHostOverride      must_== maybeHostOx
       lc.laser.servicePortOverride      must_== maybePortOx
-      lc.laser.defaultExecutorCpu       must_== maybeDefCpu
-      lc.laser.defaultExecutorRam       must_== maybeDefRam
+      lc.laser.scaleDownTimeout         must_== maybeScaleDown
+    }
+
+    "properly pass-through legacy laser environment variables" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+
+      // should work with any env var starting with LASER_, but these are the important legacy ones
+      Result.foreach( Seq(
+        "DEFAULT_EXECUTOR_CPU",
+        "DEFAULT_EXECUTOR_RAM",
+        "ADVERTISE_HOSTNAME",
+        "ETHERNET_PORT",
+        "MIN_COOL_EXECUTORS") ) {
+        name =>
+          val env = sys.env.get("LASER_" + name)
+          env must_== launcherConfig.extraEnv.get(LASER).flatMap(_.get(name))
+          val prv = (laserPayload \ "properties" \ "config" \ "env" \ "private" \ name).asOpt[String]
+          prv must_== env
+      }
+    }
+
+    "properly capture all extra env vars" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+
+      Result.foreach(Seq(
+        RABBIT -> "RABBIT",
+        DATA(0) -> "DATA_0",
+        DATA(1) -> "DATA_1",
+        DATA(2) -> "DATA_2",
+        SECURITY -> "SECURITY",
+        META -> "META",
+        UI -> "UI",
+        KONG -> "KONG",
+        LASER -> "LASER",
+        POLICY -> "POLICY",
+        API_GATEWAY -> "API_GATEWAY",
+        LOG -> "LOG",
+        EXECUTOR_DOTNET  -> "EXECUTOR_DOTNET",
+        EXECUTOR_NASHORN -> "EXECUTOR_NASHORN",
+        EXECUTOR_NODEJS  -> "EXECUTOR_NODEJS",
+        EXECUTOR_JVM     -> "EXECUTOR_JVM",
+        EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
+        EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
+        EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
+      )) { case (svc,prefix) =>
+        val extra = launcherConfig.extraEnv(svc)
+        val found = sys.env.collect({
+          case (k,v) if k.startsWith(prefix + "_") && !LauncherConfig.wellKnownEnvVars.contains(k) => k.stripPrefix(prefix + "_") -> v
+        })
+        extra must havePairs(found.toSeq:_*)
+      }
+    }
+
+    "properly pass-through all extraEnv vars as env vars on base services" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globals = GlobalConfig()
+        .withDb(GlobalDBConfig(
+          hostname = "", port = 0, username = "", password = "", prefix = ""
+        ))
+        .withSec(GlobalSecConfig(
+          hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
+        ))
+
+      Result.foreach( Seq(
+        RABBIT,
+        DATA(0),
+        DATA(1),
+        DATA(2),
+        SECURITY,
+        META,
+        UI
+      )) {
+        svc =>
+          val extra = launcherConfig.extraEnv(svc)
+          val payload = gtf.getAppSpec(svc, globals)
+          payload.env must havePairs(extra.toSeq:_*)
+      }
+    }
+
+    "properly pass-through all extraEnv vars as env vars on provider services" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
+        )
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val key = GestaltAPIKey("", Some(""), uuid, false)
+
+      // should work with any env var starting with LASER_, but these are the important legacy ones
+      Result.foreach( Seq(
+        KONG,
+        LASER,
+        POLICY,
+        API_GATEWAY,
+        LOG )) {
+        prv =>
+          val payload = prv match {
+            case KONG => gtf.getKongProvider(uuid, uuid)
+            case LASER => gtf.getLaserProvider(key, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+            case POLICY => gtf.getPolicyProvider(key, uuid, uuid, uuid)
+            case API_GATEWAY => gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+            case LOG => gtf.getLogProvider(uuid).get
+            case _ => throw new RuntimeException("this was not expected")
+          }
+
+          val extra = launcherConfig.extraEnv(prv)
+          val env = (payload \ "properties" \ "config" \ "env" \ "private").asOpt[Map[String,String]].getOrElse(Map.empty)
+          env must havePairs(extra.toSeq:_*)
+      }
+    }
+
+    "properly pass-through all extraEnv vars as env vars on executor providers" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+
+      Result.foreach(LauncherConfig.LaserConfig.KNOWN_LASER_RUNTIMES.toSeq) {
+        ep =>
+          val extra = launcherConfig.extraEnv(ep._1)
+          val payload = gtf.getExecutorProvider(ep._2)
+          val env = (payload \ "properties" \ "config" \ "env" \ "public").asOpt[Map[String,String]].getOrElse(Map.empty)
+          env must havePairs(extra.toSeq:_*)
+      }
     }
 
     "properly parse marathon user network from environment variables" in {

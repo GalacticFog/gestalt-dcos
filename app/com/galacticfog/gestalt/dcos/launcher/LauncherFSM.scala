@@ -467,7 +467,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       "name" -> "Default-License-1",
       "description" -> "Default GF license",
       "properties" -> Json.obj(
-        "data" -> "ABwwGgQUSGnvMYdze8tYxeKHSrsrSDgSWxkCAgQACu95StKS8sL3quxhk3KzRhLqV3LPWliS+3NFGzq6jBbwbCdfKDeTKGP1XBWqFisIqB8R8nQq/oXx5GsZJ59+wkH4n+yDwg71JxFMZ4w3QXzIOjcCT85mdJSDz8MxpRQe8FuJxo8zb3cLkcPX14ioo7VD7PC6mORuSp8DkNHv1B3cP+K4tjDYI5gjzLZPb6S2BaNV5eEuSxo0V/9v3ieGaCrv9S3OOV4OAn+XccUlD4/uVkaaJBOfZjlXYzr0PS+6KLqplWOHqmgBPn5wNeNgwJJNj1Duw1OgfiHVsBO5dkFLyb6cmoXgJtpOJF+EDPj0ZnJDzGms9PwlP6xydTNvrDQI8+32gpdKvYgKFvCl9GHu1XBX1d0N78mfrDdPIlBgd/KYSCi4pv1ibGJmG31iDzSJPr5iwL9w"
+        "data" -> "ABwwGgQUZxUVN6k1fnSujXzIQbpJVnif0n4CAgQAX9toWY3+nB+76DJJ6dabzUAJXXI5KK/sc/7tquj6JF+8aMaMM4u4ySle7fUlmyNt0oFcBZ0Ot6h8v8+qWHbH20TW85ou1BjN701WiRQmgB/drPm4BPFCjSMvSpnWiyoHykpAUjaY+8lwq7LHAMbrd9soEh3OqQWPizNQUEZ8DZlGP7CIh1O3KFTVhFlva9u19JYk6/8SHbFxTT6P9UMMiglN9Y+Zji6v21PCj2jU9mV9xy/DcVXKlpaQMPydSuo/ukkRJUaxhZ+T4783fnraRZ5IzJz57IXs000bVTv18gSXOewkmN5OK0R1gvKIFJCzJYDUkBuucrHo9+DgYKuZDVymH8q0MCsZ47lfnS6EylPb9w54CgCkmE/PJKJhXRh1Jtmv+d0nk1OlaUgxsiynHdu44tN2PgiZ"
       )
     )
     val licenseUrl = s"http://${metaUrl}/root/licenses"
@@ -673,6 +673,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
             //
             _ <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
+              // TODO: we ever gonna enable this again?
               // provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))

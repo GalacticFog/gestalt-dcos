@@ -12,13 +12,7 @@ import org.specs2.specification.core.Fragment
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.{JsObject, JsValue, Json}
 
-class PayloadGenerationSpec extends Specification with JsonMatchers {
-
-  def uuid = UUID.randomUUID()
-
-  def haveEnvVar(pair: => (String, String)) = ((_: JsValue).toString) ^^ /("properties") /("config") /("env") /("private") /(pair)
-
-  def notHaveEnvVar(name: String) = ((_: JsValue).toString) ^^ not /("properties") /("config") /("env") /("private") /(name -> ".*".r)
+class PayloadGenerationSpec extends Specification with JsonMatchers with TestingUtils {
 
   val testGlobalVars = GlobalConfig().withDb(GlobalDBConfig(
     hostname = "test-db.marathon.mesos",
@@ -193,14 +187,12 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "laser.scale-down-timeout" -> 300,
-          "laser.min-cool-executors" -> 10
+          "laser.scale-down-timeout" -> 300
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("MIN_COOL_EXECUTORS" -> "10")
-      laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> "300")
+      laserPayload must havePrivateVar("SCALE_DOWN_TIME_SECONDS" -> "300")
     }
 
     "set elasticsearch config if requested" in {
@@ -216,9 +208,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("ES_PROTOCOL" -> "https")
-      laserPayload must haveEnvVar("ES_HOST" -> "my-es-cluster")
-      laserPayload must haveEnvVar("ES_PORT" -> "2222")
+      laserPayload must havePrivateVar("ES_PROTOCOL" -> "https")
+      laserPayload must havePrivateVar("ES_HOST" -> "my-es-cluster")
+      laserPayload must havePrivateVar("ES_PORT" -> "2222")
     }
 
     "not set elasticsearch config if requested" in {
@@ -234,9 +226,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must notHaveEnvVar("ES_PROTOCOL")
-      laserPayload must notHaveEnvVar("ES_HOST")
-      laserPayload must notHaveEnvVar("ES_PORT")
+      laserPayload must notHavePrivateVar("ES_PROTOCOL") and notHavePublicVar("ES_PROTOCOL")
+      laserPayload must notHavePrivateVar("ES_HOST") and notHavePublicVar("ES_HOST")
+      laserPayload must notHavePrivateVar("ES_PORT") and notHavePublicVar("ES_PORT")
     }
 
     "not set elasticsearch config by default" in {
@@ -252,67 +244,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must notHaveEnvVar("ES_PROTOCOL")
-      laserPayload must notHaveEnvVar("ES_HOST")
-      laserPayload must notHaveEnvVar("ES_PORT")
-    }
-
-    "set default min-cool, scaledown-timeout vars on laser scheduler" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("MIN_COOL_EXECUTORS" -> LauncherConfig.LaserConfig.DEFAULT_MIN_COOL_EXECS.toString)
-      laserPayload must haveEnvVar("SCALE_DOWN_TIME_SECONDS" -> LauncherConfig.LaserConfig.DEFAULT_SCALE_DOWN_TIMEOUT.toString)
-    }
-
-    "set ethernet port on laser scheduler if configured" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          "laser.ethernet-port" -> "enp0s8"
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("ETHERNET_PORT" -> "enp0s8")
-    }
-
-    "not set ethernet port on laser scheduler if not configured" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          // "laser.ethernet-port" -> "enp0s8"
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "ETHERNET_PORT").asOpt[String] must beNone
-    }
-
-    "set advertise-host on laser scheduler if configured" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          "laser.advertise-hostname" -> "laser.gestalt.marathon.mesos"
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("ADVERTISE_HOSTNAME" -> "laser.gestalt.marathon.mesos")
-    }
-
-    "not set advertise-host on laser scheduler if not configured" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          // "laser.advertise-hostname" -> "laser.gestalt.marathon.mesos"
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "ADVERTISE_HOSTNAME").asOpt[String] must beNone
+      laserPayload must notHavePrivateVar("ES_PROTOCOL") and notHavePublicVar("ES_PROTOCOL")
+      laserPayload must notHavePrivateVar("ES_HOST") and notHavePublicVar("ES_HOST")
+      laserPayload must notHavePrivateVar("ES_PORT") and notHavePublicVar("ES_PORT")
     }
 
     "set meta-network-name on laser scheduler if configured" in {
@@ -324,7 +258,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must haveEnvVar("META_NETWORK_NAME" -> "user-network")
+      laserPayload must havePrivateVar("META_NETWORK_NAME" -> "user-network")
     }
 
     "fall back to HOST networking on laser scheduler if meta-network-name not configured" in {
@@ -361,20 +295,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_TIMEOUT").asOpt[String] must beSome("45000")
-    }
-
-    "set default executor variables on laser provider" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          "laser.default-executor-cpu" -> 2.0,
-          "laser.default-executor-ram" -> 4096.0
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "DEFAULT_EXECUTOR_CPU").asOpt[String].map(_.toFloat) must beSome(2.0)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "DEFAULT_EXECUTOR_RAM").asOpt[String].map(_.toFloat) must beSome(4096)
     }
 
     "set executor-heartbeat-period on laser provider" in {
@@ -802,9 +722,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val Some(loggingPayload) = gtf.getLogProvider(uuid)
-      loggingPayload must haveEnvVar("ES_CLUSTER_NAME" -> "my-es-cluster-name")
-      loggingPayload must haveEnvVar("ES_SERVICE_HOST" -> "my-es-cluster")
-      loggingPayload must haveEnvVar("ES_SERVICE_PORT" -> "1111")
+      loggingPayload must havePrivateVar("ES_CLUSTER_NAME" -> "my-es-cluster-name")
+      loggingPayload must havePrivateVar("ES_SERVICE_HOST" -> "my-es-cluster")
+      loggingPayload must havePrivateVar("ES_SERVICE_PORT" -> "1111")
     }
 
     "not provision logging provider if requested" in {

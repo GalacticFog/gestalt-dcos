@@ -110,13 +110,16 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def vipPort(service: ServiceEndpoint): String = service.port.toString
 
   def getAppSpec(service: FrameworkService, globalConfig: GlobalConfig): AppSpec = {
-    service match {
+    val base = service match {
       case DATA(index) => getData(globalConfig.dbConfig.get, index)
       case RABBIT      => getRabbit
       case SECURITY    => getSecurity(globalConfig.dbConfig.get)
       case META        => getMeta(globalConfig.dbConfig.get, globalConfig.secConfig.get)
       case UI          => getUI
     }
+    base.copy(
+      env = base.env ++ launcherConfig.extraEnv(service)
+    )
   }
 
   private[this] def gestaltSecurityEnvVars(secConfig: GlobalSecConfig): Map[String, String] = Map(
@@ -427,7 +430,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
             dcosProtocol = "http",
             dcosPort = 80
           )),
-          serviceConfig = LoggingSecrets.ServiceConfig(
+          serviceConfig = ServiceConfig(
             image = launcherConfig.dockerImage(LOG),
             network = launcherConfig.marathon.networkName,
             healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
@@ -437,7 +440,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         ),
         computeId = caasProviderId.toString,
         caasType = CaaSTypes.DCOS,
-        providerName = Some("default-logging")
+        providerName = Some("default-logging"),
+        extraEnv = launcherConfig.extraEnv(LOG)
       )
     } yield js
   }
@@ -446,7 +450,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
                        laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
-    val laser = GestaltProviderBuilder.laserProvider(
+    GestaltProviderBuilder.laserProvider(
       secrets = LaserSecrets(
         serviceConfig = LaserSecrets.ServiceConfig(
           dbName = "default-laser-provider",
@@ -454,7 +458,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserCpu = LASER.cpu,
           laserMem = LASER.mem,
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
-          laserEthernetPort = launcherConfig.laser.ethernetPort,
+          laserEthernetPort = None,
           serviceHostOverride = launcherConfig.laser.serviceHostOverride,
           servicePortOverride = launcherConfig.laser.servicePortOverride
         ),
@@ -474,9 +478,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           listenRoute = "default-listen-route"
         ),
         schedulerConfig = LaserSecrets.SchedulerConfig(
-          globalMinCoolExecutors = Some(launcherConfig.laser.minCoolExecutors),
-          globalScaleDownTimeSecs = Some(launcherConfig.laser.scaleDownTimeout),
-          laserAdvertiseHostname = launcherConfig.laser.advertiseHost,
+          globalMinCoolExecutors = None,
+          globalScaleDownTimeSecs = launcherConfig.laser.scaleDownTimeout,
+          laserAdvertiseHostname = None,
           laserMaxCoolConnectionTime = launcherConfig.laser.maxCoolConnectionTime,
           laserExecutorHeartbeatTimeout = launcherConfig.laser.executorHeartbeatTimeout,
           laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod,
@@ -493,39 +497,32 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       rabbitId = rabbitProviderId.toString,
       dbId = dbProviderId.toString,
       caasType = CaaSTypes.DCOS,
-      providerName = Some("laser")
+      providerName = Some("laser"),
+      extraEnv = launcherConfig.extraEnv(LASER)
     )
-    def addVar(json: JsValue, envVar: String, envVal: String) = {
-      json.transform((JsPath \ "properties" \ "config" \ "env" \ "private").json.update(
-        __.read[JsObject].map{ o => o ++ Json.obj(
-          envVar -> envVal
-        )}
-      )).get
-    }
-    val c1 = launcherConfig.laser.defaultExecutorRam.foldLeft(laser) {
-      case (js, ram) => addVar(js, "DEFAULT_EXECUTOR_RAM", ram.toString)
-    }
-    launcherConfig.laser.defaultExecutorCpu.foldLeft(c1) {
-      case (js, cpu) => addVar(js, "DEFAULT_EXECUTOR_CPU", cpu.toString)
-    }
   }
 
   def getKongProvider(dbProviderId: UUID, caasProviderId: UUID): JsValue = {
     GestaltProviderBuilder.kongProvider(
       secrets = KongSecrets(
-        image = launcherConfig.dockerImage(KONG),
-        dbName = "default-kong-db",
-        gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
-        serviceVHost = None,
-        externalProtocol = Some("https"),
-        servicePort = None,
-        network = launcherConfig.marathon.networkName,
-        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        kongConfig = KongSecrets.KongConfig(
+          dbName = "default-kong-db",
+          gatewayVHost = launcherConfig.marathon.tld.map("gtw1." + _),
+          serviceVHost = None,
+          externalProtocol = Some("https"),
+          servicePort = None
+        ),
+        serviceConfig = ServiceConfig(
+          image = launcherConfig.dockerImage(KONG),
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        )
       ),
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
       caasType = CaaSTypes.DCOS,
-      providerName = Some("kong")
+      providerName = Some("kong"),
+      extraEnv = launcherConfig.extraEnv(KONG)
     )
   }
 
@@ -535,36 +532,49 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
                         rabbitProviderId: UUID): JsValue = {
     GestaltProviderBuilder.policyProvider(
       secrets = PolicySecrets(
-        image = launcherConfig.dockerImage(POLICY),
-        rabbitExchange = RABBIT_POLICY_EXCHANGE,
-        rabbitRoute = RABBIT_POLICY_ROUTE,
-        laserUser = apiKey.apiKey,
-        laserPassword = apiKey.apiSecret.get,
-        network = launcherConfig.marathon.networkName,
-        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        rabbitConfig = PolicySecrets.RabbitConfig(
+          rabbitExchange = RABBIT_POLICY_EXCHANGE,
+          rabbitRoute = RABBIT_POLICY_ROUTE
+        ),
+        laserConfig = PolicySecrets.LaserConfig(
+          laserUser = apiKey.apiKey,
+          laserPassword = apiKey.apiSecret.get
+
+        ),
+        serviceConfig = ServiceConfig(
+          image = launcherConfig.dockerImage(POLICY),
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        )
       ),
       computeId = caasProviderId.toString,
       laserId = laserProviderId.toString,
       rabbitId = rabbitProviderId.toString,
       caasType = CaaSTypes.DCOS,
-      providerName = Some("policy")
+      providerName = Some("policy"),
+      extraEnv = launcherConfig.extraEnv(POLICY)
     )
   }
 
   def getGatewayProvider(dbProviderId: UUID, secProviderId: UUID, kongProviderId: UUID, caasProviderId: UUID): JsValue = {
     GestaltProviderBuilder.gatewayProvider(
       secrets = GatewaySecrets(
-        image = launcherConfig.dockerImage(API_GATEWAY),
-        dbName = "default-gateway-db",
-        gatewayVHost = None,
-        network = launcherConfig.marathon.networkName,
-        healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        gwmConfig = GatewaySecrets.GatewayConfig(
+          dbName = "default-gateway-db",
+          gatewayVHost = None
+        ),
+        serviceConfig = ServiceConfig(
+          image = launcherConfig.dockerImage(API_GATEWAY),
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+        )
       ),
       kongId = kongProviderId.toString,
       dbId = dbProviderId.toString,
       computeId = caasProviderId.toString,
       securityId = secProviderId.toString,
-      providerName = Some("gwm")
+      providerName = Some("gwm"),
+      extraEnv = launcherConfig.extraEnv(API_GATEWAY)
     )
   }
 
@@ -573,7 +583,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     name = lr.name,
     cmd = lr.cmd,
     runtime = lr.runtime,
-    metaType = lr.metaType
+    metaType = lr.metaType,
+    extraEnv = lr.laserExecutor.map(launcherConfig.extraEnv).getOrElse(Map.empty)
   ))
 
 }
