@@ -29,6 +29,7 @@ export LASER_EXECUTOR_DOTNET_IMG="dotnet:override"
 export LASER_EXECUTOR_PYTHON_IMG="python:override"
 export LASER_EXECUTOR_RUBY_IMG="ruby:override"
 export LASER_EXECUTOR_GOLANG_IMG="golang:override"
+export LASER_EXECUTOR_BASH_IMG="bash:override"
 
 sbt 'testOnly TaskFactoryEnvSpec'
 
@@ -118,6 +119,8 @@ export EXECUTOR_GOLANG_R=r
 export EXECUTOR_GOLANG_18=18
 export EXECUTOR_RUBY_S=s
 export EXECUTOR_RUBY_19=19
+export EXECUTOR_BASH_T=t
+export EXECUTOR_BASH_20=20
 
 export CPU_API_GATEWAY=2.1
 export CPU_KONG=2.2

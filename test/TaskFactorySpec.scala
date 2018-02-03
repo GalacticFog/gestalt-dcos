@@ -56,6 +56,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.laser-executor-golang" -> "test-golang-executor:tag",
           "containers.laser-executor-python" -> "test-python-executor:tag",
           "containers.laser-executor-ruby"   -> "test-ruby-executor:tag",
+          "containers.laser-executor-bash"   -> "test-bash-executor:tag",
           // these are necessary so that the logging provider can be provisioned
           "logging.es-cluster-name" -> "blah",
           "logging.es-host" -> "blah",
@@ -88,6 +89,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         case "dotnet-executor"  => "test-dotnet-executor:tag"
         case "python-executor"  => "test-python-executor:tag"
         case "ruby-executor"    => "test-ruby-executor:tag"
+        case "bash-executor"    => "test-bash-executor:tag"
         case "golang-executor"  => "test-golang-executor:tag"
         case _ => throw new RuntimeException("unexpected")
       }
@@ -135,6 +137,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         case "dotnet-executor"  => "galacticfog/gestalt-laser-executor-dotnet:release-9.10.11.12"
         case "python-executor"  => "galacticfog/gestalt-laser-executor-python:release-9.10.11.12"
         case "ruby-executor"    => "galacticfog/gestalt-laser-executor-ruby:release-9.10.11.12"
+        case "bash-executor"    => "galacticfog/gestalt-laser-executor-bash:release-9.10.11.12"
         case "golang-executor"  => "galacticfog/gestalt-laser-executor-golang:release-9.10.11.12"
         case _ => throw new RuntimeException("unexpected")
       }
@@ -182,6 +185,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         case "dotnet-executor"  => s"galacticfog/gestalt-laser-executor-dotnet:release-${ver}"
         case "python-executor"  => s"galacticfog/gestalt-laser-executor-python:release-${ver}"
         case "ruby-executor"    => s"galacticfog/gestalt-laser-executor-ruby:release-${ver}"
+        case "bash-executor"    => s"galacticfog/gestalt-laser-executor-bash:release-${ver}"
         case "golang-executor"  => s"galacticfog/gestalt-laser-executor-golang:release-${ver}"
         case _ => throw new RuntimeException("unexpected")
       }

@@ -511,13 +511,13 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       expectMsg(Transition(launcher, ProvisioningMeta, launcher.underlyingActor.nextState(ProvisioningMeta)))
 
       //
-      providerCreateAttempts.get()          must_== 15
+      providerCreateAttempts.get()          must_== 16
       metaProvisionProviders.timeCalled     must beGreaterThanOrEqualTo(providerCreateAttempts.get() * 2)
       createdBaseDCOS.get()                 must_== 1
       createdDbProvider.get()               must_== 1
       createdRabbitProvider.get()           must_== 1
       createdSecProvider.get()              must_== 1
-      createdExecProviders.size             must_== 7
+      createdExecProviders.size             must_== 8
       createdKongProvider.get()             must_== 1
       createdPolicyProvider.get()           must_== 1
       createdLaserProvider.get()            must_== 1

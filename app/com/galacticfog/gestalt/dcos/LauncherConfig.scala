@@ -189,7 +189,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     EXECUTOR_NASHORN -> getBool("laser.enable-js-runtime", true),
     EXECUTOR_JVM     -> getBool("laser.enable-jvm-runtime", true),
     EXECUTOR_DOTNET  -> getBool("laser.enable-dotnet-runtime", true),
-    EXECUTOR_RUBY    -> getBool("laser.enable-ruby-runtime", true),
+    EXECUTOR_RUBY    -> getBool("laser.enable-bash-runtime", true),
+    EXECUTOR_BASH    -> getBool("laser.enable-ruby-runtime", true),
     EXECUTOR_PYTHON  -> getBool("laser.enable-python-runtime", true),
     EXECUTOR_GOLANG  -> getBool("laser.enable-golang-runtime", true),
     EXECUTOR_NODEJS  -> getBool("laser.enable-nodejs-runtime", true)
@@ -227,7 +228,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     EXECUTOR_JVM     -> "EXECUTOR_JVM",
     EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
     EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
-    EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
+    EXECUTOR_RUBY    -> "EXECUTOR_RUBY",
+    EXECUTOR_BASH    -> "EXECUTOR_BASH"
   )
 
   val extraEnv: Map[Dockerable,Map[String,String]] = {
@@ -329,6 +331,7 @@ object LauncherConfig {
     case object EXECUTOR_PYTHON  extends WellKnownLaserExecutor {val name = "laser-executor-python"}
     case object EXECUTOR_GOLANG  extends WellKnownLaserExecutor {val name = "laser-executor-golang"}
     case object EXECUTOR_RUBY    extends WellKnownLaserExecutor {val name = "laser-executor-ruby"}
+    case object EXECUTOR_BASH    extends WellKnownLaserExecutor {val name = "laser-executor-bash"}
   }
 
   def defaultDockerImages(service: Dockerable): String = service match {
@@ -349,6 +352,7 @@ object LauncherConfig {
     case LaserExecutors.EXECUTOR_PYTHON    => s"galacticfog/gestalt-laser-executor-python:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_BASH      => s"galacticfog/gestalt-laser-executor-bash:release-${BuildInfo.version}"
   }
 
   case class DatabaseConfig( provision: Boolean,
@@ -432,6 +436,7 @@ object LauncherConfig {
       EXECUTOR_DOTNET   -> LaserRuntime("dotnet-executor",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp", Some(EXECUTOR_DOTNET)),
       EXECUTOR_PYTHON   -> LaserRuntime("python-executor",  "python",        "", "bin/gestalt-laser-executor-python", "Python", Some(EXECUTOR_PYTHON)),
       EXECUTOR_RUBY     -> LaserRuntime("ruby-executor",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby", Some(EXECUTOR_RUBY)),
+      EXECUTOR_BASH     -> LaserRuntime("bash-executor",    "bash",          "", "bin/gestalt-laser-executor-bash"  , "Bash", Some(EXECUTOR_BASH)),
       EXECUTOR_GOLANG   -> LaserRuntime("golang-executor",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang", Some(EXECUTOR_GOLANG))
     )
   }
@@ -452,6 +457,7 @@ object LauncherConfig {
     "LASER_EXECUTOR_DOTNET_IMG",
     "LASER_EXECUTOR_PYTHON_IMG",
     "LASER_EXECUTOR_RUBY_IMG",
+    "LASER_EXECUTOR_BASH_IMG",
     "LASER_EXECUTOR_GOLANG_IMG",
 
     "LASER_ENABLE_NODEJS_RUNTIME",
@@ -459,6 +465,7 @@ object LauncherConfig {
     "LASER_ENABLE_JVM_RUNTIME",
     "LASER_ENABLE_DOTNET_RUNTIME",
     "LASER_ENABLE_RUBY_RUNTIME",
+    "LASER_ENABLE_BASH_RUNTIME",
     "LASER_ENABLE_PYTHON_RUNTIME",
     "LASER_ENABLE_GOLANG_RUNTIME",
 
