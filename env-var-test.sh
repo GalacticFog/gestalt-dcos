@@ -20,8 +20,8 @@ export GESTALT_POLICY_IMG="policy:override"
 export GESTALT_LASER_IMG="lambda:override"
 export GESTALT_LOG_IMG="log:override"
 export GESTALT_API_GATEWAY_IMG="gateway:override"
-export GESTALT_API_PROXY_IMG="proxy:override"
 export GESTALT_UI_IMG="ui:override"
+
 export LASER_EXECUTOR_NODEJS_IMG="nodejs:override"
 export LASER_EXECUTOR_JS_IMG="js:override"
 export LASER_EXECUTOR_JVM_IMG="jvm:override"
@@ -118,6 +118,25 @@ export EXECUTOR_GOLANG_R=r
 export EXECUTOR_GOLANG_18=18
 export EXECUTOR_RUBY_S=s
 export EXECUTOR_RUBY_19=19
+
+export CPU_API_GATEWAY=2.1
+export CPU_KONG=2.2
+export CPU_LASER=2.3
+export CPU_LOG=2.4
+export CPU_META=2.5
+export CPU_POLICY=2.6
+export CPU_RABBIT=2.7
+export CPU_SECURITY=2.8
+export CPU_UI=2.9
+export MEM_API_GATEWAY=1031
+export MEM_KONG=1032
+export MEM_LASER=1033
+export MEM_LOG=1034
+export MEM_META=1035
+export MEM_POLICY=1036
+export MEM_RABBIT=1037
+export MEM_SECURITY=1038
+export MEM_UI=1039
 
 sbt 'testOnly TaskFactoryEnvSpec'
 

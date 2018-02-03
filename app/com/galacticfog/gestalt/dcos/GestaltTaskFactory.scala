@@ -118,7 +118,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       case UI          => getUI
     }
     base.copy(
-      env = base.env ++ launcherConfig.extraEnv(service)
+      env = base.env ++ launcherConfig.extraEnv(service),
+      cpus = launcherConfig.resources.cpu.get(service).getOrElse(base.cpus),
+      mem  = launcherConfig.resources.mem.get(service).getOrElse(base.mem)
     )
   }
 
@@ -435,7 +437,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
             network = launcherConfig.marathon.networkName,
             healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
             vhost = launcherConfig.marathon.tld.map("default-logging." + _),
-            vhostProto = launcherConfig.marathon.marathonLbProto
+            vhostProto = launcherConfig.marathon.marathonLbProto,
+            cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
+            memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
           )
         ),
         computeId = caasProviderId.toString,
@@ -455,8 +459,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceConfig = LaserSecrets.ServiceConfig(
           dbName = "default-laser-provider",
           laserImage = launcherConfig.dockerImage(LASER),
-          laserCpu = LASER.cpu,
-          laserMem = LASER.mem,
+          laserCpu = launcherConfig.resources.cpu.get(LASER) getOrElse LASER.cpu,
+          laserMem = launcherConfig.resources.mem.get(LASER) getOrElse LASER.mem,
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
           laserEthernetPort = None,
           serviceHostOverride = launcherConfig.laser.serviceHostOverride,
@@ -515,7 +519,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceConfig = ServiceConfig(
           image = launcherConfig.dockerImage(KONG),
           network = launcherConfig.marathon.networkName,
-          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+          cpus = launcherConfig.resources.cpu.get(KONG) orElse Some(KONG.cpu),
+          memory = launcherConfig.resources.mem.get(KONG) orElse Some(KONG.mem)
         )
       ),
       dbId = dbProviderId.toString,
@@ -539,12 +545,13 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         laserConfig = PolicySecrets.LaserConfig(
           laserUser = apiKey.apiKey,
           laserPassword = apiKey.apiSecret.get
-
         ),
         serviceConfig = ServiceConfig(
           image = launcherConfig.dockerImage(POLICY),
           network = launcherConfig.marathon.networkName,
-          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+          cpus = launcherConfig.resources.cpu.get(POLICY) orElse Some(POLICY.cpu),
+          memory = launcherConfig.resources.mem.get(POLICY) orElse Some(POLICY.mem)
         )
       ),
       computeId = caasProviderId.toString,
@@ -566,7 +573,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceConfig = ServiceConfig(
           image = launcherConfig.dockerImage(API_GATEWAY),
           network = launcherConfig.marathon.networkName,
-          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP")
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+          cpus = launcherConfig.resources.cpu.get(API_GATEWAY) orElse Some(API_GATEWAY.cpu),
+          memory = launcherConfig.resources.mem.get(API_GATEWAY) orElse Some(API_GATEWAY.mem)
         )
       ),
       kongId = kongProviderId.toString,
