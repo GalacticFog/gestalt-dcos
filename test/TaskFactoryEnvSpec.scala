@@ -72,6 +72,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         case "dotnet-executor"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
         case "python-executor"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
         case "ruby-executor"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
+        case "bash-executor"    => env("LASER_EXECUTOR_BASH_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-bash:release-${ensVer}")
         case "golang-executor"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
         case _ => throw new RuntimeException("unexpected")
       }
@@ -168,7 +169,8 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         EXECUTOR_JVM     -> "EXECUTOR_JVM",
         EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
         EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
-        EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
+        EXECUTOR_RUBY    -> "EXECUTOR_RUBY",
+        EXECUTOR_BASH    -> "EXECUTOR_BASH"
       )) { case (svc,prefix) =>
         val extra = launcherConfig.extraEnv(svc)
         val found = sys.env.collect({
