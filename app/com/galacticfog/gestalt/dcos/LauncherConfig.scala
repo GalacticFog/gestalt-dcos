@@ -211,28 +211,29 @@ class LauncherConfig @Inject()(config: Configuration) {
     servicePortOverride = config.getInt("laser.service-port-override")
   )
 
+  private[this] val servicesWithPrefixes: Map[Dockerable,String] = provisionedServices.collect({ case d @ DATA(i) => d -> s"DATA_${i}" }).toMap ++ Map(
+    RABBIT -> "RABBIT",
+    SECURITY -> "SECURITY",
+    META -> "META",
+    UI -> "UI",
+    KONG -> "KONG",
+    LASER -> "LASER",
+    POLICY -> "POLICY",
+    API_GATEWAY -> "API_GATEWAY",
+    LOG -> "LOG",
+    EXECUTOR_DOTNET  -> "EXECUTOR_DOTNET",
+    EXECUTOR_NASHORN -> "EXECUTOR_NASHORN",
+    EXECUTOR_NODEJS  -> "EXECUTOR_NODEJS",
+    EXECUTOR_JVM     -> "EXECUTOR_JVM",
+    EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
+    EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
+    EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
+  )
+
   val extraEnv: Map[Dockerable,Map[String,String]] = {
-    val prefixes: Map[Dockerable,String] = provisionedServices.collect({ case d @ DATA(i) => d -> s"DATA_${i}" }).toMap ++ Map(
-      RABBIT -> "RABBIT",
-      SECURITY -> "SECURITY",
-      META -> "META",
-      UI -> "UI",
-      KONG -> "KONG",
-      LASER -> "LASER",
-      POLICY -> "POLICY",
-      API_GATEWAY -> "API_GATEWAY",
-      LOG -> "LOG",
-      EXECUTOR_DOTNET  -> "EXECUTOR_DOTNET",
-      EXECUTOR_NASHORN -> "EXECUTOR_NASHORN",
-      EXECUTOR_NODEJS  -> "EXECUTOR_NODEJS",
-      EXECUTOR_JVM     -> "EXECUTOR_JVM",
-      EXECUTOR_PYTHON  -> "EXECUTOR_PYTHON",
-      EXECUTOR_GOLANG  -> "EXECUTOR_GOLANG",
-      EXECUTOR_RUBY    -> "EXECUTOR_RUBY"
-    )
     sys.env.flatMap({
       case (k,v) if !wellKnownEnvVars.contains(k) =>
-        prefixes.find({case (_,pfx) => k.startsWith(pfx + "_")}) match {
+        servicesWithPrefixes.find({case (_,pfx) => k.startsWith(pfx + "_")}) match {
           case Some((svc,pfx)) => Some((svc,k.stripPrefix(pfx + "_"),v))
           case _=> None
         }
@@ -241,6 +242,15 @@ class LauncherConfig @Inject()(config: Configuration) {
       case (svc, env) => (svc,env.map({case (_,k,v) => (k,v)}).toMap)
     }).withDefaultValue(Map.empty[String,String])
   }
+
+  val resources = LauncherConfig.Resources(
+    cpu = servicesWithPrefixes.flatMap({
+      case (svc,prefix) => sys.env.get("CPU_" + prefix).flatMap(d => Try{d.toDouble}.toOption).map(svc -> _)
+    }),
+    mem = servicesWithPrefixes.flatMap({
+      case (svc,prefix) => sys.env.get("MEM_" + prefix).flatMap(d => Try{d.toInt}.toOption).map(svc -> _)
+    })
+  )
 
   def apply(healthCheck: HealthCheckProtocol): HealthCheckProtocol = {
     import HealthCheck._
@@ -467,5 +477,7 @@ object LauncherConfig {
     "LOGGING_PROVISION_PROVIDER",
     "LOGGING_CONFIGURE_LASER"
   )
+
+  case class Resources(cpu: Map[Dockerable,Double], mem: Map[Dockerable,Int])
 
 }

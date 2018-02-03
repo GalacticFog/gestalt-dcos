@@ -1,7 +1,7 @@
 import java.util.UUID
 
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserConfig.LaserRuntime
-import com.galacticfog.gestalt.dcos.LauncherConfig.{DCOSACSServiceAccountCreds, Dockerable, FrameworkService, WellKnownLaserExecutor}
+import com.galacticfog.gestalt.dcos.LauncherConfig.DCOSACSServiceAccountCreds
 import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors._
 import com.galacticfog.gestalt.dcos._
 import modules.Module
@@ -11,7 +11,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import org.specs2.execute.Result
 import org.specs2.matcher.JsonMatchers
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.{JsObject, JsValue, Json}
 
 import scala.util.Try
 
@@ -178,6 +178,58 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       }
     }
 
+    "properly capture all CPU allocation env vars" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+
+      Result.foreach(Seq(
+        RABBIT -> "RABBIT",
+        DATA(0) -> "DATA_0",
+        DATA(1) -> "DATA_1",
+        DATA(2) -> "DATA_2",
+        SECURITY -> "SECURITY",
+        META -> "META",
+        UI -> "UI",
+        KONG -> "KONG",
+        LASER -> "LASER",
+        POLICY -> "POLICY",
+        API_GATEWAY -> "API_GATEWAY",
+        LOG -> "LOG"
+      )) { case (svc,prefix) =>
+        val cpu = launcherConfig.resources.cpu.get(svc)
+        val found = sys.env.get(s"CPU_$prefix").map(_.toDouble)
+        cpu must_== found
+      }
+    }
+
+    "properly capture all MEM allocation env vars" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+
+      Result.foreach(Seq(
+        RABBIT -> "RABBIT",
+        DATA(0) -> "DATA_0",
+        DATA(1) -> "DATA_1",
+        DATA(2) -> "DATA_2",
+        SECURITY -> "SECURITY",
+        META -> "META",
+        UI -> "UI",
+        KONG -> "KONG",
+        LASER -> "LASER",
+        POLICY -> "POLICY",
+        API_GATEWAY -> "API_GATEWAY",
+        LOG -> "LOG"
+      )) { case (svc,prefix) =>
+        val cpu = launcherConfig.resources.mem.get(svc)
+        val found = sys.env.get(s"MEM_$prefix").map(_.toInt)
+        cpu must_== found
+      }
+    }
+
     "properly pass-through all extraEnv vars as env vars on base services" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -259,6 +311,78 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
           val payload = gtf.getExecutorProvider(ep._2)
           val env = (payload \ "properties" \ "config" \ "env" \ "public").asOpt[Map[String,String]].getOrElse(Map.empty)
           env must havePairs(extra.toSeq:_*)
+      }
+    }
+
+    "properly provision resources for on base services" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val globals = GlobalConfig()
+        .withDb(GlobalDBConfig(
+          hostname = "", port = 0, username = "", password = "", prefix = ""
+        ))
+        .withSec(GlobalSecConfig(
+          hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
+        ))
+
+      Result.foreach( Seq(
+        RABBIT,
+        DATA(0),
+        DATA(1),
+        DATA(2),
+        SECURITY,
+        META,
+        UI
+      )) {
+        svc =>
+          val cpu = launcherConfig.resources.cpu.get(svc)
+          val mem = launcherConfig.resources.mem.get(svc)
+          val payload = gtf.getAppSpec(svc, globals)
+          cpu must beNone or beSome(payload.cpus)
+          mem must beNone or beSome(payload.mem)
+      }
+    }
+
+    "properly pass-through all extraEnv vars as env vars on provider services" in {
+      val injector = new GuiceApplicationBuilder()
+        .configure(
+          "logging.es-cluster-name" -> "blah",
+          "logging.es-host" -> "blah",
+          "logging.es-port-transport" -> "1111",
+          "logging.es-port-rest" -> "2222",
+          "logging.provision-provider" -> true
+        )
+        .disable[Module]
+        .injector
+      val launcherConfig = injector.instanceOf[LauncherConfig]
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val key = GestaltAPIKey("", Some(""), uuid, false)
+
+      // should work with any env var starting with LASER_, but these are the important legacy ones
+      Result.foreach( Seq(
+        KONG,
+        LASER,
+        POLICY,
+        API_GATEWAY,
+        LOG )) {
+        prv =>
+          val payload = prv match {
+            case KONG => gtf.getKongProvider(uuid, uuid)
+            case LASER => gtf.getLaserProvider(key, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+            case POLICY => gtf.getPolicyProvider(key, uuid, uuid, uuid)
+            case API_GATEWAY => gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
+            case LOG => gtf.getLogProvider(uuid).get
+            case _ => throw new RuntimeException("this was not expected")
+          }
+
+          val cpu = launcherConfig.resources.cpu.get(prv)
+          val mem = launcherConfig.resources.mem.get(prv)
+          val container = (payload \ "properties" \ "services" \(0) \ "container_spec" \ "properties").as[JsObject]
+          cpu must beNone or beSome((container \ "cpus").as[Double])
+          mem must beNone or beSome((container \ "memory").as[Int])
       }
     }
 
