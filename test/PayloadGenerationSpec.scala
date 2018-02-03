@@ -271,6 +271,23 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "META_NETWORK_NAME").asOpt[String] must beSome("HOST")
+      (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "HOST"
+    }
+
+    "provision two ports with HOST networking for laser scheduler" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.meta-network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val cspec = (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties")
+      (cspec \ "network").as[String] must_== "HOST"
+      (cspec \ "cmd").as[String] must contain("MANAGEMENT_PORT=$PORT1")
+      (cspec \ "port_mappings").as[Seq[JsObject]] must haveSize(2)
+      (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "host_port").asOpt[Int]) must containTheSameElementsAs(Seq(0,0))
     }
 
     "set max-connection-time on laser provider" in {
