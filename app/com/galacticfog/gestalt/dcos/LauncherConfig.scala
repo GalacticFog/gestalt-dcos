@@ -189,8 +189,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     EXECUTOR_NASHORN -> getBool("laser.enable-js-runtime", true),
     EXECUTOR_JVM     -> getBool("laser.enable-jvm-runtime", true),
     EXECUTOR_DOTNET  -> getBool("laser.enable-dotnet-runtime", true),
-    EXECUTOR_RUBY    -> getBool("laser.enable-bash-runtime", true),
-    EXECUTOR_BASH    -> getBool("laser.enable-ruby-runtime", true),
+    EXECUTOR_RUBY    -> getBool("laser.enable-ruby-runtime", true),
+    EXECUTOR_BASH    -> getBool("laser.enable-bash-runtime", true),
     EXECUTOR_PYTHON  -> getBool("laser.enable-python-runtime", true),
     EXECUTOR_GOLANG  -> getBool("laser.enable-golang-runtime", true),
     EXECUTOR_NODEJS  -> getBool("laser.enable-nodejs-runtime", true)
