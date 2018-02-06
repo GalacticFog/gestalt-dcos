@@ -183,7 +183,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       gtf.getSecurityProvider(global.secConfig.get).toString must /("properties") /("config") /("env") /("public") /("REALM" -> realm)
     }
 
-    "set min-cool, scaledown-timeout vars on laser scheduler per config" in {
+    "set scaledown-timeout vars on laser scheduler per config" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -265,12 +265,12 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          // "laser.meta-network-name" -> "user-network"
+          // "marathon.network-name" -> "user-network"
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "META_NETWORK_NAME").asOpt[String] must beSome("HOST")
+      laserPayload must havePrivateVar("META_NETWORK_NAME" -> "HOST")
       (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "HOST"
     }
 
@@ -278,7 +278,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          // "laser.meta-network-name" -> "user-network"
+          // "marathon.network-name" -> "user-network"
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
@@ -290,6 +290,18 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "host_port").asOpt[Int]) must containTheSameElementsAs(Seq(0,0))
     }
 
+    "set MANAGEMENT_PORT when using non-HOST networking for laser scheduler" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "marathon.network-name" -> "user-network"
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("MANAGEMENT_PORT" -> "60500")
+    }
+
     "set max-connection-time on laser provider" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -299,7 +311,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "MAX_COOL_CONNECTION_TIME").asOpt[String] must beSome("45")
+      laserPayload must havePrivateVar("MAX_COOL_CONNECTION_TIME" -> "45")
     }
 
     "set executor-heartbeat-timeout on laser provider" in {
@@ -311,7 +323,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_TIMEOUT").asOpt[String] must beSome("45000")
+      laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_TIMEOUT" -> "45000")
     }
 
     "set executor-heartbeat-period on laser provider" in {
@@ -323,7 +335,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      (laserPayload \ "properties" \ "config" \ "env" \ "private" \ "EXECUTOR_HEARTBEAT_MILLIS").asOpt[String] must beSome("30000")
+      laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_MILLIS" -> "30000")
     }
 
     val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(
