@@ -485,9 +485,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           globalMinCoolExecutors = None,
           globalScaleDownTimeSecs = launcherConfig.laser.scaleDownTimeout,
           laserAdvertiseHostname = None,
-          laserMaxCoolConnectionTime = launcherConfig.laser.maxCoolConnectionTime,
-          laserExecutorHeartbeatTimeout = launcherConfig.laser.executorHeartbeatTimeout,
-          laserExecutorHeartbeatPeriod = launcherConfig.laser.executorHeartbeatPeriod,
+          laserMaxCoolConnectionTime = Some(launcherConfig.laser.maxCoolConnectionTime),
+          laserExecutorHeartbeatTimeout = Some(launcherConfig.laser.executorHeartbeatTimeout),
+          laserExecutorHeartbeatPeriod = Some(launcherConfig.laser.executorHeartbeatPeriod),
           laserExecutorPort = if (launcherConfig.marathon.networkName.isDefined) Some(60500) else None,
           esHost = launcherConfig.logging.esHost.filter(_ => launcherConfig.logging.configureLaser),
           esPort = launcherConfig.logging.esPortREST.filter(_ => launcherConfig.logging.configureLaser),
@@ -503,7 +503,10 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
       dbId = dbProviderId.toString,
       caasType = CaaSTypes.DCOS,
       providerName = Some("laser"),
-      extraEnv = launcherConfig.extraEnv(LASER)
+      extraEnv = Map(
+        "DEFAULT_EXECUTOR_MEM" -> launcherConfig.laser.defaultExecutorMem.toString,
+        "DEFAULT_EXECUTOR_CPU" -> launcherConfig.laser.defaultExecutorCpu.toString
+      ) ++ launcherConfig.extraEnv(LASER)
     )
   }
 
