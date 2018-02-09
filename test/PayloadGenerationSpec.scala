@@ -274,7 +274,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "HOST"
     }
 
-    "provision two ports with HOST networking for laser scheduler" in {
+    "provision two ports with HOST networking for laser scheduler, with port and host vars" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -286,6 +286,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val cspec = (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties")
       (cspec \ "network").as[String] must_== "HOST"
       (cspec \ "cmd").as[String] must contain("MANAGEMENT_PORT=$PORT1")
+      (cspec \ "cmd").as[String] must contain("ADVERTISE_HOSTNAME=$HOST")
       (cspec \ "port_mappings").as[Seq[JsObject]] must haveSize(2)
       (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "host_port").asOpt[Int]) must containTheSameElementsAs(Seq(0,0))
     }
