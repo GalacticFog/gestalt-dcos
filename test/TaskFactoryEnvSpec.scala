@@ -102,6 +102,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
     }
 
     "properly parse laser config from environment variables" in {
+      import LauncherConfig.LaserConfig.Defaults
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
@@ -113,9 +114,13 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       val maybeHostOx = sys.env.get("LASER_SERVICE_HOST_OVERRIDE")
       val maybePortOx = sys.env.get("LASER_SERVICE_PORT_OVERRIDE").map(_.toInt)
       val maybeScaleDown = sys.env.get("LASER_SCALE_DOWN_TIMEOUT").map(_.toInt)
-      lc.laser.maxCoolConnectionTime    must_== maybeMaxConn
-      lc.laser.executorHeartbeatTimeout must_== maybeHBTimeout
-      lc.laser.executorHeartbeatPeriod  must_== maybeHBPeriod
+      val maybeDefCpu = sys.env.get("LASER_DEFAULT_EXECUTOR_CPU").map(_.toDouble)
+      val maybeDefMem = sys.env.get("LASER_DEFAULT_EXECUTOR_MEM").map(_.toInt)
+      lc.laser.maxCoolConnectionTime    must_== maybeMaxConn.getOrElse(Defaults.MAX_COOL_CONNECTION_TIME)
+      lc.laser.executorHeartbeatTimeout must_== maybeHBTimeout.getOrElse(Defaults.EXECUTOR_HEARTBEAT_TIMEOUT)
+      lc.laser.executorHeartbeatPeriod  must_== maybeHBPeriod.getOrElse(Defaults.EXECUTOR_HEARTBEAT_MILLIS)
+      lc.laser.defaultExecutorCpu       must_== maybeDefCpu.getOrElse(Defaults.DEFAULT_EXECUTOR_CPU)
+      lc.laser.defaultExecutorMem       must_== maybeDefMem.getOrElse(Defaults.DEFAULT_EXECUTOR_MEM)
       lc.laser.serviceHostOverride      must_== maybeHostOx
       lc.laser.servicePortOverride      must_== maybePortOx
       lc.laser.scaleDownTimeout         must_== maybeScaleDown
@@ -131,8 +136,6 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
 
       // should work with any env var starting with LASER_, but these are the important legacy ones
       Result.foreach( Seq(
-        "DEFAULT_EXECUTOR_CPU",
-        "DEFAULT_EXECUTOR_RAM",
         "ADVERTISE_HOSTNAME",
         "ETHERNET_PORT",
         "MIN_COOL_EXECUTORS") ) {

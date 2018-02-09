@@ -302,7 +302,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       laserPayload must havePrivateVar("MANAGEMENT_PORT" -> "60500")
     }
 
-    "set max-connection-time on laser provider" in {
+    "set max-connection-time on laser provider as specified" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -314,7 +314,19 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       laserPayload must havePrivateVar("MAX_COOL_CONNECTION_TIME" -> "45")
     }
 
-    "set executor-heartbeat-timeout on laser provider" in {
+    "set max-connection-time on laser provider by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.max-cool-connection-time" -> 45
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("MAX_COOL_CONNECTION_TIME" -> LauncherConfig.LaserConfig.Defaults.MAX_COOL_CONNECTION_TIME.toString)
+    }
+
+    "set executor-heartbeat-timeout on laser provider as specified" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -326,16 +338,88 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_TIMEOUT" -> "45000")
     }
 
-    "set executor-heartbeat-period on laser provider" in {
+    "set executor-heartbeat-timeout on laser provider by default" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "laser.executor-heartbeat-period" -> 30000
+          // "laser.executor-heartbeat-timeout" -> 45000
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_TIMEOUT" -> LauncherConfig.LaserConfig.Defaults.EXECUTOR_HEARTBEAT_TIMEOUT.toString)
+    }
+
+    "set executor-heartbeat-period on laser provider as specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+           "laser.executor-heartbeat-period" -> 30000
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_MILLIS" -> "30000")
+    }
+
+    "set executor-heartbeat-period on laser provider by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.executor-heartbeat-period" -> 30000
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_MILLIS" -> LauncherConfig.LaserConfig.Defaults.EXECUTOR_HEARTBEAT_MILLIS.toString)
+    }
+
+    "set default-executor-cpu on laser provider as specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.default-executor-cpu" -> 1.1
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("DEFAULT_EXECUTOR_CPU" -> "1.1")
+    }
+
+    "set default-executor-cpu executor-heartbeat-period on laser provider by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.default-executor-cpu" -> 1.1
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("DEFAULT_EXECUTOR_CPU" -> LauncherConfig.LaserConfig.Defaults.DEFAULT_EXECUTOR_CPU.toString)
+    }
+
+    "set default-executor-mem on laser provider as specified" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          "laser.default-executor-mem" -> 1111
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("DEFAULT_EXECUTOR_MEM" -> "1111")
+    }
+
+    "set default-executor-mem executor-heartbeat-period on laser provider by default" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .configure(
+          // "laser.default-executor-mem" -> 1111
+        )
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserPayload must havePrivateVar("DEFAULT_EXECUTOR_MEM" -> LauncherConfig.LaserConfig.Defaults.DEFAULT_EXECUTOR_MEM.toString)
     }
 
     val emptyDbConfig = GlobalConfig().withDb(GlobalDBConfig(

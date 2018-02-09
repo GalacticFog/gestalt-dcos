@@ -205,9 +205,11 @@ class LauncherConfig @Inject()(config: Configuration) {
         image = dockerImage(e)
       )
     }).toSeq,
-    maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time"),
-    executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout"),
-    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period"),
+    maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time") getOrElse LaserConfig.Defaults.MAX_COOL_CONNECTION_TIME,
+    executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_TIMEOUT,
+    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_MILLIS,
+    defaultExecutorCpu = config.getDouble("laser.default-executor-cpu") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_CPU,
+    defaultExecutorMem = config.getInt("laser.default-executor-mem") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_MEM,
     serviceHostOverride = config.getString("laser.service-host-override"),
     servicePortOverride = config.getInt("laser.service-port-override")
   )
@@ -412,9 +414,11 @@ object LauncherConfig {
 
   case class LaserConfig( scaleDownTimeout: Option[Int],
                           enabledRuntimes: Seq[LaserRuntime],
-                          maxCoolConnectionTime: Option[Int],
-                          executorHeartbeatTimeout: Option[Int],
-                          executorHeartbeatPeriod: Option[Int],
+                          maxCoolConnectionTime: Int,
+                          executorHeartbeatTimeout: Int,
+                          executorHeartbeatPeriod: Int,
+                          defaultExecutorCpu: Double,
+                          defaultExecutorMem: Int,
                           serviceHostOverride: Option[String],
                           servicePortOverride: Option[Int] )
 
@@ -426,6 +430,17 @@ object LauncherConfig {
                                          scheme: String )
 
   case object LaserConfig {
+    case object Defaults {
+      val DEFAULT_EXECUTOR_MEM = 1024
+
+      val DEFAULT_EXECUTOR_CPU = 1.0
+
+      val EXECUTOR_HEARTBEAT_TIMEOUT = 5000
+
+      val EXECUTOR_HEARTBEAT_MILLIS = 10000
+
+      val MAX_COOL_CONNECTION_TIME: Int = 120
+    }
 
     case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String, laserExecutor: Option[WellKnownLaserExecutor] = None)
 
@@ -475,6 +490,8 @@ object LauncherConfig {
     "LASER_EXECUTOR_HEARTBEAT_PERIOD",
     "LASER_SERVICE_HOST_OVERRIDE",
     "LASER_SERVICE_PORT_OVERRIDE",
+    "LASER_DEFAULT_EXECUTOR_MEM",
+    "LASER_DEFAULT_EXECUTOR_CPU",
 
     "LOGGING_ES_CLUSTER_NAME",
     "LOGGING_ES_HOST",
