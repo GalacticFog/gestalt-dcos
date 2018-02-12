@@ -13,6 +13,7 @@ export GESTALT_DATA_IMG="data:override"
 sbt 'testOnly TaskFactoryEnvSpec'
 
 export GESTALT_RABBIT_IMG="rabbit:override"
+export GESTALT_ELASTIC_IMG="elastic:override"
 export GESTALT_KONG_IMG="kong:override"
 export GESTALT_SECURITY_IMG="security:override"
 export GESTALT_META_IMG="meta:override"
@@ -80,6 +81,8 @@ export LOGGING_CONFIGURE_LASER=true
 export LOGGING_PROVISION_PROVIDER=true
 
 # testing extra env vars
+export ELASTIC_EXTRA_VAR_U=u
+export ELASTIC_EXTRA_VAR_20=20
 export RABBIT_EXTRA_VAR_A=a
 export RABBIT_EXTRA_VAR_1=1
 export DATA_0_EXTRA_VAR_B=b

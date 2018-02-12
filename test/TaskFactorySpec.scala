@@ -40,6 +40,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           "containers.rabbit" -> "test-rabbit:tag",
+          "containers.elastic" -> "test-elastic:tag",
           "containers.kong" -> "test-kong:tag",
           "containers.data" -> "test-data:tag",
           "containers.security" -> "test-security:tag",
@@ -71,6 +72,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
 
       gtf.getAppSpec(DATA(0), testGlobals) must haveImage("test-data:tag")
       gtf.getAppSpec(DATA(1), testGlobals) must haveImage("test-data:tag")
+      gtf.getAppSpec(ELASTIC, testGlobals) must haveImage("test-elastic:tag")
       gtf.getAppSpec(RABBIT, testGlobals) must haveImage("test-rabbit:tag")
       gtf.getAppSpec(SECURITY, testGlobals) must haveImage("test-security:tag")
       gtf.getAppSpec(META, testGlobals) must haveImage("test-meta:tag")
@@ -201,9 +203,9 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       Result.foreach(Seq(
-        RABBIT, SECURITY, META, UI, DATA(0), DATA(1)
+        RABBIT, ELASTIC, SECURITY, META, UI, DATA(0), DATA(1)
       )) {
-        svc => gtf.getAppSpec(svc, testGlobals).healthChecks must contain(marathonHealthChecks)
+        svc => gtf.getAppSpec(svc, testGlobals).healthChecks must contain(marathonHealthChecks).forall
       }
     }
 

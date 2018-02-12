@@ -57,6 +57,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       gtf.getAppSpec(RABBIT, globals) must haveImage(env("GESTALT_RABBIT_IMG").getOrElse(s"galacticfog/rabbit:release-${ensVer}"))
       gtf.getAppSpec(SECURITY, globals) must haveImage(env("GESTALT_SECURITY_IMG").getOrElse(s"galacticfog/gestalt-security:release-${ensVer}"))
       gtf.getAppSpec(META, globals) must haveImage(env("GESTALT_META_IMG").getOrElse(s"galacticfog/gestalt-meta:release-${ensVer}"))
+      gtf.getAppSpec(ELASTIC, globals) must haveImage(env("GESTALT_ELASTIC_IMG").getOrElse(LauncherConfig.defaultDockerImages(ELASTIC)))
       gtf.getAppSpec(UI, globals) must haveImage(env("GESTALT_UI_IMG").getOrElse(s"galacticfog/gestalt-ui-react:release-${ensVer}"))
 
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:release-${ensVer}"))
@@ -251,6 +252,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
 
       Result.foreach( Seq(
         RABBIT,
+        ELASTIC,
         DATA(0),
         DATA(1),
         DATA(2),
@@ -335,6 +337,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
 
       Result.foreach( Seq(
         RABBIT,
+        ELASTIC,
         DATA(0),
         DATA(1),
         DATA(2),
@@ -489,7 +492,8 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         esPortREST      = sys.env.get("LOGGING_ES_PORT_REST").map(_.toInt),
         esProtocol = sys.env.get("LOGGING_ES_PROTOCOL"),
         provisionProvider = sys.env.get("LOGGING_PROVISION_PROVIDER").map(_.toBoolean).getOrElse(false),
-        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").map(_.toBoolean).getOrElse(false)
+        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").map(_.toBoolean).getOrElse(false),
+        provisionElastic = sys.env.get("LOGGING_PROVISION_ELASTIC").map(_.toBoolean).getOrElse(false)
       )
       lc.logging must_== esconfig
     }

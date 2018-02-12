@@ -3,7 +3,7 @@ package test
 import com.galacticfog.gestalt.dcos.HealthCheck._
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, RABBIT_AMQP, SECURITY}
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, ELASTIC, RABBIT_AMQP, SECURITY}
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
@@ -79,10 +79,22 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
       launcherConfig.provisionedServices must not contain((service: FrameworkService) => service.isInstanceOf[DATA])
     }
 
+    "exclude elastic provisioning based on config" in new WithConfig("logging.provision-elastic" -> false) {
+      launcherConfig.provisionedServices must not contain(ELASTIC)
+    }
+
     "include database provisioning based on config" in new WithConfig("database.provision" -> true) {
       launcherConfig.provisionedServices must containAllOf(
         Seq(DATA(0)) ++ (1 to launcherConfig.database.numSecondaries).map(DATA(_))
       )
+    }
+
+    "include elastic provisioning based on config" in new WithConfig("logging.provision-elastic" -> true) {
+      launcherConfig.provisionedServices must contain(ELASTIC)
+    }
+
+    "not include elastic provisioning by default" in new WithConfig() {
+      launcherConfig.provisionedServices must not contain(ELASTIC)
     }
 
     "include database provisioning by default" in new WithConfig() {

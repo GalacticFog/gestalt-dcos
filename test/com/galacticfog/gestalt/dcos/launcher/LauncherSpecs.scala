@@ -72,6 +72,97 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
   "GestaltMarathonLauncher" should {
 
+    "use configured GlobalElasticConfig if not provisioning an elastic node" in new WithConfig(
+
+      "logging.provision-elastic" -> false,
+      "logging.es-cluster-name"   -> "my-es-cluster",
+      "logging.es-host"           -> "test-es.somewhere.com",
+      "logging.es-port-rest"      -> 9211,
+      "logging.es-port-transport" -> 9311,
+      "logging.es-protocol"       -> "https"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+
+      expectMsg(CurrentState(launcher, Uninitialized))
+      launcher.stateData.globalConfig.elasticConfig must beSome(GlobalElasticConfig(
+        hostname = "test-es.somewhere.com",
+        protocol = "https",
+        portApi = 9211,
+        portSvc = 9311,
+        clusterName = "my-es-cluster"
+      ))
+    }
+
+//    "for provision db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(
+//      "database.provision" -> true,
+//      "database.username" -> "test-username",
+//      "database.password" -> "test-password",
+//      "database.prefix"   -> "gestalt-test-"
+//    ) {
+//
+//      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+//
+//      mockSSEClient.launchApp(argThat(
+//        (app: MarathonAppPayload) => app.id.get.endsWith("/data-0")
+//      )) returns {
+//        mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
+//          service = DATA(0),
+//          vhosts = Seq.empty,
+//          hostname = Some("192.168.1.50"),
+//          ports = Seq("5432"),
+//          status = RUNNING
+//        ))
+//        Future.successful(Json.obj())
+//      }
+//      mockSSEClient.launchApp(argThat(
+//        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
+//      )) returns {
+//        Future.failed(new RuntimeException("do not care what happens next"))
+//      }
+//
+//      launcher.stateName must_== States.Uninitialized
+//
+//      launcher ! SubscribeTransitionCallBack(testActor)
+//
+//      expectMsg(CurrentState(launcher, Uninitialized))
+//      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
+//        username = "test-username",
+//        password = "test-password",
+//        hostname = "data-0.gestalt-framework.marathon.mesos",
+//        port = 5432,
+//        prefix = "gestalt-test-"
+//      ))
+//
+//      launcher.setState(
+//        stateName = LaunchingDB(0),
+//        stateData = ServiceData(
+//          statuses = Map(),
+//          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+//          error = None,
+//          errorStage = None,
+//          globalConfig = launcher.stateData.globalConfig,
+//          connected = true
+//        )
+//      )
+//
+//      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
+//
+//      expectMsg(Transition(launcher, LaunchingDB(0), launcher.underlyingActor.nextState(LaunchingDB(0))))
+//
+//      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
+//        username = "test-username",
+//        password = "test-password",
+//        hostname = "data-0.gestalt-framework.marathon.mesos",
+//        port = 5432,
+//        prefix = "gestalt-test-"
+//      ))
+//    }
+
     "use configured GlobalDBConfig if not provisioning a DB" in new WithConfig(
       "database.provision" -> false,
       "database.username" -> "test-username",
@@ -88,14 +179,13 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       launcher ! SubscribeTransitionCallBack(testActor)
 
       expectMsg(CurrentState(launcher, Uninitialized))
-      launcher.stateData.globalConfig.dbConfig must beSome(
-        (dbConfig: GlobalDBConfig) =>
-          dbConfig.username == "test-username"
-            && dbConfig.password == "test-password"
-            && dbConfig.prefix == "gestalt-test-"
-            && dbConfig.hostname == "test-db.somewhere.com"
-            && dbConfig.port == 5555
-      )
+      launcher.stateData.globalConfig.dbConfig must beSome( GlobalDBConfig(
+        username = "test-username",
+        password = "test-password",
+        prefix = "gestalt-test-",
+        hostname = "test-db.somewhere.com",
+        port = 5555
+      ))
     }
 
     "for provision db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(

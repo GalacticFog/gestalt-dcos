@@ -112,6 +112,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getAppSpec(service: FrameworkService, globalConfig: GlobalConfig): AppSpec = {
     val base = service match {
       case DATA(index) => getData(globalConfig.dbConfig.get, index)
+      case ELASTIC     => getElastic
       case RABBIT      => getRabbit
       case SECURITY    => getSecurity(globalConfig.dbConfig.get)
       case META        => getMeta(globalConfig.dbConfig.get, globalConfig.secConfig.get)
@@ -190,6 +191,17 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         intervalSeconds = Some(5),
         timeoutSeconds = Some(10)
       ))
+    )
+  }
+
+  private[this] def getElastic: AppSpec = {
+    appSpec(ELASTIC).copy(
+      ports = Some(Seq(
+        PortSpec(number = 9200, name = "api",     labels = Map("VIP_0" -> vipLabel(ELASTIC_API)), hostPort = None),
+        PortSpec(number = 9300, name = "service", labels = Map("VIP_0" -> vipLabel(ELASTIC_SVC)), hostPort = None)
+      )),
+      healthChecks = Seq.empty,
+      readinessCheck = None
     )
   }
 

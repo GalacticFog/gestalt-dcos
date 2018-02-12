@@ -74,7 +74,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     esPortTransport = config.getInt("logging.es-port-transport"),
     esPortREST      = config.getInt("logging.es-port-rest"),
     provisionProvider = getBool("logging.provision-provider", false),
-    configureLaser = getBool("logging.configure-laser", false)
+    configureLaser = getBool("logging.configure-laser", false),
+    provisionElastic = getBool("logging.provision-elastic", false)
   )
 
   val meta = MetaConfig(
@@ -126,7 +127,8 @@ class LauncherConfig @Inject()(config: Configuration) {
     val dbs = if (database.provision) {
       Seq(LaunchingDB(0)) ++ (1 to database.numSecondaries).map(LaunchingDB(_))
     } else Seq.empty
-    dbs ++ Seq(
+    val elastic = if (logging.provisionElastic) Some(LaunchingElastic) else None
+    dbs ++ elastic ++ Seq(
       LaunchingRabbit,
       LaunchingSecurity, RetrievingAPIKeys,
       LaunchingMeta, BootstrappingMeta, SyncingMeta, ProvisioningMeta,
@@ -172,14 +174,16 @@ class LauncherConfig @Inject()(config: Configuration) {
     }
     config
       .getString(s"containers.${name}")
-      .orElse(gestaltFrameworkVersion.map(
+      .orElse(gestaltFrameworkVersion.flatMap(
         ensVer => service match {
           case DATA(_) =>
-            s"galacticfog/postgres_repl:release-${ensVer}"
+            Some(s"galacticfog/postgres_repl:release-${ensVer}")
           case RABBIT | KONG =>
-            s"galacticfog/${name}:release-${ensVer}"
+            Some(s"galacticfog/${name}:release-${ensVer}")
+          case ELASTIC =>
+            None
           case _ =>
-            s"galacticfog/gestalt-${name}:release-${ensVer}"
+            Some(s"galacticfog/gestalt-${name}:release-${ensVer}")
         }
       ))
       .getOrElse(defaultDockerImages(service))
@@ -293,22 +297,25 @@ object LauncherConfig {
   }
 
   object Services {
+    case object ELASTIC          extends FrameworkService                      with Dockerable {val name = "elastic";        val cpu = 2.00; val mem = 2560;}
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 2.00; val mem = 2048;}
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 2.00; val mem = 2048; val port = 9455}
     case object META             extends FrameworkService with ServiceEndpoint with Dockerable {val name = "meta";           val cpu = 2.00; val mem = 2048; val port = 14374}
     case object UI               extends FrameworkService with ServiceEndpoint with Dockerable {val name = "ui-react";       val cpu = 0.50; val mem =  256; val port = 80}
 
-    case object KONG                                                        extends Dockerable {val name = "kong";           val cpu = 2.00; val mem = 1024;}
-    case object LASER                                  extends ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 2.00; val mem = 2048; val port = 1111}
-    case object POLICY                                 extends ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 2.00; val mem = 2048; val port = 9999}
-    case object API_GATEWAY                            extends ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 2.00; val mem = 2048; val port = 6473}
-    case object LOG                                    extends ServiceEndpoint with Dockerable {val name = "log";            val cpu = 2.00; val mem = 2048; val port = 9000}
+    case object KONG             extends                                            Dockerable {val name = "kong";           val cpu = 2.00; val mem = 1024;}
+    case object LASER            extends                       ServiceEndpoint with Dockerable {val name = "laser";          val cpu = 2.00; val mem = 2048; val port = 1111}
+    case object POLICY           extends                       ServiceEndpoint with Dockerable {val name = "policy";         val cpu = 2.00; val mem = 2048; val port = 9999}
+    case object API_GATEWAY      extends                       ServiceEndpoint with Dockerable {val name = "api-gateway";    val cpu = 2.00; val mem = 2048; val port = 6473}
+    case object LOG              extends                       ServiceEndpoint with Dockerable {val name = "log";            val cpu = 2.00; val mem = 2048; val port = 9000}
 
-    case object RABBIT_AMQP                            extends ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 5672}
-    case object RABBIT_HTTP                            extends ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 15672}
-    case object KONG_GATEWAY                           extends ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8000}
-    case object KONG_SERVICE                           extends ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8001}
+    case object ELASTIC_API      extends                       ServiceEndpoint                 {val name: String = ELASTIC.name;                             val port = 9200}
+    case object ELASTIC_SVC      extends                       ServiceEndpoint                 {val name: String = ELASTIC.name;                             val port = 9300}
+    case object RABBIT_AMQP      extends                       ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 5672}
+    case object RABBIT_HTTP      extends                       ServiceEndpoint                 {val name: String = RABBIT.name;                              val port = 15672}
+    case object KONG_GATEWAY     extends                       ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8000}
+    case object KONG_SERVICE     extends                       ServiceEndpoint                 {val name: String = KONG.name;                                val port = 8001}
 
     case object DataFromName {
       private[this] val dataRegex = "data-([0-9]+)".r
@@ -338,6 +345,7 @@ object LauncherConfig {
 
   def defaultDockerImages(service: Dockerable): String = service match {
     case Services.DATA(_)             => s"galacticfog/postgres_repl:release-${BuildInfo.version}"
+    case Services.ELASTIC             =>  "galacticfog/elasticsearch-docker:5.3.1"
     case Services.RABBIT              => s"galacticfog/rabbit:release-${BuildInfo.version}"
     case Services.KONG                => s"galacticfog/kong:release-${BuildInfo.version}"
     case Services.SECURITY            => s"galacticfog/gestalt-security:release-${BuildInfo.version}"
@@ -410,7 +418,9 @@ object LauncherConfig {
                            esPortTransport: Option[Int],
                            esPortREST: Option[Int],
                            provisionProvider: Boolean,
-                           configureLaser: Boolean )
+                           configureLaser: Boolean,
+                           provisionElastic: Boolean
+                          )
 
   case class LaserConfig( scaleDownTimeout: Option[Int],
                           enabledRuntimes: Seq[LaserRuntime],
@@ -428,6 +438,10 @@ object LauncherConfig {
                                          uid : String,
                                          private_key : String,
                                          scheme: String )
+
+  case object LoggingConfig {
+    val DEFAULT_CLUSTER_NAME = "myesdb"
+  }
 
   case object LaserConfig {
     case object Defaults {

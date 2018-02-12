@@ -134,6 +134,30 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     prefix = config.database.prefix
   )
 
+  val esConfig = if (config.logging.provisionElastic) {
+    Some(GlobalElasticConfig(
+      hostname = config.vipHostname(ELASTIC_API),
+      protocol = "http",
+      portApi = ELASTIC_API.port,
+      portSvc = ELASTIC_SVC.port,
+      clusterName = config.logging.esClusterName.getOrElse(LauncherConfig.LoggingConfig.DEFAULT_CLUSTER_NAME)
+    ))
+  } else {
+    for {
+      host <- config.logging.esHost
+      protocol <- config.logging.esProtocol
+      portApi <- config.logging.esPortREST
+      portSvc <- config.logging.esPortTransport
+      clusterName <- config.logging.esClusterName
+    } yield GlobalElasticConfig(
+      hostname = host,
+      protocol = protocol,
+      portApi = portApi,
+      portSvc = portSvc,
+      clusterName = clusterName
+    )
+  }
+
   val securityInitCredentials = JsObject(
     Seq("username" -> JsString(config.security.username)) ++
       config.security.password.map("password" -> JsString(_))
@@ -529,6 +553,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       .withDb(
         if (config.database.provision) provisionedDB else configuredDB
       )
+      .withElastic( esConfig )
   ))
 
   when(Uninitialized) {
