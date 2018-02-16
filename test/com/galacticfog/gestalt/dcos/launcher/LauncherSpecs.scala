@@ -98,70 +98,71 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       ))
     }
 
-//    "for provision db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(
-//      "database.provision" -> true,
-//      "database.username" -> "test-username",
-//      "database.password" -> "test-password",
-//      "database.prefix"   -> "gestalt-test-"
-//    ) {
-//
-//      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
-//
-//      mockSSEClient.launchApp(argThat(
-//        (app: MarathonAppPayload) => app.id.get.endsWith("/data-0")
-//      )) returns {
-//        mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
-//          service = DATA(0),
-//          vhosts = Seq.empty,
-//          hostname = Some("192.168.1.50"),
-//          ports = Seq("5432"),
-//          status = RUNNING
-//        ))
-//        Future.successful(Json.obj())
-//      }
-//      mockSSEClient.launchApp(argThat(
-//        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
-//      )) returns {
-//        Future.failed(new RuntimeException("do not care what happens next"))
-//      }
-//
-//      launcher.stateName must_== States.Uninitialized
-//
-//      launcher ! SubscribeTransitionCallBack(testActor)
-//
-//      expectMsg(CurrentState(launcher, Uninitialized))
-//      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
-//        username = "test-username",
-//        password = "test-password",
-//        hostname = "data-0.gestalt-framework.marathon.mesos",
-//        port = 5432,
-//        prefix = "gestalt-test-"
-//      ))
-//
-//      launcher.setState(
-//        stateName = LaunchingDB(0),
-//        stateData = ServiceData(
-//          statuses = Map(),
-//          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
-//          error = None,
-//          errorStage = None,
-//          globalConfig = launcher.stateData.globalConfig,
-//          connected = true
-//        )
-//      )
-//
-//      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
-//
-//      expectMsg(Transition(launcher, LaunchingDB(0), launcher.underlyingActor.nextState(LaunchingDB(0))))
-//
-//      launcher.stateData.globalConfig.dbConfig must beSome(GlobalDBConfig(
-//        username = "test-username",
-//        password = "test-password",
-//        hostname = "data-0.gestalt-framework.marathon.mesos",
-//        port = 5432,
-//        prefix = "gestalt-test-"
-//      ))
-//    }
+    "for provisioned elastic, set GlobalElasticConfig at init and persist after launching the elastic container" in new WithConfig(
+      "logging.provision-elastic" -> true,
+      "logging.es-cluster-name"   -> "test-cluster-name"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      mockSSEClient.launchApp(argThat(
+        (app: MarathonAppPayload) => app.id.get.endsWith("/elasticsearch")
+      )) returns {
+        // also setup getServiceStatus mock
+        mockSSEClient.getServiceStatus(ELASTIC) returns Future.successful(ServiceInfo(
+          service = ELASTIC,
+          vhosts = Seq.empty,
+          hostname = Some("192.168.1.51"),
+          ports = Seq("9200","9300"),
+          status = RUNNING
+        ))
+        Future.successful(Json.obj())
+      }
+      mockSSEClient.launchApp(argThat(
+        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
+      )) returns {
+        Future.failed(new RuntimeException("do not care what happens next"))
+      }
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+
+      expectMsg(CurrentState(launcher, Uninitialized))
+      launcher.stateData.globalConfig.elasticConfig must beSome(GlobalElasticConfig(
+        hostname = "gestalt-framework-elasticsearch.marathon.l4lb.thisdcos.directory",
+        protocol = "http",
+        portApi = 9200,
+        portSvc = 9300,
+        clusterName = "test-cluster-name"
+      ))
+
+      launcher.setState(
+        stateName = LaunchingElastic,
+        stateData = ServiceData(
+          statuses = Map(),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          error = None,
+          errorStage = None,
+          globalConfig = launcher.stateData.globalConfig,
+          connected = true
+        )
+      )
+
+      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
+
+      expectMsg(Transition(launcher, LaunchingDB(0), LaunchingElastic))
+
+      expectMsg(Transition(launcher, LaunchingElastic, launcher.underlyingActor.nextState(LaunchingElastic)))
+
+      launcher.stateData.globalConfig.elasticConfig must beSome(GlobalElasticConfig(
+        hostname = "gestalt-framework-elasticsearch.marathon.l4lb.thisdcos.directory",
+        protocol = "http",
+        portApi = 9200,
+        portSvc = 9300,
+        clusterName = "test-cluster-name"
+      ))
+    }
 
     "use configured GlobalDBConfig if not provisioning a DB" in new WithConfig(
       "database.provision" -> false,
@@ -188,7 +189,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       ))
     }
 
-    "for provision db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(
+    "for provisioned db, set GlobalDBConfig at init and persist after launching the database container" in new WithConfig(
+      "logging.provision-elastic" -> false,
       "database.provision" -> true,
       "database.username" -> "test-username",
       "database.password" -> "test-password",
@@ -200,6 +202,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       mockSSEClient.launchApp(argThat(
         (app: MarathonAppPayload) => app.id.get.endsWith("/data-0")
       )) returns {
+        // also setup getServiceStatus mock
         mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
           service = DATA(0),
           vhosts = Seq.empty,

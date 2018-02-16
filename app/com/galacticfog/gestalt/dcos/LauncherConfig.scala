@@ -297,7 +297,7 @@ object LauncherConfig {
   }
 
   object Services {
-    case object ELASTIC          extends FrameworkService                      with Dockerable {val name = "elastic";        val cpu = 2.00; val mem = 2560;}
+    case object ELASTIC          extends FrameworkService                      with Dockerable {val name = "elasticsearch";  val cpu = 2.00; val mem = 2560;}
     case object RABBIT           extends FrameworkService                      with Dockerable {val name = "rabbit";         val cpu = 2.00; val mem = 2048;}
     case class  DATA(index: Int) extends FrameworkService with ServiceEndpoint with Dockerable {val name = s"data-${index}"; val cpu = 2.00; val mem = 4096; val port = 5432}
     case object SECURITY         extends FrameworkService with ServiceEndpoint with Dockerable {val name = "security";       val cpu = 2.00; val mem = 2048; val port = 9455}
