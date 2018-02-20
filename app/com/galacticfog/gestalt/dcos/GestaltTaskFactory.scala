@@ -459,7 +459,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getLaserProvider(apiKey: GestaltAPIKey,
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
-                       laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
+                       laserExecutorIds: Seq[UUID], laserEnvId: UUID,
+                       esConfig: Option[GlobalElasticConfig] = None ): JsValue = {
+    val esc = esConfig.filter(_ => launcherConfig.logging.configureLaser)
     GestaltProviderBuilder.laserProvider(
       secrets = LaserSecrets(
         serviceConfig = LaserSecrets.ServiceConfig(
@@ -495,9 +497,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserExecutorHeartbeatTimeout = Some(launcherConfig.laser.executorHeartbeatTimeout),
           laserExecutorHeartbeatPeriod = Some(launcherConfig.laser.executorHeartbeatPeriod),
           laserExecutorPort = if (launcherConfig.marathon.networkName.isDefined) Some(60500) else None,
-          esHost = launcherConfig.logging.esHost.filter(_ => launcherConfig.logging.configureLaser),
-          esPort = launcherConfig.logging.esPortREST.filter(_ => launcherConfig.logging.configureLaser),
-          esProtocol = launcherConfig.logging.esProtocol.filter(_ => launcherConfig.logging.configureLaser)
+          esHost = esc.map(_.hostname),
+          esPort = esc.map(_.portApi),
+          esProtocol = esc.map(_.protocol)
         ),
         executors = Seq.empty
       ),

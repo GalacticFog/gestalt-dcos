@@ -678,7 +678,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
             //
             Seq(laserProviderId,kongProviderId) <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
-                gtf.getLaserProvider(apiKey, dbProviderId, rabbitProviderId, secProviderId, dcosProviderId, laserExecutorIds, laserEnvId),
+                gtf.getLaserProvider(apiKey, dbProviderId, rabbitProviderId, secProviderId, dcosProviderId, laserExecutorIds, laserEnvId, gc.elasticConfig),
                 gtf.getKongProvider(dbProviderId, dcosProviderId)
               ))
             )

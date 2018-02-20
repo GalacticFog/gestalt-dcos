@@ -205,15 +205,17 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
           "logging.configure-laser" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid, Some(GlobalElasticConfig(
+        hostname = "my-es-cluster",
+        protocol = "https",
+        portApi = 2222,
+        portSvc = 3333,
+        clusterName = "who-cares"
+      )))
       laserPayload must havePrivateVar("ES_PROTOCOL" -> "https")
       laserPayload must havePrivateVar("ES_HOST" -> "my-es-cluster")
       laserPayload must havePrivateVar("ES_PORT" -> "2222")
@@ -223,10 +225,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
           "logging.configure-laser" -> false
         )
         .injector
@@ -241,10 +239,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222"
           // "logging.configure-laser" -> false
         )
         .injector
