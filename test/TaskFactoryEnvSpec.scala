@@ -44,6 +44,13 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .withSec(GlobalSecConfig(
           hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
         ))
+        .withElastic(Some(GlobalElasticConfig(
+          hostname = "my-es-cluster",
+          protocol = "http",
+          portApi = 1111,
+          portSvc = 2222,
+          clusterName = "my-es-cluster-name"
+        )))
       val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
 
       def uuid = UUID.randomUUID()
@@ -63,7 +70,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(env("GESTALT_KONG_IMG").getOrElse(s"galacticfog/kong:release-${ensVer}"))
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_POLICY_IMG").getOrElse(s"galacticfog/gestalt-policy:release-${ensVer}"))
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(env("GESTALT_LASER_IMG").getOrElse(s"galacticfog/gestalt-laser:release-${ensVer}"))
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage(env("GESTALT_LOG_IMG").getOrElse(s"galacticfog/gestalt-log:release-${ensVer}")))
+      gtf.getLogProvider(uuid, globals.elasticConfig.get) must beSome(haveServiceImage(env("GESTALT_LOG_IMG").getOrElse(s"galacticfog/gestalt-log:release-${ensVer}")))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -295,7 +302,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
             case LASER => gtf.getLaserProvider(key, uuid, uuid, uuid, uuid, Seq.empty, uuid)
             case POLICY => gtf.getPolicyProvider(key, uuid, uuid, uuid)
             case API_GATEWAY => gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
-            case LOG => gtf.getLogProvider(uuid).get
+            case LOG => gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")).get
             case _ => throw new RuntimeException("this was not expected")
           }
 
@@ -382,7 +389,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
             case LASER => gtf.getLaserProvider(key, uuid, uuid, uuid, uuid, Seq.empty, uuid)
             case POLICY => gtf.getPolicyProvider(key, uuid, uuid, uuid)
             case API_GATEWAY => gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
-            case LOG => gtf.getLogProvider(uuid).get
+            case LOG => gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")).get
             case _ => throw new RuntimeException("this was not expected")
           }
 

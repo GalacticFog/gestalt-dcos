@@ -40,7 +40,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           "containers.rabbit" -> "test-rabbit:tag",
-          "containers.elastic" -> "test-elastic:tag",
+          "containers.elasticsearch" -> "test-elastic:tag",
           "containers.kong" -> "test-kong:tag",
           "containers.data" -> "test-data:tag",
           "containers.security" -> "test-security:tag",
@@ -81,7 +81,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("test-kong:tag")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("test-policy:tag")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("test-laser:tag")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage("test-log:tag"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage("test-log:tag"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -129,7 +129,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:release-9.10.11.12")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:release-9.10.11.12")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:release-9.10.11.12")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage("galacticfog/gestalt-log:release-9.10.11.12"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage("galacticfog/gestalt-log:release-9.10.11.12"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:release-9.10.11.12")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -177,7 +177,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:release-${ver}")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:release-${ver}")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:release-${ver}")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage(s"galacticfog/gestalt-log:release-${ver}"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage(s"galacticfog/gestalt-log:release-${ver}"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:release-${ver}")
 
       def getImage(lr: LaserRuntime) = lr.name match {

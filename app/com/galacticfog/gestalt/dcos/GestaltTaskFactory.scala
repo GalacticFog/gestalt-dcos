@@ -420,46 +420,40 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
-  def getLogProvider(caasProviderId: UUID): Option[JsValue] = {
-    for {
-      esHost <- launcherConfig.logging.esHost
-      esPort <- launcherConfig.logging.esPortTransport
-      esName <- launcherConfig.logging.esClusterName
-      if launcherConfig.logging.provisionProvider
-      js = GestaltProviderBuilder.loggingProvider(
-        secrets = LoggingSecrets(
-          esConfig = LoggingSecrets.ESConfig(
-            esClusterName = esName,
-            esComputeType = "dcos",
-            esServiceHost = esHost,
-            esServicePort = esPort,
-            esColdDays = 14,
-            esHotDays = 7,
-            esSnapshotRepo = "s3_repository"
-          ),
-          dcosConfig = Some(LoggingSecrets.DCOSConfig(
-            dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
-            dcosAuth = None,
-            dcosHost = "leader.mesos",
-            dcosProtocol = "http",
-            dcosPort = 80
-          )),
-          serviceConfig = ServiceConfig(
-            image = launcherConfig.dockerImage(LOG),
-            network = launcherConfig.marathon.networkName,
-            healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
-            vhost = launcherConfig.marathon.tld.map("default-logging." + _),
-            vhostProto = launcherConfig.marathon.marathonLbProto,
-            cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
-            memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
-          )
+  def getLogProvider(caasProviderId: UUID, esConfig: GlobalElasticConfig): Option[JsValue] = {
+    if (launcherConfig.logging.provisionProvider) Some(GestaltProviderBuilder.loggingProvider(
+      secrets = LoggingSecrets(
+        esConfig = LoggingSecrets.ESConfig(
+          esClusterName = esConfig.clusterName,
+          esComputeType = "dcos",
+          esServiceHost = esConfig.hostname,
+          esServicePort = esConfig.portSvc,
+          esColdDays = 14,
+          esHotDays = 7,
+          esSnapshotRepo = "s3_repository"
         ),
-        computeId = caasProviderId.toString,
-        caasType = CaaSTypes.DCOS,
-        providerName = Some("default-logging"),
-        extraEnv = launcherConfig.extraEnv(LOG)
-      )
-    } yield js
+        dcosConfig = Some(LoggingSecrets.DCOSConfig(
+          dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
+          dcosAuth = None,
+          dcosHost = "leader.mesos",
+          dcosProtocol = "http",
+          dcosPort = 80
+        )),
+        serviceConfig = ServiceConfig(
+          image = launcherConfig.dockerImage(LOG),
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+          vhost = launcherConfig.marathon.tld.map("default-logging." + _),
+          vhostProto = launcherConfig.marathon.marathonLbProto,
+          cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
+          memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
+        )
+      ),
+      computeId = caasProviderId.toString,
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("default-logging"),
+      extraEnv = launcherConfig.extraEnv(LOG)
+    )) else None
   }
 
   def getLaserProvider(apiKey: GestaltAPIKey,

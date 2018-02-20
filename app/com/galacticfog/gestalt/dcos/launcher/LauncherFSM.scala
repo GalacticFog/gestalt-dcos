@@ -683,7 +683,9 @@ class LauncherFSM @Inject()( config: LauncherConfig,
               ))
             )
             maybeLogProvider <- Future.sequence(
-              provisionMetaProviders(metaUrl,apiKey, gtf.getLogProvider(dcosProviderId).toSeq )
+              provisionMetaProviders(metaUrl,apiKey,
+                gc.elasticConfig.toSeq.flatMap( gtf.getLogProvider(dcosProviderId, _) )
+              )
             )
             _ <- Future.sequence(maybeLogProvider.map(
               logProviderId => configureCaaSProviderWithLoggingProvider(metaUrl, apiKey, dcosProviderId, logProviderId)

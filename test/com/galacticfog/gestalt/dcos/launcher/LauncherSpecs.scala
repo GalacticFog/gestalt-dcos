@@ -119,7 +119,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         Future.successful(Json.obj())
       }
       mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
+        (app: MarathonAppPayload) => !app.id.get.endsWith("/elasticsearch")
       )) returns {
         Future.failed(new RuntimeException("do not care what happens next"))
       }
@@ -149,9 +149,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         )
       )
 
-      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
-
-      expectMsg(Transition(launcher, LaunchingDB(0), LaunchingElastic))
+      expectMsg(Transition(launcher, Uninitialized, LaunchingElastic))
 
       expectMsg(Transition(launcher, LaunchingElastic, launcher.underlyingActor.nextState(LaunchingElastic)))
 
@@ -213,7 +211,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         Future.successful(Json.obj())
       }
       mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.get.endsWith("/rabbit")
+        (app: MarathonAppPayload) => !app.id.get.endsWith("/data-0")
       )) returns {
         Future.failed(new RuntimeException("do not care what happens next"))
       }
@@ -594,7 +592,14 @@ class LauncherSpecs extends PlaySpecification with Mockito {
               apiKey = "key",
               apiSecret = "secret",
               realm = Some("https://security.mycompany.com")
-            )),
+            ))
+            .withElastic(Some(GlobalElasticConfig(
+              hostname = "elastic",
+              protocol = "http",
+              portApi = 1234,
+              portSvc = 1235,
+              clusterName = "es-cluster-name"
+            ))),
           connected = true
         )
       )

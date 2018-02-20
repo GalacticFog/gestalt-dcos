@@ -412,15 +412,14 @@ object LauncherConfig {
                              key: Option[String],
                              secret: Option[String] )
 
-  case class LoggingConfig(esClusterName: Option[String],
-                           esProtocol: Option[String],
-                           esHost: Option[String],
-                           esPortTransport: Option[Int],
-                           esPortREST: Option[Int],
-                           provisionProvider: Boolean,
-                           configureLaser: Boolean,
-                           provisionElastic: Boolean
-                          )
+  case class LoggingConfig( esClusterName: Option[String],
+                            esProtocol: Option[String],
+                            esHost: Option[String],
+                            esPortTransport: Option[Int],
+                            esPortREST: Option[Int],
+                            provisionProvider: Boolean,
+                            configureLaser: Boolean,
+                            provisionElastic: Boolean )
 
   case class LaserConfig( scaleDownTimeout: Option[Int],
                           enabledRuntimes: Seq[LaserRuntime],
