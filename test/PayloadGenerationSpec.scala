@@ -162,6 +162,40 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       data0.portDefinitions.get must beEmpty
     }
 
+    "appropriately set env on elastic node" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      )).withElastic(Some(GlobalElasticConfig(
+        hostname = "",
+        protocol = "",
+        portApi = 0,
+        portSvc = 0,
+        clusterName = "my-test-elastic-cluster"
+      )))
+
+      val elasticPayload = gtf.getMarathonPayload(ELASTIC, global)
+      elasticPayload.env.get.as[Map[String,String]] must havePairs(
+        "cluster.name" -> "my-test-elastic-cluster",
+        "network.host" -> "0.0.0.0",
+        "transport.tcp.port" -> "9300",
+        "ES_JAVA_OPTS" -> "-Xms1536m -Xmx1536m"
+      )
+    }
+
     "appropriately set realm override for security consumer services" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]

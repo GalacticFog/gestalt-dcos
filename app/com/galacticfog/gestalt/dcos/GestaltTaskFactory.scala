@@ -112,7 +112,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getAppSpec(service: FrameworkService, globalConfig: GlobalConfig): AppSpec = {
     val base = service match {
       case DATA(index) => getData(globalConfig.dbConfig.get, index)
-      case ELASTIC     => getElastic
+      case ELASTIC     => getElastic(globalConfig.elasticConfig.get)
       case RABBIT      => getRabbit
       case SECURITY    => getSecurity(globalConfig.dbConfig.get)
       case META        => getMeta(globalConfig.dbConfig.get, globalConfig.secConfig.get)
@@ -194,14 +194,20 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  private[this] def getElastic: AppSpec = {
+  private[this] def getElastic(elasticConfig: GlobalElasticConfig): AppSpec = {
     appSpec(ELASTIC).copy(
       ports = Some(Seq(
         PortSpec(number = 9200, name = "api",     labels = Map("VIP_0" -> vipLabel(ELASTIC_API)), hostPort = None),
         PortSpec(number = 9300, name = "service", labels = Map("VIP_0" -> vipLabel(ELASTIC_SVC)), hostPort = None)
       )),
       healthChecks = Seq.empty,
-      readinessCheck = None
+      readinessCheck = None,
+      env = Map(
+        "cluster.name" -> elasticConfig.clusterName,
+        "network.host" -> "0.0.0.0",
+        "transport.tcp.port" -> "9300",
+        "ES_JAVA_OPTS" -> "-Xms1536m -Xmx1536m"
+      )
     )
   }
 

@@ -28,7 +28,9 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     apiKey = "key",
     apiSecret = "secret",
     realm = Some("192.168.1.50:12345")
-  ))
+  )).withElastic(Some(GlobalElasticConfig(
+    "test-elastic", "http", 9200, 9300, "test-elastic-cluster-name"
+  )))
 
   val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
 
@@ -58,11 +60,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.laser-executor-python" -> "test-python-executor:tag",
           "containers.laser-executor-ruby"   -> "test-ruby-executor:tag",
           "containers.laser-executor-bash"   -> "test-bash-executor:tag",
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector
@@ -107,11 +105,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           "gestalt-framework-version" -> "9.10.11.12",
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector
@@ -153,11 +147,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector

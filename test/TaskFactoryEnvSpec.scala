@@ -256,6 +256,9 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .withSec(GlobalSecConfig(
           hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
         ))
+        .withElastic(Some(GlobalElasticConfig(
+          "", "", 0, 0, ""
+        )))
 
       Result.foreach( Seq(
         RABBIT,
@@ -341,6 +344,9 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .withSec(GlobalSecConfig(
           hostname = "", port = 0, apiKey = "", apiSecret = "", realm = None
         ))
+        .withElastic(Some(GlobalElasticConfig(
+          "", "", 0, 0, ""
+        )))
 
       Result.foreach( Seq(
         RABBIT,
