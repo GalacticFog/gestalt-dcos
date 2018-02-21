@@ -325,7 +325,7 @@ object LauncherConfig {
       }
     }
 
-    val allServices: Seq[FrameworkService] = Seq( RABBIT, SECURITY, META, UI )
+    val allServices: Seq[FrameworkService] = Seq( ELASTIC, RABBIT, SECURITY, META, UI )
 
     def fromName(serviceName: String): Option[FrameworkService] = allServices.find(_.name == serviceName) orElse DataFromName.unapply(serviceName)
   }

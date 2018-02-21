@@ -3,10 +3,11 @@ package test
 import com.galacticfog.gestalt.dcos.HealthCheck._
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services.{DATA, ELASTIC, RABBIT_AMQP, SECURITY}
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import org.specs2.matcher.JsonMatchers
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
+import org.specs2.specification.core.Fragment
 import play.api.test._
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.{JsObject, Json}
@@ -105,6 +106,14 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
 
     "include the appropriate number of database secondaries based on config" in new WithConfig("database.num-secondaries" -> 3) {
       launcherConfig.provisionedServices must containAllOf( (0 to 3).map(DATA(_)) )
+    }
+
+    "recognize all services by name" in {
+      Fragment.foreach(Seq[FrameworkService](DATA(0), DATA(1), ELASTIC, RABBIT, SECURITY, META, UI)) { svc =>
+        svc.name ! {
+          LauncherConfig.Services.fromName(svc.name) must beSome(svc)
+        }
+      } ^ br
     }
 
     "provision network list from config" in new WithConfig("marathon.network-list" -> "network-1,network-2") {
