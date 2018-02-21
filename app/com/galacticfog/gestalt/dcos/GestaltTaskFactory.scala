@@ -443,7 +443,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           image = launcherConfig.dockerImage(LOG),
           network = launcherConfig.marathon.networkName,
           healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
-          vhost = launcherConfig.marathon.tld.map("default-logging." + _),
+          vhost = launcherConfig.marathon.tld.map("log." + _),
           vhostProto = launcherConfig.marathon.marathonLbProto,
           cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
           memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
