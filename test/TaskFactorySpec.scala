@@ -28,7 +28,9 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     apiKey = "key",
     apiSecret = "secret",
     realm = Some("192.168.1.50:12345")
-  ))
+  )).withElastic(Some(GlobalElasticConfig(
+    "test-elastic", "http", 9200, 9300, "test-elastic-cluster-name"
+  )))
 
   val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
 
@@ -40,6 +42,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           "containers.rabbit" -> "test-rabbit:tag",
+          "containers.elasticsearch" -> "test-elastic:tag",
           "containers.kong" -> "test-kong:tag",
           "containers.data" -> "test-data:tag",
           "containers.security" -> "test-security:tag",
@@ -57,11 +60,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.laser-executor-python" -> "test-python-executor:tag",
           "containers.laser-executor-ruby"   -> "test-ruby-executor:tag",
           "containers.laser-executor-bash"   -> "test-bash-executor:tag",
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector
@@ -71,6 +70,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
 
       gtf.getAppSpec(DATA(0), testGlobals) must haveImage("test-data:tag")
       gtf.getAppSpec(DATA(1), testGlobals) must haveImage("test-data:tag")
+      gtf.getAppSpec(ELASTIC, testGlobals) must haveImage("test-elastic:tag")
       gtf.getAppSpec(RABBIT, testGlobals) must haveImage("test-rabbit:tag")
       gtf.getAppSpec(SECURITY, testGlobals) must haveImage("test-security:tag")
       gtf.getAppSpec(META, testGlobals) must haveImage("test-meta:tag")
@@ -79,7 +79,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("test-kong:tag")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("test-policy:tag")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("test-laser:tag")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage("test-log:tag"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage("test-log:tag"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -105,11 +105,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .disable[Module]
         .configure(
           "gestalt-framework-version" -> "9.10.11.12",
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector
@@ -127,7 +123,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("galacticfog/kong:release-9.10.11.12")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-policy:release-9.10.11.12")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("galacticfog/gestalt-laser:release-9.10.11.12")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage("galacticfog/gestalt-log:release-9.10.11.12"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage("galacticfog/gestalt-log:release-9.10.11.12"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:release-9.10.11.12")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -151,11 +147,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          // these are necessary so that the logging provider can be provisioned
-          "logging.es-cluster-name" -> "blah",
-          "logging.es-host" -> "blah",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
+          // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
         .injector
@@ -175,7 +167,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getKongProvider(uuid, uuid) must haveServiceImage(s"galacticfog/kong:release-${ver}")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-policy:release-${ver}")
       gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage(s"galacticfog/gestalt-laser:release-${ver}")
-      gtf.getLogProvider(uuid) must beSome(haveServiceImage(s"galacticfog/gestalt-log:release-${ver}"))
+      gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage(s"galacticfog/gestalt-log:release-${ver}"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:release-${ver}")
 
       def getImage(lr: LaserRuntime) = lr.name match {
@@ -201,9 +193,9 @@ class TaskFactorySpec extends Specification with JsonMatchers {
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       Result.foreach(Seq(
-        RABBIT, SECURITY, META, UI, DATA(0), DATA(1)
+        RABBIT, ELASTIC, SECURITY, META, UI, DATA(0), DATA(1)
       )) {
-        svc => gtf.getAppSpec(svc, testGlobals).healthChecks must contain(marathonHealthChecks)
+        svc => gtf.getAppSpec(svc, testGlobals).healthChecks must contain(marathonHealthChecks).forall
       }
     }
 

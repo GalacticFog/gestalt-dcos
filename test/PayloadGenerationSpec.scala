@@ -26,7 +26,13 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
     apiKey = "key",
     apiSecret = "secret",
     realm = Some("192.168.1.50:12345")
-  ))
+  )).withElastic(Some(GlobalElasticConfig(
+    hostname = "my-es-cluster",
+    protocol = "http",
+    portApi = 1111,
+    portSvc = 2222,
+    clusterName = "my-es-cluster-name"
+  )))
 
   "Payload generation" should {
 
@@ -156,6 +162,40 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       data0.portDefinitions.get must beEmpty
     }
 
+    "appropriately set env on elastic node" in {
+      val injector = new GuiceApplicationBuilder()
+        .disable[Module]
+        .injector
+      val gtf = injector.instanceOf[GestaltTaskFactory]
+      val global = GlobalConfig().withDb(GlobalDBConfig(
+        hostname = "test-db.marathon.mesos",
+        port = 5432,
+        username = "test-user",
+        password = "test-password",
+        prefix = "test-"
+      )).withSec(GlobalSecConfig(
+        hostname = "security",
+        port = 9455,
+        apiKey = "key",
+        apiSecret = "secret",
+        realm = Some("https://security.galacticfog.com")
+      )).withElastic(Some(GlobalElasticConfig(
+        hostname = "",
+        protocol = "",
+        portApi = 0,
+        portSvc = 0,
+        clusterName = "my-test-elastic-cluster"
+      )))
+
+      val elasticPayload = gtf.getMarathonPayload(ELASTIC, global)
+      elasticPayload.env.get.as[Map[String,String]] must havePairs(
+        "cluster.name" -> "my-test-elastic-cluster",
+        "network.host" -> "0.0.0.0",
+        "transport.tcp.port" -> "9300",
+        "ES_JAVA_OPTS" -> "-Xms1536m -Xmx1536m"
+      )
+    }
+
     "appropriately set realm override for security consumer services" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
@@ -199,15 +239,17 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
           "logging.configure-laser" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid, Some(GlobalElasticConfig(
+        hostname = "my-es-cluster",
+        protocol = "https",
+        portApi = 2222,
+        portSvc = 3333,
+        clusterName = "who-cares"
+      )))
       laserPayload must havePrivateVar("ES_PROTOCOL" -> "https")
       laserPayload must havePrivateVar("ES_HOST" -> "my-es-cluster")
       laserPayload must havePrivateVar("ES_PORT" -> "2222")
@@ -217,10 +259,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
           "logging.configure-laser" -> false
         )
         .injector
@@ -235,10 +273,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-protocol" -> "https",
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222"
           // "logging.configure-laser" -> false
         )
         .injector
@@ -823,52 +857,40 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
 
-    "provision logging provider if requested" in {
+    "provision logging provider if so requested" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
-          "logging.es-cluster-name" -> "my-es-cluster-name",
           "logging.provision-provider" -> true
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val Some(loggingPayload) = gtf.getLogProvider(uuid)
+      val Some(loggingPayload) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       loggingPayload must havePrivateVar("ES_CLUSTER_NAME" -> "my-es-cluster-name")
       loggingPayload must havePrivateVar("ES_SERVICE_HOST" -> "my-es-cluster")
-      loggingPayload must havePrivateVar("ES_SERVICE_PORT" -> "1111")
+      loggingPayload must havePrivateVar("ES_SERVICE_PORT" -> "2222")
     }
 
-    "not provision logging provider if requested" in {
+    "not provision logging provider if so requested" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
-          "logging.es-cluster-name" -> "my-es-cluster-name",
           "logging.provision-provider" -> false
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      gtf.getLogProvider(uuid) must beNone
+      gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get) must beNone
     }
 
     "not provision logging provider by default" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
-          "logging.es-host"     -> "my-es-cluster",
-          "logging.es-port-transport" -> "1111",
-          "logging.es-port-rest" -> "2222",
-          "logging.es-cluster-name" -> "my-es-cluster-name"
           // "logging.provision-provider" -> false
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      gtf.getLogProvider(uuid) must beNone
+      gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get) must beNone
     }
 
     "configure base services to launch with user-specified network if provided" in {
@@ -963,7 +985,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val config = injector.instanceOf[LauncherConfig]
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
-      val Some(logging) = gtf.getLogProvider(uuid)
+      val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
@@ -1000,7 +1022,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      val Some(logging) = gtf.getLogProvider(uuid)
+      val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
       val kong = gtf.getKongProvider(uuid, uuid)
@@ -1034,7 +1056,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
 
       val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      val Some(logging) = gtf.getLogProvider(uuid)
+      val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
       val kong = gtf.getKongProvider(uuid, uuid)

@@ -112,6 +112,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
   def getAppSpec(service: FrameworkService, globalConfig: GlobalConfig): AppSpec = {
     val base = service match {
       case DATA(index) => getData(globalConfig.dbConfig.get, index)
+      case ELASTIC     => getElastic(globalConfig.elasticConfig.get)
       case RABBIT      => getRabbit
       case SECURITY    => getSecurity(globalConfig.dbConfig.get)
       case META        => getMeta(globalConfig.dbConfig.get, globalConfig.secConfig.get)
@@ -190,6 +191,23 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         intervalSeconds = Some(5),
         timeoutSeconds = Some(10)
       ))
+    )
+  }
+
+  private[this] def getElastic(elasticConfig: GlobalElasticConfig): AppSpec = {
+    appSpec(ELASTIC).copy(
+      ports = Some(Seq(
+        PortSpec(number = 9200, name = "api",     labels = Map("VIP_0" -> vipLabel(ELASTIC_API)), hostPort = None),
+        PortSpec(number = 9300, name = "service", labels = Map("VIP_0" -> vipLabel(ELASTIC_SVC)), hostPort = None)
+      )),
+      healthChecks = Seq.empty,
+      readinessCheck = None,
+      env = Map(
+        "cluster.name" -> elasticConfig.clusterName,
+        "network.host" -> "0.0.0.0",
+        "transport.tcp.port" -> "9300",
+        "ES_JAVA_OPTS" -> "-Xms1536m -Xmx1536m"
+      )
     )
   }
 
@@ -408,52 +426,48 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
-  def getLogProvider(caasProviderId: UUID): Option[JsValue] = {
-    for {
-      esHost <- launcherConfig.logging.esHost
-      esPort <- launcherConfig.logging.esPortTransport
-      esName <- launcherConfig.logging.esClusterName
-      if launcherConfig.logging.provisionProvider
-      js = GestaltProviderBuilder.loggingProvider(
-        secrets = LoggingSecrets(
-          esConfig = LoggingSecrets.ESConfig(
-            esClusterName = esName,
-            esComputeType = "dcos",
-            esServiceHost = esHost,
-            esServicePort = esPort,
-            esColdDays = 14,
-            esHotDays = 7,
-            esSnapshotRepo = "s3_repository"
-          ),
-          dcosConfig = Some(LoggingSecrets.DCOSConfig(
-            dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
-            dcosAuth = None,
-            dcosHost = "leader.mesos",
-            dcosProtocol = "http",
-            dcosPort = 80
-          )),
-          serviceConfig = ServiceConfig(
-            image = launcherConfig.dockerImage(LOG),
-            network = launcherConfig.marathon.networkName,
-            healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
-            vhost = launcherConfig.marathon.tld.map("default-logging." + _),
-            vhostProto = launcherConfig.marathon.marathonLbProto,
-            cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
-            memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
-          )
+  def getLogProvider(caasProviderId: UUID, esConfig: GlobalElasticConfig): Option[JsValue] = {
+    if (launcherConfig.logging.provisionProvider) Some(GestaltProviderBuilder.loggingProvider(
+      secrets = LoggingSecrets(
+        esConfig = LoggingSecrets.ESConfig(
+          esClusterName = esConfig.clusterName,
+          esComputeType = "dcos",
+          esServiceHost = esConfig.hostname,
+          esServicePort = esConfig.portSvc,
+          esColdDays = 14,
+          esHotDays = 7,
+          esSnapshotRepo = "s3_repository"
         ),
-        computeId = caasProviderId.toString,
-        caasType = CaaSTypes.DCOS,
-        providerName = Some("default-logging"),
-        extraEnv = launcherConfig.extraEnv(LOG)
-      )
-    } yield js
+        dcosConfig = Some(LoggingSecrets.DCOSConfig(
+          dcosSvcAccountCreds = launcherConfig.dcosAuth.map(c => Json.toJson(c).toString),
+          dcosAuth = None,
+          dcosHost = "leader.mesos",
+          dcosProtocol = "http",
+          dcosPort = 80
+        )),
+        serviceConfig = ServiceConfig(
+          image = launcherConfig.dockerImage(LOG),
+          network = launcherConfig.marathon.networkName,
+          healthCheckProtocol = Some(if (launcherConfig.marathon.mesosHealthChecks) "MESOS_HTTP" else "HTTP"),
+          vhost = launcherConfig.marathon.tld.map("log." + _),
+          vhostProto = launcherConfig.marathon.marathonLbProto,
+          cpus = launcherConfig.resources.cpu.get(LOG) orElse Some(LOG.cpu),
+          memory = launcherConfig.resources.mem.get(LOG) orElse Some(LOG.mem)
+        )
+      ),
+      computeId = caasProviderId.toString,
+      caasType = CaaSTypes.DCOS,
+      providerName = Some("default-logging"),
+      extraEnv = launcherConfig.extraEnv(LOG)
+    )) else None
   }
 
   def getLaserProvider(apiKey: GestaltAPIKey,
                        dbProviderId: UUID, rabbitProviderId: UUID,
                        secProviderId: UUID, caasProviderId: UUID,
-                       laserExecutorIds: Seq[UUID], laserEnvId: UUID): JsValue = {
+                       laserExecutorIds: Seq[UUID], laserEnvId: UUID,
+                       esConfig: Option[GlobalElasticConfig] = None ): JsValue = {
+    val esc = esConfig.filter(_ => launcherConfig.logging.configureLaser)
     GestaltProviderBuilder.laserProvider(
       secrets = LaserSecrets(
         serviceConfig = LaserSecrets.ServiceConfig(
@@ -489,9 +503,9 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserExecutorHeartbeatTimeout = Some(launcherConfig.laser.executorHeartbeatTimeout),
           laserExecutorHeartbeatPeriod = Some(launcherConfig.laser.executorHeartbeatPeriod),
           laserExecutorPort = if (launcherConfig.marathon.networkName.isDefined) Some(60500) else None,
-          esHost = launcherConfig.logging.esHost.filter(_ => launcherConfig.logging.configureLaser),
-          esPort = launcherConfig.logging.esPortREST.filter(_ => launcherConfig.logging.configureLaser),
-          esProtocol = launcherConfig.logging.esProtocol.filter(_ => launcherConfig.logging.configureLaser)
+          esHost = esc.map(_.hostname),
+          esPort = esc.map(_.portApi),
+          esProtocol = esc.map(_.protocol)
         ),
         executors = Seq.empty
       ),

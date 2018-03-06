@@ -22,6 +22,10 @@ object States {
     val targetService = RABBIT
   }
 
+  case object LaunchingElastic extends LaunchingState {
+    val targetService = ELASTIC
+  }
+
   case object LaunchingSecurity extends LaunchingState {
     val targetService = SECURITY
   }
