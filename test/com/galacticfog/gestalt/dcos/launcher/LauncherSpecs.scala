@@ -17,28 +17,32 @@ import com.galacticfog.gestalt.dcos.marathon.{MarathonAppPayload, MarathonSSECli
 import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.google.inject.AbstractModule
-import mockws.{MockWS, Route}
+import mockws.{MockWS, MockWSHelpers, Route}
+import net.codingwell.scalaguice.ScalaModule
 import org.specs2.execute.Result
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
+import play.api.libs.ws.ahc.AsyncHttpClientProvider
 import play.api.mvc._
 import play.api.mvc.Results._
 import play.api.test._
+import play.shaded.ahc.org.asynchttpclient.AsyncHttpClient
 
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.Success
 
-class LauncherSpecs extends PlaySpecification with Mockito {
+class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
-  case class TestModule(sse: MarathonSSEClient, ws: WSClient) extends AbstractModule {
+  case class TestModule(sse: MarathonSSEClient, ws: WSClient) extends AbstractModule with ScalaModule {
     override def configure(): Unit = {
-      bind(classOf[MarathonSSEClient]).toInstance(sse)
-      bind(classOf[WSClient]).toInstance(ws)
+      bind[MarathonSSEClient].toInstance(sse)
+      bind[WSClient].toInstance(ws)
+      bind[AsyncHttpClient].toProvider[AsyncHttpClientProvider]
     }
   }
 
@@ -376,10 +380,10 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{ request =>
         providerCreateAttempts.getAndIncrement()
-        val providerName = (request.body \ "name").as[String]
-        val providerType = (request.body \ "resource_type").asOpt[String]
+        val providerName = (request.body.asJson.get \ "name").as[String]
+        val providerType = (request.body.asJson.get \ "resource_type").asOpt[String]
         providerType match {
           case Some(pt) if pt.startsWith("Gestalt::Configuration::Provider::Lambda::Executor::") =>
             val pid = UUID.randomUUID()
@@ -445,8 +449,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaRenameRoot = Route({
-      case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action(BodyParsers.parse.json) { request =>
-        (request.body).asOpt[Seq[PatchOp]] match {
+      case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action { request =>
+        (request.body.asJson.get).asOpt[Seq[PatchOp]] match {
           case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(newCompanyDescription)))) =>
             renamedRootOrg.getAndIncrement()
             Ok(Json.obj())
@@ -456,8 +460,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionWorkspace = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("gestalt-system-workspace") => Created(Json.obj(
             "id" -> sysWrkId
           ))
@@ -470,8 +474,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoEnv = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("demo") )
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action { request =>
+        if ( (request.body.asJson.get \ "name").asOpt[String].contains("demo") )
           Created(Json.obj("id" -> demoEnvId))
         else
           BadRequest("")
@@ -479,10 +483,10 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionSysEnvs = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("gestalt-system-environment") )
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action { request =>
+        if ( (request.body.asJson.get \ "name").asOpt[String].contains("gestalt-system-environment") )
           Created(Json.obj("id" -> UUID.randomUUID()))
-        else if ( (request.body \ "name").asOpt[String].contains("gestalt-laser-environment") )
+        else if ( (request.body.asJson.get \ "name").asOpt[String].contains("gestalt-laser-environment") )
           Created(Json.obj("id" -> UUID.randomUUID()))
         else
           BadRequest("")
@@ -490,8 +494,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoLambdas = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("demo-setup")    =>
             createdSetupLambda.getAndIncrement()
             Created(Json.obj(
@@ -508,8 +512,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoAPI = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("demo")    =>
             Created(Json.obj(
               "id" -> demoApi
@@ -520,8 +524,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoEndpoints = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("-setup")    =>
             createdSetupLambdaEndpoint.getAndIncrement()
             Created(Json.obj(
@@ -538,8 +542,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionLicense = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/licenses" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "properties" \ "data").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/licenses" => Action { request =>
+        (request.body.asJson.get \ "properties" \ "data").asOpt[String] match {
           case Some(s) if s.nonEmpty => Created("")
           case _ => BadRequest("")
         }

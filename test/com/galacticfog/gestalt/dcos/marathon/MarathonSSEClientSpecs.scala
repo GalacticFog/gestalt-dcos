@@ -8,7 +8,7 @@ import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenRequest, DCOSAuthTokenResponse}
 import com.google.inject.AbstractModule
-import mockws.{MockWS, Route}
+import mockws.{MockWS, MockWSHelpers, Route}
 import modules.WSClientFactory
 import net.codingwell.scalaguice.ScalaModule
 import org.specs2.mock.Mockito
@@ -25,7 +25,7 @@ import play.api.test._
 import scala.concurrent.duration._
 import scala.util.Try
 
-class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
+class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
   val authToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6InNlY3JldCIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJkZW1vX2dlc3RhbHRfbWV0YSJ9.RP5MhJPey2mDXOJlu1GFcQ_TlWZzYnr_6N7AwDbB0jqJC3bsLR8QxKZVbzk_JInwO5QN_-BVK5bvxP5zyo4KhVotsugH5eP_iTSDyyx7iKWOK4oPmFlJglaXGRE_KEuySAeZCNTnDIrfUWnB21WwS92MGr6B4rFZ-IzVSmygzO-LgxM-ZU9_b9kyKLOUXcQLgHFLY-qJMWou98dTv36lhjqx65iKQ5PT53KjGtL6OQ-1vqXse5ynCJGsXk3HBXV4P_w42RJBIAWiIbsUfgN85sGTVPvtHO-o-GJMknf7G0FiwfGtsYS3n05kirNIwsZS54RX03TNlxq0Vg48eWGZKQ"
   val testServiceId = "meta-dcos-provider"
@@ -66,9 +66,9 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
 
   object DCOSMocks {
     def mockAuth() = Route {
-      case (POST,url) if url == testDcosUrl => Action(parse.json) {request =>
-        val uid = (request.body \ "uid").as[String]
-        val jws = io.jsonwebtoken.Jwts.parser().setSigningKey(DCOSAuthTokenActor.strToPublicKey(testPublicKey)).parseClaimsJws((request.body \ "token").as[String])
+      case (POST,url) if url == testDcosUrl => Action {request =>
+        val uid = (request.body.asJson.get \ "uid").as[String]
+        val jws = io.jsonwebtoken.Jwts.parser().setSigningKey(DCOSAuthTokenActor.strToPublicKey(testPublicKey)).parseClaimsJws((request.body.asJson.get \ "token").as[String])
         if ( uid == testServiceId && jws.getBody.get("uid",classOf[String]) == testServiceId )
           Ok(Json.obj("token" -> authToken))
         else
@@ -534,7 +534,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito {
       config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
     ) {
       marClient.connectToBus(testActor)
-      tokenActorProbe.expectNoMsg(2 seconds)
+      tokenActorProbe.expectNoMessage(2 seconds)
       expectMsgType[akka.actor.Status.Failure]
     }
 

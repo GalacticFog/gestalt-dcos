@@ -7,13 +7,16 @@ import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.ws.WSClient
+import play.api.libs.ws.ahc.AsyncHttpClientProvider
 import play.api.test._
+import play.shaded.ahc.org.asynchttpclient.AsyncHttpClient
 
 class WSSpecs extends PlaySpecification with Mockito {
 
   case class TestModule(ws: WSClient) extends AbstractModule with ScalaModule {
     override def configure(): Unit = {
       bind[WSClient].toInstance(ws)
+      bind[AsyncHttpClient].toProvider[AsyncHttpClientProvider]
     }
   }
 
