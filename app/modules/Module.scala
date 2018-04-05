@@ -1,21 +1,18 @@
 package modules
 
 import javax.inject.{Inject, Named}
-
 import akka.actor.ActorRef
 import akka.stream.Materializer
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor
 import com.google.inject.{AbstractModule, Singleton}
-import io.netty.handler.ssl.SslContextBuilder
+import com.typesafe.sslconfig.ssl.{SSLConfigSettings, SSLLooseConfig, SSLParametersConfig, TrustManagerConfig}
 import net.codingwell.scalaguice.ScalaModule
-import org.asynchttpclient.DefaultAsyncHttpClientConfig
-import org.asynchttpclient.netty.ssl.InsecureTrustManagerFactory
 import play.api.Logger
+import play.api.libs.ws.{WSClient, WSClientConfig}
+import play.api.libs.ws.ahc.{AhcWSClient, AhcWSClientConfig}
 import play.api.libs.concurrent.AkkaGuiceSupport
-import play.api.libs.ws.{WSClient, WSRequest}
-import play.api.libs.ws.ahc.AhcWSClient
 
 class Module extends AbstractModule with AkkaGuiceSupport with ScalaModule {
 
@@ -34,19 +31,17 @@ trait WSClientFactory {
 }
 
 @Singleton
-class DefaultWSClientFactory @Inject()(config: LauncherConfig, defaultClient: WSClient )
+class DefaultWSClientFactory @Inject()( config: LauncherConfig, defaultClient: WSClient )
                                       ( implicit val mat: Materializer ) extends WSClientFactory {
 
   private lazy val permissiveClient = {
-    val config = new DefaultAsyncHttpClientConfig.Builder()
-      .setFollowRedirect(true)
-      .setSslContext(SslContextBuilder.forClient.trustManager(InsecureTrustManagerFactory.INSTANCE).build)
-      .build()
-    new AhcWSClient(config)(mat)
+    AhcWSClient(AhcWSClientConfig(WSClientConfig(
+      ssl = SSLConfigSettings().withLoose(SSLLooseConfig().withAcceptAnyCertificate(true))
+    )))
   }
 
   def getClient: WSClient = {
-    if (config.acceptAnyCertificate.contains(true)) {
+    if (config.acceptAnyCertificate) {
       permissiveClient
     } else {
       defaultClient

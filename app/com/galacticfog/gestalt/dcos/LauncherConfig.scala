@@ -22,81 +22,73 @@ class LauncherConfig @Inject()(config: Configuration) {
   import LauncherConfig._
   import LauncherConfig.Services._
 
-  def getString(path: String, default: String): String = config.getString(path).getOrElse(default)
-
-  def getInt(path: String, default: Int): Int = config.getInt(path).getOrElse(default)
-
-  def getBool(path: String, default: Boolean): Boolean = config.getBoolean(path).getOrElse(default)
-
-  def getDouble(path: String, default: Double): Double = config.getDouble(path).getOrElse(default)
-
   val marathon = MarathonConfig(
-    marathonLbUrl = config.getString("marathon.lb-url"),
-    marathonLbProto = config.getString("marathon.lb-protocol"),
-    appGroup = getString("marathon.app-group", DEFAULT_APP_GROUP).stripPrefix("/").stripSuffix("/"),
-    tld = config.getString("marathon.tld"),
-    baseUrl = getString("marathon.url", "http://marathon.mesos:8080"),
-    frameworkName = getString("marathon.framework-name", "marathon"),
-    clusterName = getString("marathon.cluster-name", "thisdcos"),
-    jvmOverheadFactor = getDouble("marathon.jvm-overhead-factor", 1.5),
-    networkName = config.getString("marathon.network-name"),
-    mesosHealthChecks = getBool("marathon.mesos-health-checks",false),
-    networkList = config.getString("marathon.network-list"),
-    haproxyGroups = config.getString("marathon.haproxy-groups"),
-    sseMaxLineSize = config.getInt("marathon.sseMaxLineSize") getOrElse 524288,
-    sseMaxEventSize = config.getInt("marathon.sseMaxEventSize") getOrElse 524288
+    marathonLbUrl = config.get[Option[String]]("marathon.lb-url"),
+    marathonLbProto = config.get[Option[String]]("marathon.lb-protocol"),
+    appGroup = config.get[String]("marathon.app-group").stripPrefix("/").stripSuffix("/"),
+    tld = config.get[Option[String]]("marathon.tld"),
+    baseUrl = config.get[String]("marathon.url"),
+    frameworkName = config.get[String]("marathon.framework-name"),
+    clusterName = config.get[String]("marathon.cluster-name"),
+    jvmOverheadFactor = config.get[Double]("marathon.jvm-overhead-factor"),
+    networkName = config.get[Option[String]]("marathon.network-name"),
+    mesosHealthChecks = config.get[Boolean]("marathon.mesos-health-checks"),
+    networkList = config.get[Option[String]]("marathon.network-list"),
+    haproxyGroups = config.get[Option[String]]("marathon.haproxy-groups"),
+    sseMaxLineSize = config.get[Int]("marathon.sseMaxLineSize"),
+    sseMaxEventSize = config.get[Int]("marathon.sseMaxEventSize")
   )
 
   val dcos = DCOSConfig(
-    secretSupport = config.getBoolean("dcos.secret-support"),
-    secretUrl = config.getString("dcos.secret-url"),
-    secretStore = config.getString("dcos.secret-store")
+    secretSupport = config.get[Boolean]("dcos.secret-support"),
+    secretUrl = config.get[Option[String]]("dcos.secret-url"),
+    secretStore = config.get[String]("dcos.secret-store")
   )
 
   val database = DatabaseConfig(
-    provision = getBool("database.provision", true),
-    provisionedCpu = config.getDouble("database.provisioned-cpu"),
-    provisionedMemory = config.getInt("database.provisioned-memory"),
-    provisionedSize = getInt("database.provisioned-size", DatabaseConfig.DEFAULT_DISK),
-    numSecondaries = getInt("database.num-secondaries", DatabaseConfig.DEFAULT_NUM_SECONDARIES),
-    pgreplToken = getString("database.pgrepl-token", "iw4nn4b3likeu"),
-    hostname = getString("database.hostname", marathon.appGroup.replaceAll("/","-") + "-data"),
-    port = getInt("database.port", 5432),
-    username = getString("database.username", "gestaltdev"),
-    password = getString("database.password", "letmein"),
-    prefix = getString("database.prefix", "gestalt-")
+    provision = config.get[Boolean]("database.provision"),
+    provisionedCpu = config.get[Option[Double]]("database.provisioned-cpu"),
+    provisionedMemory = config.get[Option[Int]]("database.provisioned-memory"),
+    provisionedSize = config.get[Int]("database.provisioned-size"),
+    numSecondaries = config.get[Int]("database.num-secondaries"),
+    pgreplToken = config.get[String]("database.pgrepl-token"),
+    hostname = config.get[Option[String]]("database.hostname").getOrElse(marathon.appGroup.replaceAll("/","-") + "-data"),
+    port = config.get[Int]("database.port"),
+    username = config.get[String]("database.username"),
+    password = config.get[String]("database.password"),
+    prefix = config.get[String]("database.prefix")
   )
 
   val logging = LoggingConfig(
-    esClusterName = config.getString("logging.es-cluster-name"),
-    esProtocol = config.getString("logging.es-protocol"),
-    esHost = config.getString("logging.es-host"),
-    esPortTransport = config.getInt("logging.es-port-transport"),
-    esPortREST      = config.getInt("logging.es-port-rest"),
-    provisionProvider = getBool("logging.provision-provider", false),
-    configureLaser = getBool("logging.configure-laser", false),
-    provisionElastic = getBool("logging.provision-elastic", false)
+    esClusterName = config.get[Option[String]]("logging.es-cluster-name"),
+    esProtocol = config.get[Option[String]]("logging.es-protocol"),
+    esHost = config.get[Option[String]]("logging.es-host"),
+    esPortTransport = config.get[Option[Int]]("logging.es-port-transport"),
+    esPortREST      = config.get[Option[Int]]("logging.es-port-rest"),
+    provisionProvider = config.get[Boolean]("logging.provision-provider"),
+    configureLaser = config.get[Boolean]("logging.configure-laser"),
+    provisionElastic = config.get[Boolean]("logging.provision-elastic")
   )
 
   val meta = MetaConfig(
-    companyName = getString("meta.company-name", MetaConfig.DEFAULT_COMPANY_NAME)
+    companyName = config.get[String]("meta.company-name")
   )
 
   val security = SecurityConfig(
-    username = getString("security.username", "gestalt-admin"),
-    password = config.getString("security.password"),
-    key = config.getString("security.key"),
-    secret = config.getString("security.secret")
+    username = config.get[String]("security.username"),
+    password = config.get[Option[String]]("security.password"),
+    key = config.get[Option[String]]("security.key"),
+    secret = config.get[Option[String]]("security.secret")
   )
 
-  val gestaltFrameworkVersion: Option[String] = config.getString("gestalt-framework-version")
+  val gestaltFrameworkVersion = config.get[Option[String]]("gestalt-framework-version")
 
-  val acceptAnyCertificate: Option[Boolean] = config.getBoolean("acceptAnyCertificate")
+  val acceptAnyCertificate = config.get[Boolean]("acceptAnyCertificate")
 
   val dcosAuth = for {
-    auth <- config.getString("auth.method")
+    auth <- config.get[Option[String]]("auth.method")
     if auth == "acs"
-    credsStr <- config.getString("auth.acs_service_acct_creds")
+    credsStr <- config.get[Option[String]]("auth.acs_service_acct_creds")
     credsJs  <- Try{Json.parse(credsStr)} match {
       case Success(js) => Some(js)
       case Failure(ex) => {
@@ -119,8 +111,8 @@ class LauncherConfig @Inject()(config: Configuration) {
   } yield acsCreds
 
   val debug = Debug(
-    cpu = config.getDouble("debug.cpu"),
-    mem = config.getInt("debug.mem")
+    cpu = config.get[Option[Double]]("debug.cpu"),
+    mem = config.get[Option[Int]]("debug.mem")
   )
 
   val LAUNCH_ORDER: Seq[LauncherState] = {
@@ -173,7 +165,7 @@ class LauncherConfig @Inject()(config: Configuration) {
       case _ => service.name
     }
     config
-      .getString(s"containers.${name}")
+      .get[Option[String]](s"containers.${name}")
       .orElse(gestaltFrameworkVersion.flatMap(
         ensVer => service match {
           case DATA(_) =>
@@ -190,32 +182,32 @@ class LauncherConfig @Inject()(config: Configuration) {
   }
 
   val disabledRuntimes = Map(
-    EXECUTOR_NASHORN -> getBool("laser.enable-js-runtime", true),
-    EXECUTOR_JVM     -> getBool("laser.enable-jvm-runtime", true),
-    EXECUTOR_DOTNET  -> getBool("laser.enable-dotnet-runtime", true),
-    EXECUTOR_RUBY    -> getBool("laser.enable-ruby-runtime", true),
-    EXECUTOR_BASH    -> getBool("laser.enable-bash-runtime", true),
-    EXECUTOR_PYTHON  -> getBool("laser.enable-python-runtime", true),
-    EXECUTOR_GOLANG  -> getBool("laser.enable-golang-runtime", true),
-    EXECUTOR_NODEJS  -> getBool("laser.enable-nodejs-runtime", true)
+    EXECUTOR_NASHORN -> config.get[Boolean]("laser.enable-js-runtime"),
+    EXECUTOR_JVM     -> config.get[Boolean]("laser.enable-jvm-runtime"),
+    EXECUTOR_DOTNET  -> config.get[Boolean]("laser.enable-dotnet-runtime"),
+    EXECUTOR_RUBY    -> config.get[Boolean]("laser.enable-ruby-runtime"),
+    EXECUTOR_BASH    -> config.get[Boolean]("laser.enable-bash-runtime"),
+    EXECUTOR_PYTHON  -> config.get[Boolean]("laser.enable-python-runtime"),
+    EXECUTOR_GOLANG  -> config.get[Boolean]("laser.enable-golang-runtime"),
+    EXECUTOR_NODEJS  -> config.get[Boolean]("laser.enable-nodejs-runtime")
   ).collect({
     case (exec,false) => exec
   })
 
   val laser = LaserConfig(
-    scaleDownTimeout = config.getInt("laser.scale-down-timeout"),
+    scaleDownTimeout = config.get[Option[Int]]("laser.scale-down-timeout"),
     enabledRuntimes = (LaserConfig.KNOWN_LASER_RUNTIMES -- disabledRuntimes).map({
       case (e,r) => r.copy(
         image = dockerImage(e)
       )
     }).toSeq,
-    maxCoolConnectionTime = config.getInt("laser.max-cool-connection-time") getOrElse LaserConfig.Defaults.MAX_COOL_CONNECTION_TIME,
-    executorHeartbeatTimeout = config.getInt("laser.executor-heartbeat-timeout") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_TIMEOUT,
-    executorHeartbeatPeriod = config.getInt("laser.executor-heartbeat-period") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_MILLIS,
-    defaultExecutorCpu = config.getDouble("laser.default-executor-cpu") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_CPU,
-    defaultExecutorMem = config.getInt("laser.default-executor-mem") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_MEM,
-    serviceHostOverride = config.getString("laser.service-host-override"),
-    servicePortOverride = config.getInt("laser.service-port-override")
+    maxCoolConnectionTime = config.get[Option[Int]]("laser.max-cool-connection-time") getOrElse LaserConfig.Defaults.MAX_COOL_CONNECTION_TIME,
+    executorHeartbeatTimeout = config.get[Option[Int]]("laser.executor-heartbeat-timeout") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_TIMEOUT,
+    executorHeartbeatPeriod = config.get[Option[Int]]("laser.executor-heartbeat-period") getOrElse LaserConfig.Defaults.EXECUTOR_HEARTBEAT_MILLIS,
+    defaultExecutorCpu = config.get[Option[Double]]("laser.default-executor-cpu") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_CPU,
+    defaultExecutorMem = config.get[Option[Int]]("laser.default-executor-mem") getOrElse LaserConfig.Defaults.DEFAULT_EXECUTOR_MEM,
+    serviceHostOverride = config.get[Option[String]]("laser.service-host-override"),
+    servicePortOverride = config.get[Option[Int]]("laser.service-port-override")
   )
 
   private[this] val servicesWithPrefixes: Map[Dockerable,String] = provisionedServices.collect({ case d @ DATA(i) => d -> s"DATA_${i}" }).toMap ++ Map(
@@ -378,9 +370,6 @@ object LauncherConfig {
                              prefix: String )
 
   case object DatabaseConfig {
-    val DEFAULT_DISK: Int = 100
-
-    val DEFAULT_NUM_SECONDARIES = 0
     val DEFAULT_KILL_GRACE_PERIOD = 300
   }
 
@@ -402,10 +391,9 @@ object LauncherConfig {
                              sseMaxEventSize: Int
                            )
 
-  case class DCOSConfig( secretSupport: Option[Boolean],
+  case class DCOSConfig( secretSupport: Boolean,
                          secretUrl: Option[String],
-                         secretStore: Option[String]
-                       )
+                         secretStore: String )
 
   case class SecurityConfig( username: String,
                              password: Option[String],
@@ -472,7 +460,6 @@ object LauncherConfig {
   case class MetaConfig( companyName: String )
 
   object MetaConfig {
-    val DEFAULT_COMPANY_NAME = "A Galactic Fog Customer"
 
     val SETUP_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.5/js_lambda/demo-setup.js"
     val TDOWN_LAMBDA_URL = "https://raw.githubusercontent.com/GalacticFog/lambda-examples/1.5/js_lambda/demo-teardown.js"

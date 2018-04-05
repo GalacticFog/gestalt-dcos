@@ -587,12 +587,11 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       )
     }
 
-    "acknowledge the appropriate number of DATA stages and services according to default" in {
+    "acknowledge the appropriate number of DATA stages and services according to default of zero" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .injector
       val config = injector.instanceOf[LauncherConfig]
-      assert(LauncherConfig.DatabaseConfig.DEFAULT_NUM_SECONDARIES == 0)
       config.provisionedServices.filter(_.isInstanceOf[DATA]) must containTheSameElementsAs(
         Seq(DATA(0))
       )

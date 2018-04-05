@@ -2,14 +2,14 @@
  * This template takes a single argument, a String containing a
  * message to display.
  *@
-@(webJarAssets: WebJarAssets, hasDB: Boolean, version: String)
+@(webJarsUtil: org.webjars.play.WebJarsUtil, hasDB: Boolean, version: String)
 
 @*
  * Call the `main` template with two arguments. The first
  * argument is a `String` with the title of the page, the second
  * argument is an `Html` object containing the body of the page.
  *@
-@main(webJarAssets, "Gestalt Framework", version) {
+@main(webJarsUtil, "Gestalt Framework", version) {
 
     <div class="row">
         <div class="col-md-10 col-md-offset-1">

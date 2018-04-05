@@ -2,13 +2,12 @@ package com.galacticfog.gestalt.dcos.marathon
 
 import akka.pattern.ask
 import akka.actor.{ActorRef, ActorSystem}
+import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.testkit.{ImplicitSender, TestActor, TestActorRef, TestKit, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenRequest, DCOSAuthTokenResponse}
 import com.google.inject.AbstractModule
-import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
-import de.heikoseeberger.akkasse.ServerSentEvent
 import mockws.{MockWS, Route}
 import modules.WSClientFactory
 import net.codingwell.scalaguice.ScalaModule

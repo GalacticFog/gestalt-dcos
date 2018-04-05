@@ -476,7 +476,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
 
       val dbconfig = DatabaseConfig(
         provision = sys.env.get("DATABASE_PROVISION").map(_.toBoolean).getOrElse(true),
-        provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_DISK),
+        provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(100),
         provisionedCpu = sys.env.get("DATABASE_PROVISIONED_CPU").map(_.toDouble),
         provisionedMemory = sys.env.get("DATABASE_PROVISIONED_MEMORY").map(_.toInt),
         numSecondaries = sys.env.get("DATABASE_NUM_SECONDARIES").map(_.toInt).getOrElse(0),

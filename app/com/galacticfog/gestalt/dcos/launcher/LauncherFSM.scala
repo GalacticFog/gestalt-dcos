@@ -2,22 +2,21 @@ package com.galacticfog.gestalt.dcos.launcher
 
 import java.io.{PrintWriter, StringWriter}
 import java.util.UUID
-import javax.inject.Inject
 
+import javax.inject.Inject
 import akka.actor.{FSM, LoggingFSM, Status}
+import akka.http.scaladsl.model.sse.ServerSentEvent
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
 import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
-import de.heikoseeberger.akkasse.ServerSentEvent
-import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import play.api.libs.json.Reads._
 import play.api.libs.json.{JsObject, Json, _}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest, WSResponse}
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
@@ -85,7 +84,8 @@ object LauncherFSM {
 class LauncherFSM @Inject()( config: LauncherConfig,
                              marClient: MarathonSSEClient,
                              ws: WSClient,
-                             gtf: GestaltTaskFactory ) extends LoggingFSM[LauncherState,ServiceData] {
+                             gtf: GestaltTaskFactory )
+                           ( implicit executionContext: ExecutionContext ) extends LoggingFSM[LauncherState,ServiceData] {
 
   import LauncherConfig.Services._
   import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
@@ -861,7 +861,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         connected = false
       )
 
-    case Event(sse @ ServerSentEvent(Some(_), Some(eventType), _, _), d) =>
+    case Event(sse @ ServerSentEvent(_, Some(eventType), _, _), d) =>
       val msg = eventType match {
         case "app_terminated_event"        => MarathonSSEClient.parseEvent[MarathonAppTerminatedEvent](sse)
         case "health_status_changed_event" => MarathonSSEClient.parseEvent[MarathonHealthStatusChange](sse)

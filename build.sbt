@@ -1,6 +1,6 @@
 name := """gestalt-dcos"""
 
-version := "1.5.0"
+version := "1.6.0"
 
 lazy val root = (project in file(".")).
   enablePlugins(PlayScala).
@@ -10,19 +10,19 @@ lazy val root = (project in file(".")).
       name, version, scalaVersion, sbtVersion,
       "builtBy" -> System.getProperty("user.name"),
       "gitHash" -> new java.lang.Object(){
-              override def toString(): String = {
-                      try { 
-                    val extracted = new java.io.InputStreamReader(
-                              java.lang.Runtime.getRuntime().exec("git rev-parse HEAD").getInputStream())                         
-                    (new java.io.BufferedReader(extracted)).readLine()
-                      } catch {      case t: Throwable => "get git hash failed"    }
-              }}.toString()
+        override def toString(): String = {
+          try {
+            val extracted = new java.io.InputStreamReader(
+              java.lang.Runtime.getRuntime().exec("git rev-parse HEAD").getInputStream())
+            (new java.io.BufferedReader(extracted)).readLine()
+          } catch {      case t: Throwable => "get git hash failed"    }
+        }}.toString()
     ),
     buildInfoPackage := "com.galacticfog.gestalt.dcos",
     buildInfoUsePackageAsPath := true
   )
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.11"
 
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
@@ -38,9 +38,6 @@ dockerCommands := dockerCommands.value.flatMap {
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 
-resolvers += "Mesosphere Repo" at "http://downloads.mesosphere.io/maven"
-libraryDependencies += "mesosphere" %% "mesos-utils" % "0.28.0" withJavadoc()
-
 resolvers ++= Seq(
   "gestalt-snapshots" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-snapshots-local",
   "gestalt-releases" at "https://galacticfog.artifactoryonline.com/galacticfog/libs-releases-local"
@@ -51,9 +48,6 @@ libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-cli" % "2.3.4" withSources()
 )
 
-resolvers += Resolver.bintrayRepo("hseeberger", "maven")
-libraryDependencies += "de.heikoseeberger" %% "akka-sse" % "2.0.0"
-
 scalacOptions ++= Seq("-feature")
 
 scalacOptions in Test ++= Seq("-Yrangepos")
@@ -61,17 +55,17 @@ scalacOptions in Test ++= Seq("-Yrangepos")
 resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
 libraryDependencies ++= Seq(
   jdbc,
-  cache,
   ws,
-  specs2 % Test,
-  "org.webjars" %% "webjars-play" % "2.5.0",
+  guice,
+  "com.typesafe.akka" %% "akka-http" % "10.0.8",
+  "com.typesafe.play" %% "play-json" % "2.6.9",
+  "org.webjars" %% "webjars-play" % "2.6.3",
   "org.webjars" % "bootstrap" % "3.1.1-2",
-  "org.scalikejdbc" %% "scalikejdbc" % "2.4.2",
-  "org.postgresql" % "postgresql" % "9.3-1102-jdbc4",
-  "net.codingwell"  %% "scala-guice" 					 % "4.1.0",
-  "io.jsonwebtoken"  % "jjwt"             % "0.7.0",
-  "com.typesafe.akka" %% "akka-testkit" % "2.4.16" % Test,
-  "de.leanovate.play-mockws" %% "play-mockws" % "2.5.1" % Test
+  "org.scalikejdbc" %% "scalikejdbc" % "3.2.2",
+  "org.postgresql" % "postgresql" % "9.3-1104-jdbc4",
+  "net.codingwell"  %% "scala-guice" 					 % "4.1.1",
+  specs2 % Test,
+  "com.typesafe.akka" %% "akka-testkit" % "2.5.11" % Test,
+  "de.leanovate.play-mockws" %% "play-mockws" % "2.6.2" % Test,
+  "org.specs2" %% "specs2-matcher-extra" % "3.8.9" % "test"
 )
-
-libraryDependencies ++= Seq("org.specs2" %% "specs2-matcher-extra" % "3.6.6" % "test")

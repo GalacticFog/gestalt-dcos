@@ -1,6 +1,7 @@
 package com.galacticfog.gestalt.dcos.marathon
 
 import java.security.cert.X509Certificate
+
 import javax.inject.{Inject, Named, Singleton}
 import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
 
@@ -22,12 +23,13 @@ import play.api.libs.json.Reads._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
 import akka.http.scaladsl.client.RequestBuilding.Get
+import akka.http.scaladsl.model.MediaTypes
+import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
-import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
 import modules.WSClientFactory
 import play.api.http.HeaderNames
 
@@ -55,7 +57,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   private[marathon] def client: WSClient = wsFactory.getClient
 
   private[marathon] val connectionContext: HttpsConnectionContext = {
-    if (launcherConfig.acceptAnyCertificate.contains(true)) {
+    if (launcherConfig.acceptAnyCertificate) {
       logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
       // Create a trust manager that does not validate certificate chains
       val trustAllCerts: Array[TrustManager] = Array(new X509TrustManager {
@@ -105,7 +107,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val fEventSource = for {
       maybeAuthToken <- fMaybeAuthToken
       req = maybeAuthToken.foldLeft(
-        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(`text/event-stream`))
+        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(MediaTypes.`text/event-stream`))
       ) {
         case (req, tok) =>
           logger.debug("adding header to event bus request")
@@ -137,7 +139,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val url = marathonBaseUrl + "/" + endpoint.stripPrefix("/")
     fMaybeToken map {
       _.foldLeft(client.url(url)){
-        case (r,t) => r.withHeaders(
+        case (r,t) => r.addHttpHeaders(
           HeaderNames.AUTHORIZATION -> s"token=${t}"
         )
       }
@@ -148,7 +150,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val appId = appPayload.id.getOrElse(throw new RuntimeException("launchApp missing appId")).stripPrefix("/")
     for {
       req <- genRequest(s"/v2/apps")
-      resp <- req.withQueryString("force" -> "true").post(
+      resp <- req.addQueryStringParameters("force" -> "true").post(
         Json.toJson(appPayload)
       )
       json <- {
@@ -175,7 +177,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val endpoint = "/v2/apps" + appId
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("force" -> "true").delete()
+      resp <- req.addQueryStringParameters("force" -> "true").delete()
       deleted <- {
         logger.info(s"marathon.delete(${service.name}) => ${resp.statusText}")
         considerInvalidatingAuthToken(resp.status)
@@ -193,7 +195,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val endpoint = "/v2/apps/${appGroup}/${svcName}"
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("force" -> "true").put(Json.obj("instances" -> 0))
+      resp <- req.addQueryStringParameters("force" -> "true").put(Json.obj("instances" -> 0))
       maybeOk = {
         logger.info(s"marathon.stop(${svcName}) => ${resp.statusText}")
         considerInvalidatingAuthToken(resp.status)
@@ -272,7 +274,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     val endpoint = s"/v2/groups/${appGroup}"
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
+      resp <- req.addQueryStringParameters("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
       svcs <- {
         considerInvalidatingAuthToken(resp.status)
         resp.status match {
@@ -348,7 +350,7 @@ object MarathonSSEClient {
   val logger: Logger = Logger(this.getClass())
 
   def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[T] = {
-    event.data filter {_.trim.nonEmpty} flatMap { data =>
+    Option(event.data) filter {_.trim.nonEmpty} flatMap { data =>
       Try{Json.parse(data)} match {
         case Failure(e) =>
           logger.warn(s"error parsing event data as JSON:\n${data}", e)
@@ -357,7 +359,7 @@ object MarathonSSEClient {
         case Success(js) =>
           js.validate[T] match {
             case JsError(_) =>
-              logger.warn(s"error unmarshalling ${event.`type`} JSON")
+              logger.warn(s"error unmarshalling ${event.eventType} JSON")
               logger.warn(s"payload was:\n${data}")
               None
             case JsSuccess(obj, _) => Some(obj)

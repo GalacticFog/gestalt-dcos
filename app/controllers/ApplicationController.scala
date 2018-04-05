@@ -1,7 +1,6 @@
 package controllers
 
 import javax.inject._
-
 import akka.actor.ActorRef
 import com.galacticfog.gestalt.dcos.{BuildInfo, LauncherConfig}
 import play.api._
@@ -11,17 +10,17 @@ import views.html.index
 import akka.pattern.ask
 import akka.util.Timeout
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM
+import org.webjars.play.WebJarsUtil
 import play.api.http.HeaderNames
 
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext
 
 @Singleton
-class ApplicationController @Inject()(webJarAssets: WebJarAssets,
+class ApplicationController @Inject()(webJarsUtil: WebJarsUtil,
                                       @Named("scheduler-actor") schedulerFSM: ActorRef,
                                       launcherConfig: LauncherConfig)
-                                     (implicit ec: ExecutionContext) extends Controller {
-
+                                     (implicit ec: ExecutionContext) extends InjectedController {
 
   val logger = Logger(this.getClass)
 
@@ -34,7 +33,7 @@ class ApplicationController @Inject()(webJarAssets: WebJarAssets,
   }
 
   def dashboard = Action {
-    Ok(index.render(webJarAssets, launcherConfig.database.provision, launcherConfig.gestaltFrameworkVersion getOrElse BuildInfo.version))
+    Ok(index.render(webJarsUtil, launcherConfig.database.provision, launcherConfig.gestaltFrameworkVersion getOrElse BuildInfo.version))
   }
 
   def data() = Action.async { implicit request =>
