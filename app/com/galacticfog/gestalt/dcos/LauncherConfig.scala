@@ -335,10 +335,7 @@ object LauncherConfig {
     case object EXECUTOR_BASH    extends WellKnownLaserExecutor {val name = "laser-executor-bash"}
   }
 
-  def defaultDockerImages(service: Dockerable): String = ??? /* service match {
-
-        !!! Move these to application.conf !!!
-
+  def defaultDockerImages(service: Dockerable): String = service match {
     case Services.DATA(_)             => s"galacticfog/postgres_repl:release-${BuildInfo.version}"
     case Services.ELASTIC             =>  "galacticfog/elasticsearch-docker:5.3.1"
     case Services.RABBIT              => s"galacticfog/rabbit:release-${BuildInfo.version}"
@@ -358,7 +355,7 @@ object LauncherConfig {
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_BASH      => s"galacticfog/gestalt-laser-executor-bash:release-${BuildInfo.version}"
-  }*/
+  }
 
   case class DatabaseConfig( provision: Boolean,
                              provisionedSize: Int,
