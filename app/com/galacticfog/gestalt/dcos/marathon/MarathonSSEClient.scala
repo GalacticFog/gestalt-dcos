@@ -8,7 +8,7 @@ import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
 import scala.language.postfixOps
 import akka.pattern.ask
 import akka.NotUsed
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.http.scaladsl.{Http, HttpsConnectionContext}
 import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.unmarshalling.Unmarshal
@@ -37,7 +37,7 @@ import play.api.http.HeaderNames
 class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
                                     wsFactory: WSClientFactory,
                                     @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef )
-                                  ( implicit system: ActorSystem ) extends EventStreamUnmarshalling {
+                                  ( implicit system: ActorSystem ) extends Actor with EventStreamUnmarshalling {
 
   import system.dispatcher
   import MarathonSSEClient._
@@ -45,7 +45,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
   override protected def maxLineSize: Int = launcherConfig.marathon.sseMaxLineSize
   override protected def maxEventSize: Int = launcherConfig.marathon.sseMaxEventSize
 
-  val logger: Logger = Logger(this.getClass())
+  private[this] val logger: Logger = Logger(this.getClass())
 
   private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl.stripSuffix("/")
 
@@ -54,9 +54,9 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
-  private[marathon] def client: WSClient = wsFactory.getClient
+  private[this] def client: WSClient = wsFactory.getClient
 
-  private[marathon] val connectionContext: HttpsConnectionContext = {
+  private[this] val connectionContext: HttpsConnectionContext = {
     if (launcherConfig.acceptAnyCertificate) {
       logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
       // Create a trust manager that does not validate certificate chains
@@ -99,7 +99,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
-  def connectToBus(actorRef: ActorRef): Unit = {
+  private[this] def connectToBus(actorRef: ActorRef): Unit = {
     val fMaybeAuthToken = getAuthToken // start this early
     implicit val mat = ActorMaterializer()
     val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
@@ -146,7 +146,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
-  def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
+  private[this] def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.getOrElse(throw new RuntimeException("launchApp missing appId")).stripPrefix("/")
     for {
       req <- genRequest(s"/v2/apps")
@@ -171,7 +171,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     } yield json
   }
 
-  def killApp(service: FrameworkService): Future[Boolean] = {
+  private[this] def killApp(service: FrameworkService): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${service.name}")
     val appId = s"/${appGroup}/${service.name}"
     val endpoint = "/v2/apps" + appId
@@ -190,7 +190,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     } yield deleted
   }
 
-  def stopApp(svcName: String): Future[Boolean] = {
+  private[this] def stopApp(svcName: String): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${svcName}")
     val endpoint = "/v2/apps/${appGroup}/${svcName}"
     for {
@@ -270,7 +270,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports.map(_.toString),status)
   }
 
-  def getServices(): Future[Seq[ServiceInfo]] = {
+  private[this] def getServices(): Future[Seq[ServiceInfo]] = {
     val endpoint = s"/v2/groups/${appGroup}"
     for {
       req <- genRequest(endpoint)
@@ -293,7 +293,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     } yield svcs
   }
 
-  def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
+  private[this] def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
     val endpoint = s"/v2/apps/${appGroup}/${service.name}"
     val fStat = for {
       req <- genRequest(endpoint)
@@ -319,11 +319,23 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
+  override def receive: Receive = ???
 }
 
 object MarathonSSEClient {
 
+  trait Factory {
+    def apply(): Actor
+  }
+
   case object Connected
+
+  case class LaunchAppRequest(appPayload: MarathonAppPayload)
+  case class GetServiceStatus(service: LauncherConfig.FrameworkService)
+  case class ServiceStatusResponse(s: ServiceInfo)
+  case object GetAllServiceStatus
+  case class AllServiceStatusResponse(ss: Seq[ServiceInfo])
+  case class KillAppRequest(service: LauncherConfig.FrameworkService)
 
   def getVHosts(app: MarathonAppPayload): Seq[String] = {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r

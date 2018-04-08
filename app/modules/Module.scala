@@ -5,7 +5,7 @@ import akka.actor.ActorRef
 import akka.stream.Materializer
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM
-import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor
+import com.galacticfog.gestalt.dcos.marathon.{DCOSAuthTokenActor, MarathonSSEClient}
 import com.google.inject.{AbstractModule, Singleton}
 import com.typesafe.sslconfig.ssl.{SSLConfigSettings, SSLLooseConfig, SSLParametersConfig, TrustManagerConfig}
 import net.codingwell.scalaguice.ScalaModule
@@ -22,6 +22,7 @@ class Module extends AbstractModule with AkkaGuiceSupport with ScalaModule {
     bind[Kickstart].asEagerSingleton()
     bind[WSClientFactory].to[DefaultWSClientFactory]
     bindActor[DCOSAuthTokenActor](DCOSAuthTokenActor.name)
+    bindActorFactory[MarathonSSEClient, MarathonSSEClient.Factory]
   }
 
 }

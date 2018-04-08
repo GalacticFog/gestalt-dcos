@@ -3,15 +3,18 @@ package com.galacticfog.gestalt.dcos.launcher
 import java.io.{PrintWriter, StringWriter}
 import java.util.UUID
 
-import javax.inject.Inject
-import akka.actor.{FSM, LoggingFSM, Status}
+import javax.inject.{Inject, Named}
+import akka.actor.{ActorRef, ActorSystem, FSM, LoggingFSM, Status}
 import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.pattern.ask
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
+import com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient.{AllServiceStatusResponse, ServiceStatusResponse}
 import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
 import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import play.api.libs.concurrent.InjectedActorSupport
 import play.api.libs.json.Reads._
 import play.api.libs.json.{JsObject, Json, _}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest, WSResponse}
@@ -82,10 +85,12 @@ object LauncherFSM {
 }
 
 class LauncherFSM @Inject()( config: LauncherConfig,
-                             marClient: MarathonSSEClient,
                              ws: WSClient,
+                             marathonSseClientFactory: MarathonSSEClient.Factory,
+                             system: ActorSystem,
                              gtf: GestaltTaskFactory )
-                           ( implicit executionContext: ExecutionContext ) extends LoggingFSM[LauncherState,ServiceData] {
+                           ( implicit executionContext: ExecutionContext )
+  extends LoggingFSM[LauncherState,ServiceData] with InjectedActorSupport {
 
   import LauncherConfig.Services._
   import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
@@ -100,6 +105,9 @@ class LauncherFSM @Inject()( config: LauncherConfig,
   implicit val apiKeyReads: OFormat[GestaltAPIKey] = Json.format[GestaltAPIKey]
 
   val marathonBaseUrl: String = config.marathon.baseUrl
+
+  val marClient = injectedChild(marathonSseClientFactory.apply(), "marathon-sse-client")
+  implicit val sseClientTimeouts: akka.util.Timeout = 30 seconds
 
   def provisionedDB: GlobalDBConfig = GlobalDBConfig(
     hostname = config.vipHostname(DATA(0)),
@@ -172,7 +180,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' app launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
-    val fLaunch = marClient.launchApp(payload) map {
+    val fLaunch = (marClient ? MarathonSSEClient.LaunchAppRequest(payload)) map {
       r =>
         log.info("'{}' app launch response: {}", service.name, r.toString)
         self ! ServiceDeployed(service)
@@ -522,8 +530,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
   }
 
   def requestUpdateAndStay(service: FrameworkService): State = {
-    marClient.getServiceStatus(service).onComplete {
-      case Success(status) =>
+    (marClient ? MarathonSSEClient.GetServiceStatus(service)).mapTo[ServiceStatusResponse].onComplete {
+      case Success(ServiceStatusResponse(status)) =>
         self ! UpdateServiceInfo(status)
       case Failure(ex) =>
         log.warning("error retrieving app status from Marathon: {}",ex.getMessage)
@@ -834,19 +842,19 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         log.info("ignoring request OpenConnectionToMarathonEventBus, I think I'm already connected")
       } else {
         log.info("attempting to connect to Marathon event bus")
-        marClient.connectToBus(self)
+        // marClient.connectToBus(self)
       }
       stay
 
     case Event(MarathonSSEClient.Connected, d) =>
       log.info("successfully connected to Marathon event bus, requesting service update")
       val s = self
-      marClient.getServices() onComplete {
-        case Failure(t) =>
-          log.error(t, "error getting service statuses from Marathon REST API")
-        case Success(all) =>
+      (marClient ? MarathonSSEClient.GetAllServiceStatus).mapTo[AllServiceStatusResponse].onComplete {
+        case Success(AllServiceStatusResponse(all)) =>
           log.info(s"received info on ${all.size} services, sending to self to update status")
           s ! UpdateAllServiceInfo(all)
+        case Failure(t) =>
+          log.error(t, "error getting service statuses from Marathon REST API")
       }
       stay using d.copy(
         connected = true
@@ -918,12 +926,12 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     case Event(Sync, _) => {
       log.info("performing periodic sync of apps in marathon")
       val s = self
-      marClient.getServices() onComplete {
-        case Failure(t) =>
-          log.error(t, "error getting service statuses from Marathon REST API")
-        case Success(all) =>
+      (marClient ? MarathonSSEClient.GetAllServiceStatus).mapTo[AllServiceStatusResponse].onComplete {
+        case Success(AllServiceStatusResponse(all)) =>
           log.info(s"received info on ${all.size} services, sending to self to update status")
           s ! UpdateAllServiceInfo(all)
+        case Failure(t) =>
+          log.error(t, "error getting service statuses from Marathon REST API")
       }
       stay
     }
@@ -973,7 +981,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         .filter { svc => shutdownDB || !svc.isInstanceOf[DATA] }
         .reverse
       deleteApps.foreach {
-        service => marClient.killApp(service) onComplete {
+        service => (marClient ? MarathonSSEClient.KillAppRequest(service)).mapTo[Boolean].onComplete {
           case Success(true)  => s ! ServiceDeleting(service)
           case Success(false) => log.info(s"marathon app for ${service} did not exist, will not update launcher status")
           case Failure(t)     => log.error(t, s"error deleting marathon app for ${service} during shutdown")
