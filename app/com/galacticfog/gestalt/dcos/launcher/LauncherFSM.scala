@@ -180,14 +180,11 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' app launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
-    val fLaunch = (marClient ? MarathonSSEClient.LaunchAppRequest(payload)) map {
-      r =>
+    (marClient ? MarathonSSEClient.LaunchAppRequest(payload)).mapTo[JsValue].onComplete {
+      case Success(r) =>
         log.info("'{}' app launch response: {}", service.name, r.toString)
         self ! ServiceDeployed(service)
-    }
-    // launch failed, so we'll never get a task update
-    fLaunch.onFailure {
-      case e: Throwable =>
+      case Failure(e) =>
         log.warning("error launching {}: {}",service.name,e.getMessage)
         self ! ErrorEvent("Error launching application in Marathon: " + e.getMessage, errorStage = Some(currentState))
     }

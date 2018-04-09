@@ -1,7 +1,7 @@
 package com.galacticfog.gestalt.dcos.marathon
 
 import akka.pattern.ask
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.testkit.{ImplicitSender, TestActor, TestActorRef, TestKit, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
@@ -125,7 +125,6 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       bind[WSClientFactory].toInstance(new WSClientFactory {
         def getClient = ws
       })
-      bindActor[DCOSAuthTokenActor](DCOSAuthTokenActor.name)
     }
   }
 
@@ -154,11 +153,11 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
         TestActor.NoAutoPilot
       }
     })
-    val marClient = new MarathonSSEClient(
+    val marClient = system.actorOf(Props(new MarathonSSEClient(
       injector.instanceOf[LauncherConfig],
       injector.instanceOf[WSClientFactory],
       tokenActorProbe.ref
-    )
+    )))
   }
 
 
@@ -518,32 +517,32 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
     }
 
 
-    "request auth token from DCOSAuthTokenActor for authed provider" in new WithMarSSEConfig(
-      config = TestConfigs.authConfig ++ TestConfigs.marathonConfig
-    ) {
-      marClient.connectToBus(testActor)
-      tokenActorProbe.expectMsg(DCOSAuthTokenRequest(
-        dcosUrl = testDcosUrl,
-        serviceAccountId = testServiceId,
-        privateKey = testPrivateKey
-      ))
-      expectMsgType[akka.actor.Status.Failure]
-    }
+//    "request auth token from DCOSAuthTokenActor for authed provider" in new WithMarSSEConfig(
+//      config = TestConfigs.authConfig ++ TestConfigs.marathonConfig
+//    ) {
+//      marClient.connectToBus(testActor)
+//      tokenActorProbe.expectMsg(DCOSAuthTokenRequest(
+//        dcosUrl = testDcosUrl,
+//        serviceAccountId = testServiceId,
+//        privateKey = testPrivateKey
+//      ))
+//      expectMsgType[akka.actor.Status.Failure]
+//    }
 
-    "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
-      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
-    ) {
-      marClient.connectToBus(testActor)
-      tokenActorProbe.expectNoMessage(2 seconds)
-      expectMsgType[akka.actor.Status.Failure]
-    }
+//    "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
+//      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
+//    ) {
+//      marClient.connectToBus(testActor)
+//      tokenActorProbe.expectNoMessage(2 seconds)
+//      expectMsgType[akka.actor.Status.Failure]
+//    }
 
     "request and use auth token for authed provider in launchApp" in new WithMarSSEConfig(
       config = TestConfigs.authConfig ++ TestConfigs.marathonConfig,
       routes = MarathonMocks.launchAuthed
     ) {
       testRoute.timeCalled must_== 0
-      val js = await(marClient.launchApp(dummyAppPayload))
+      val js = await(marClient ? MarathonSSEClient.LaunchAppRequest(dummyAppPayload))
       js must_== Json.obj(
         "id" -> testAppId
       )
@@ -555,7 +554,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       routes = MarathonMocks.launchUnauthed
     ) {
       testRoute.timeCalled must_== 0
-      val js = await(marClient.launchApp(dummyAppPayload))
+      val js = await(marClient? MarathonSSEClient.LaunchAppRequest(dummyAppPayload))
       js must_== Json.obj(
         "id" -> testAppId
       )
@@ -567,7 +566,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       routes = MarathonMocks.killAuthed
     ) {
       testRoute.timeCalled must_== 0
-      await(marClient.killApp(DATA(0))) must beTrue
+      await((marClient ? MarathonSSEClient.KillAppRequest(DATA(0))).mapTo[Boolean]) must beTrue
       testRoute.timeCalled must_== 1
     }
 
@@ -576,7 +575,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       routes = MarathonMocks.killUnauthed
     ) {
       testRoute.timeCalled must_== 0
-      await(marClient.killApp(DATA(0))) must beTrue
+      await((marClient ? MarathonSSEClient.KillAppRequest(DATA(0))).mapTo[Boolean]) must beTrue
       testRoute.timeCalled must_== 1
     }
 
