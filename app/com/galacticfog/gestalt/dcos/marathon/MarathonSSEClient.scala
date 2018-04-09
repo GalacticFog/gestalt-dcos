@@ -1,46 +1,43 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import java.security.cert.X509Certificate
-
-import javax.inject.{Inject, Named, Singleton}
-import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
-
-import scala.language.postfixOps
-import akka.pattern.ask
 import akka.NotUsed
-import akka.actor.{Actor, ActorRef, ActorSystem}
-import akka.http.scaladsl.{Http, HttpsConnectionContext}
-import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
-import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
-import play.api.libs.ws.{WSClient, WSRequest}
-import play.api.Logger
-import play.api.libs.json._
-import play.api.libs.json.Reads._
-
-import scala.concurrent.Future
-import scala.concurrent.duration._
-import scala.util.{Failure, Success, Try}
+import akka.actor.{Actor, ActorRef}
 import akka.http.scaladsl.client.RequestBuilding.Get
 import akka.http.scaladsl.model.MediaTypes
+import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling
+import akka.http.scaladsl.{ConnectionContext, Http, HttpsConnectionContext}
+import akka.pattern.{ask,pipe}
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.{Sink, Source}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
+import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
+import com.typesafe.sslconfig.akka.AkkaSSLConfig
+import javax.inject.{Inject, Named, Singleton}
+import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
 import modules.WSClientFactory
+import play.api.Logger
 import play.api.http.HeaderNames
+import play.api.libs.json.Reads._
+import play.api.libs.json._
+import play.api.libs.ws.{WSClient, WSRequest}
+
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.language.postfixOps
+import scala.util.{Failure, Success, Try}
 
 @Singleton
 class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
                                     wsFactory: WSClientFactory,
-                                    @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef )
-                                  ( implicit system: ActorSystem ) extends Actor with EventStreamUnmarshalling {
+                                    @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef ) extends Actor with EventStreamUnmarshalling {
 
-  import system.dispatcher
   import MarathonSSEClient._
+  import context.dispatcher
 
   override protected def maxLineSize: Int = launcherConfig.marathon.sseMaxLineSize
   override protected def maxEventSize: Int = launcherConfig.marathon.sseMaxEventSize
@@ -56,20 +53,45 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   private[this] def client: WSClient = wsFactory.getClient
 
-  private[this] val connectionContext: HttpsConnectionContext = {
-    if (launcherConfig.acceptAnyCertificate) {
-      logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
-      // Create a trust manager that does not validate certificate chains
-      val trustAllCerts: Array[TrustManager] = Array(new X509TrustManager {
-        override def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
-        override def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
-        override def getAcceptedIssuers: Array[X509Certificate] = {null}
-      })
-      // Install the all-trusting trust manager
-      val sc = SSLContext.getInstance("SSL")
-      sc.init(null, trustAllCerts, new java.security.SecureRandom())
-      new HttpsConnectionContext(sc, None, None, None, None, None)
-    } else Http(system).defaultClientHttpsContext
+  connectToBus(context.parent)
+
+  private[this] def connectToBus(actorRef: ActorRef): Unit = {
+    val fMaybeAuthToken = getAuthToken // start this early
+    val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
+    implicit val mat = ActorMaterializer()
+
+    val fEventSource = for {
+      maybeAuthToken <- fMaybeAuthToken
+      req = maybeAuthToken.foldLeft(
+        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(MediaTypes.`text/event-stream`))
+      ) {
+        case (req, tok) =>
+          logger.debug("adding header to event bus request")
+          req.addHeader(
+            Authorization(GenericHttpCredentials("token="+tok, ""))
+          )
+      }
+      resp <- Http(context.system).singleRequest(
+        connectionContext = if (launcherConfig.acceptAnyCertificate) {
+          logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
+          val badSslConfig = AkkaSSLConfig(context.system).mapSettings(s => s.withLoose(s.loose.withDisableHostnameVerification(true)))
+          Http(context.system).createClientHttpsContext(badSslConfig)
+        } else Http(context.system).defaultClientHttpsContext,
+        request = req
+      )
+    } yield resp
+
+    fEventSource.flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
+      .onComplete {
+        case Success(eventSource) =>
+          logger.info("successfully attached to marathon event bus")
+          actorRef ! Connected
+          eventSource.runWith(handler)
+        case Failure(t) =>
+          considerInvalidatingAuthToken(401)
+          logger.info("failure connecting to marathon event bus", t)
+          actorRef ! akka.actor.Status.Failure(new RuntimeException("error connecting to Marathon event bus", t))
+      }
   }
 
   private[this] def getAuthToken: Future[Option[String]] = {
@@ -97,41 +119,6 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
         _ => authTokenActor ! DCOSAuthTokenActor.InvalidateCachedToken
       }
     }
-  }
-
-  private[this] def connectToBus(actorRef: ActorRef): Unit = {
-    val fMaybeAuthToken = getAuthToken // start this early
-    implicit val mat = ActorMaterializer()
-    val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
-
-    val fEventSource = for {
-      maybeAuthToken <- fMaybeAuthToken
-      req = maybeAuthToken.foldLeft(
-        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(MediaTypes.`text/event-stream`))
-      ) {
-        case (req, tok) =>
-          logger.debug("adding header to event bus request")
-          req.addHeader(
-            Authorization(GenericHttpCredentials("token="+tok, ""))
-          )
-      }
-      resp <- Http(system).singleRequest(
-        connectionContext = connectionContext,
-        request = req
-      )
-    } yield resp
-
-    fEventSource.flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
-      .onComplete {
-        case Success(eventSource) =>
-          logger.info("successfully attached to marathon event bus")
-          actorRef ! Connected
-          eventSource.runWith(handler)
-        case Failure(t) =>
-          considerInvalidatingAuthToken(401)
-          logger.info("failure connecting to marathon event bus", t)
-          actorRef ! akka.actor.Status.Failure(new RuntimeException("error connecting to Marathon event bus", t))
-      }
   }
 
   private[this] def genRequest(endpoint: String): Future[WSRequest] = {
@@ -319,7 +306,11 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
-  override def receive: Receive = ???
+  override def receive: Receive = {
+    case LaunchAppRequest(payload) => pipe(launchApp(payload)) to sender()
+    case KillAppRequest(svc) => pipe(killApp(svc)) to sender()
+    case e => logger.error(s"don't know what to do with this: ${e} from ${sender()}")
+  }
 }
 
 object MarathonSSEClient {

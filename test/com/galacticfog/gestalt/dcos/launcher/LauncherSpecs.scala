@@ -3,18 +3,17 @@ package com.galacticfog.gestalt.dcos.launcher
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
 import akka.actor.Status.Failure
+import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.pattern.ask
-import akka.testkit.{ImplicitSender, TestActor, TestActors, TestFSMRef, TestKit, TestProbe}
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import akka.testkit.{ImplicitSender, TestActor, TestFSMRef, TestKit, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
+import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM.Messages._
 import com.galacticfog.gestalt.dcos.launcher.States._
-import com.galacticfog.gestalt.dcos.marathon.{MarathonAppPayload, MarathonSSEClient}
+import com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient
 import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.google.inject.AbstractModule
@@ -28,14 +27,11 @@ import play.api.libs.concurrent.AkkaGuiceSupport
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AsyncHttpClientProvider
-import play.api.mvc._
 import play.api.mvc.Results._
 import play.api.test._
 import play.shaded.ahc.org.asynchttpclient.AsyncHttpClient
 
 import scala.collection.mutable
-import scala.concurrent.duration._
-import scala.concurrent.Future
 import scala.util.Success
 
 class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {

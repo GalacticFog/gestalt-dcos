@@ -1,31 +1,34 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import akka.pattern.ask
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.pattern.ask
 import akka.testkit.{ImplicitSender, TestActor, TestActorRef, TestKit, TestProbe}
-import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.LauncherConfig
+import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenRequest, DCOSAuthTokenResponse}
 import com.google.inject.AbstractModule
 import mockws.{MockWS, MockWSHelpers, Route}
 import modules.WSClientFactory
 import net.codingwell.scalaguice.ScalaModule
 import org.specs2.mock.Mockito
-import org.specs2.specification.Scope
+import org.specs2.specification.{AfterAll, BeforeAfterAll, Scope}
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.concurrent.AkkaGuiceSupport
-import play.api.libs.json.Json
-import play.api.libs.ws.{WSClient, WSRequest}
-import play.api.mvc.{Action, AnyContent, Request, RequestHeader}
+import play.api.libs.json.{JsValue, Json}
+import play.api.libs.ws.WSClient
+import play.api.mvc.RequestHeader
 import play.api.mvc.Results._
-import play.api.mvc.BodyParsers.parse
 import play.api.test._
 
 import scala.concurrent.duration._
 import scala.util.Try
 
-class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSHelpers {
+class MarathonSSEClientSpecs extends TestKit(ActorSystem("test-system")) with PlaySpecification with Mockito with MockWSHelpers with AfterAll with ImplicitSender {
+
+  override def afterAll(): Unit = {
+    TestKit.shutdownActorSystem(system)
+  }
 
   val authToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6InNlY3JldCIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJkZW1vX2dlc3RhbHRfbWV0YSJ9.RP5MhJPey2mDXOJlu1GFcQ_TlWZzYnr_6N7AwDbB0jqJC3bsLR8QxKZVbzk_JInwO5QN_-BVK5bvxP5zyo4KhVotsugH5eP_iTSDyyx7iKWOK4oPmFlJglaXGRE_KEuySAeZCNTnDIrfUWnB21WwS92MGr6B4rFZ-IzVSmygzO-LgxM-ZU9_b9kyKLOUXcQLgHFLY-qJMWou98dTv36lhjqx65iKQ5PT53KjGtL6OQ-1vqXse5ynCJGsXk3HBXV4P_w42RJBIAWiIbsUfgN85sGTVPvtHO-o-GJMknf7G0FiwfGtsYS3n05kirNIwsZS54RX03TNlxq0Vg48eWGZKQ"
   val testServiceId = "meta-dcos-provider"
@@ -125,12 +128,12 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       bind[WSClientFactory].toInstance(new WSClientFactory {
         def getClient = ws
       })
+      // bindActor[DCOSAuthTokenActor](DCOSAuthTokenActor.name)
     }
   }
 
   abstract class WithConfig( config: Seq[(String,Any)] = Seq.empty,
-                             routes: MockWS.Routes = PartialFunction.empty )
-    extends TestKit(ActorSystem("test-system")) with Scope with ImplicitSender {
+                             routes: MockWS.Routes = PartialFunction.empty ) extends Scope {
 
     val testRoute = Route(routes)
 
@@ -146,18 +149,19 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
                                    routes: MockWS.Routes = PartialFunction.empty )
     extends WithConfig( config, routes ) {
 
-    val tokenActorProbe = TestProbe()
+    val tokenActorProbe = TestProbe("token-actor-probe")
     tokenActorProbe.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = {
+      override def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = {
         sender ! DCOSAuthTokenResponse(authToken)
         TestActor.NoAutoPilot
       }
     })
-    val marClient = system.actorOf(Props(new MarathonSSEClient(
+    val parentProbe = TestProbe("test-parent-probe")
+    val marClient = parentProbe.childActorOf(Props(new MarathonSSEClient(
       injector.instanceOf[LauncherConfig],
       injector.instanceOf[WSClientFactory],
       tokenActorProbe.ref
-    )))
+    )), "test-marathon-sse-client")
   }
 
 
@@ -198,8 +202,12 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
     )
 
     "gather service ports (BRIDGED) into service endpoints" in new WithConfig(Seq("marathon.lb-url" -> "https://lb.cluster.myco.com")) {
-      val client = injector.instanceOf[MarathonSSEClient]
-      val info = client.toServiceInfo(
+      val marClient = TestActorRef[MarathonSSEClient](Props(new MarathonSSEClient(
+        injector.instanceOf[LauncherConfig],
+        injector.instanceOf[WSClientFactory],
+        testActor
+      )), "test-marathon-sse-client")
+      val info = marClient.underlyingActor.toServiceInfo(
         service = SECURITY,
         app = baseFakeSec
       )
@@ -209,8 +217,12 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
     }
 
     "gather non-default haproxy-group exposure into service endpoints" in new WithConfig() {
-      val client = injector.instanceOf[MarathonSSEClient]
-      val info = client.toServiceInfo(
+      val marClient = TestActorRef[MarathonSSEClient](Props(new MarathonSSEClient(
+        injector.instanceOf[LauncherConfig],
+        injector.instanceOf[WSClientFactory],
+        testActor
+      )), "test-marathon-sse-client")
+      val info = marClient.underlyingActor.toServiceInfo(
         service = SECURITY,
         app = MarathonAppPayload(
         id = Some("/security"),
@@ -320,7 +332,11 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
     }
 
     "parse 1.9 marathon response payload and convert to ServiceInfo" in new WithConfig() {
-      val client = injector.instanceOf[MarathonSSEClient]
+      val marClient = TestActorRef[MarathonSSEClient](Props(new MarathonSSEClient(
+        injector.instanceOf[LauncherConfig],
+        injector.instanceOf[WSClientFactory],
+        testActor
+      )), "test-marathon-sse-client")
       val json = Json.parse(
         """
           |{
@@ -477,7 +493,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
 
       Try {
         val app = (json \ "app").as[MarathonAppPayload]
-        client.toServiceInfo(LauncherConfig.Services.DATA(0), app)
+        marClient.underlyingActor.toServiceInfo(LauncherConfig.Services.DATA(0), app)
       } must beSuccessfulTry
     }
 
@@ -516,34 +532,36 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
 
     }
 
+    "request auth token from DCOSAuthTokenActor for authed provider" in new WithMarSSEConfig(
+      config = TestConfigs.authConfig ++ TestConfigs.marathonConfig
+    ) {
+      tokenActorProbe.expectMsg(DCOSAuthTokenRequest(
+        dcosUrl = testDcosUrl,
+        serviceAccountId = testServiceId,
+        privateKey = testPrivateKey
+      ))
+      parentProbe.expectMsgType[akka.actor.Status.Failure]
+    }
 
-//    "request auth token from DCOSAuthTokenActor for authed provider" in new WithMarSSEConfig(
-//      config = TestConfigs.authConfig ++ TestConfigs.marathonConfig
-//    ) {
-//      marClient.connectToBus(testActor)
-//      tokenActorProbe.expectMsg(DCOSAuthTokenRequest(
-//        dcosUrl = testDcosUrl,
-//        serviceAccountId = testServiceId,
-//        privateKey = testPrivateKey
-//      ))
-//      expectMsgType[akka.actor.Status.Failure]
-//    }
-
-//    "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
-//      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
-//    ) {
-//      marClient.connectToBus(testActor)
-//      tokenActorProbe.expectNoMessage(2 seconds)
-//      expectMsgType[akka.actor.Status.Failure]
-//    }
+    "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
+      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
+    ) {
+      tokenActorProbe.expectNoMessage(2 seconds)
+      parentProbe.expectMsgType[akka.actor.Status.Failure]
+    }
 
     "request and use auth token for authed provider in launchApp" in new WithMarSSEConfig(
       config = TestConfigs.authConfig ++ TestConfigs.marathonConfig,
       routes = MarathonMocks.launchAuthed
     ) {
       testRoute.timeCalled must_== 0
-      val js = await(marClient ? MarathonSSEClient.LaunchAppRequest(dummyAppPayload))
-      js must_== Json.obj(
+      val fresp = (marClient ? MarathonSSEClient.LaunchAppRequest(dummyAppPayload)).mapTo[JsValue]
+      tokenActorProbe.expectMsg(DCOSAuthTokenRequest(
+        dcosUrl = testDcosUrl,
+        serviceAccountId = testServiceId,
+        privateKey = testPrivateKey
+      ))
+      await(fresp) must_== Json.obj(
         "id" -> testAppId
       )
       testRoute.timeCalled must_== 1
@@ -554,7 +572,7 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       routes = MarathonMocks.launchUnauthed
     ) {
       testRoute.timeCalled must_== 0
-      val js = await(marClient? MarathonSSEClient.LaunchAppRequest(dummyAppPayload))
+      val js = await(marClient ? MarathonSSEClient.LaunchAppRequest(dummyAppPayload))
       js must_== Json.obj(
         "id" -> testAppId
       )
@@ -566,7 +584,8 @@ class MarathonSSEClientSpecs extends PlaySpecification with Mockito with MockWSH
       routes = MarathonMocks.killAuthed
     ) {
       testRoute.timeCalled must_== 0
-      await((marClient ? MarathonSSEClient.KillAppRequest(DATA(0))).mapTo[Boolean]) must beTrue
+      val fresp = (marClient ? MarathonSSEClient.KillAppRequest(DATA(0))).mapTo[Boolean]
+      await(fresp) must beTrue
       testRoute.timeCalled must_== 1
     }
 

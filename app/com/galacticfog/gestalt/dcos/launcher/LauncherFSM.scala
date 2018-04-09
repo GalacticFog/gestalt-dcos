@@ -6,7 +6,7 @@ import java.util.UUID
 import javax.inject.{Inject, Named}
 import akka.actor.{ActorRef, ActorSystem, FSM, LoggingFSM, Status}
 import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.pattern.ask
+import akka.pattern.{ask, pipe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
@@ -180,14 +180,16 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' app launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
-    (marClient ? MarathonSSEClient.LaunchAppRequest(payload)).mapTo[JsValue].onComplete {
-      case Success(r) =>
-        log.info("'{}' app launch response: {}", service.name, r.toString)
-        self ! ServiceDeployed(service)
-      case Failure(e) =>
+    val flaunch = marClient ? MarathonSSEClient.LaunchAppRequest(payload)
+    val fresp = flaunch.mapTo[JsValue].map { r =>
+      log.info("'{}' app launch response: {}", service.name, r.toString)
+      ServiceDeployed(service)
+    } recover {
+      case e: Throwable =>
         log.warning("error launching {}: {}",service.name,e.getMessage)
-        self ! ErrorEvent("Error launching application in Marathon: " + e.getMessage, errorStage = Some(currentState))
+        ErrorEvent("Error launching application in Marathon: " + e.getMessage, errorStage = Some(currentState))
     }
+    pipe(fresp) to(self)
   }
 
   private[this] def initSecurity(secUrl: String): Future[SecurityInitializationComplete] = {
