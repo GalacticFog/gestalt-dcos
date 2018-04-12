@@ -3,24 +3,23 @@ package com.galacticfog.gestalt.dcos.launcher
 import java.io.{PrintWriter, StringWriter}
 import java.util.UUID
 
-import javax.inject.{Inject, Named}
-import akka.actor.{ActorRef, ActorSystem, FSM, LoggingFSM, Status}
-import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.actor.{ActorSystem, FSM, LoggingFSM}
 import akka.pattern.{ask, pipe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
-import com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient.{AllServiceStatusResponse, ServiceStatusResponse}
-import com.galacticfog.gestalt.dcos.marathon.{MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonSSEClient, MarathonStatusUpdateEvent}
+import com.galacticfog.gestalt.dcos.marathon.EventBusActor.EventBusFailure
+import com.galacticfog.gestalt.dcos.marathon.{RestClientActor, EventBusActor, MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonStatusUpdateEvent}
 import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
+import javax.inject.Inject
 import play.api.libs.concurrent.InjectedActorSupport
 import play.api.libs.json.Reads._
 import play.api.libs.json.{JsObject, Json, _}
 import play.api.libs.ws.{WSAuthScheme, WSClient, WSRequest, WSResponse}
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
@@ -84,18 +83,18 @@ object LauncherFSM {
 
 }
 
-class LauncherFSM @Inject()( config: LauncherConfig,
-                             ws: WSClient,
-                             marathonSseClientFactory: MarathonSSEClient.Factory,
-                             system: ActorSystem,
-                             gtf: GestaltTaskFactory )
+class LauncherFSM @Inject()(config: LauncherConfig,
+                            ws: WSClient,
+                            marathonEventBusFactory: EventBusActor.Factory,
+                            marathonRestClientFactory: RestClientActor.Factory,
+                            system: ActorSystem,
+                            gtf: GestaltTaskFactory )
                            ( implicit executionContext: ExecutionContext )
   extends LoggingFSM[LauncherState,ServiceData] with InjectedActorSupport {
 
   import LauncherConfig.Services._
-  import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL, MARATHON_RECONNECT_DELAY}
+  import LauncherConfig.{EXTERNAL_API_CALL_TIMEOUT, EXTERNAL_API_RETRY_INTERVAL}
   import LauncherFSM.Messages._
-  import LauncherFSM._
   import States._
 
   private[this] def sendMessageToSelf[A](delay: FiniteDuration, message: A) = {
@@ -106,7 +105,16 @@ class LauncherFSM @Inject()( config: LauncherConfig,
 
   val marathonBaseUrl: String = config.marathon.baseUrl
 
-  val marClient = injectedChild(marathonSseClientFactory.apply(), "marathon-sse-client")
+  // TODO: need to have a supervisor strategy in place, or maybe a BackupSupervisor: https://doc.akka.io/docs/akka/current/general/supervision.html#backoff-supervisor
+  val eventBusClient = injectedChild(
+    marathonEventBusFactory.apply(context.self, Seq("app_terminated_event", "health_status_changed_event", "status_update_event")),
+    name = "marathon-event-bus-client"
+  )
+  val marClient = injectedChild(
+    marathonRestClientFactory.apply(),
+    name = "marathon-api-client"
+  )
+
   implicit val sseClientTimeouts: akka.util.Timeout = 30 seconds
 
   def provisionedDB: GlobalDBConfig = GlobalDBConfig(
@@ -180,7 +188,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     val currentState = s"Launching(${service.name})"
     val payload = gtf.getMarathonPayload(service, globalConfig)
     log.debug("'{}' app launch payload:\n{}", service.name, Json.prettyPrint(Json.toJson(payload)))
-    val flaunch = marClient ? MarathonSSEClient.LaunchAppRequest(payload)
+    val flaunch = marClient ? RestClientActor.LaunchAppRequest(payload)
     val fresp = flaunch.mapTo[JsValue].map { r =>
       log.info("'{}' app launch response: {}", service.name, r.toString)
       ServiceDeployed(service)
@@ -529,8 +537,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
   }
 
   def requestUpdateAndStay(service: FrameworkService): State = {
-    (marClient ? MarathonSSEClient.GetServiceStatus(service)).mapTo[ServiceStatusResponse].onComplete {
-      case Success(ServiceStatusResponse(status)) =>
+    (marClient ? RestClientActor.GetServiceInfo(service)).mapTo[ServiceInfo].onComplete {
+      case Success(status) =>
         self ! UpdateServiceInfo(status)
       case Failure(ex) =>
         log.warning("error retrieving app status from Marathon: {}",ex.getMessage)
@@ -845,11 +853,11 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       }
       stay
 
-    case Event(MarathonSSEClient.Connected, d) =>
+    case Event(EventBusActor.ConnectedToEventBus, d) =>
       log.info("successfully connected to Marathon event bus, requesting service update")
       val s = self
-      (marClient ? MarathonSSEClient.GetAllServiceStatus).mapTo[AllServiceStatusResponse].onComplete {
-        case Success(AllServiceStatusResponse(all)) =>
+      (marClient ? RestClientActor.GetAllServiceInfo).mapTo[Seq[ServiceInfo]].onComplete {
+        case Success(all) =>
           log.info(s"received info on ${all.size} services, sending to self to update status")
           s ! UpdateAllServiceInfo(all)
         case Failure(t) =>
@@ -859,33 +867,15 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         connected = true
       )
 
-    case Event(Status.Failure(t), d) =>
+    case Event(EventBusFailure(msg, t), d) =>
       val sw = new StringWriter
-      t.printStackTrace(new PrintWriter(sw))
-      log.error("received Failure status from Marathon event bus, will attempt to reconnect: {}",sw.toString)
-      sendMessageToSelf(MARATHON_RECONNECT_DELAY, OpenConnectionToMarathonEventBus)
+      t.foreach {_.printStackTrace(new PrintWriter(sw))}
+      log.error("received Failure({}) from Marathon event bus, will attempt to reconnect: {}",msg, sw.toString)
       stay using d.copy(
         connected = false
       )
 
-    case Event(sse @ ServerSentEvent(_, Some(eventType), _, _), d) =>
-      val msg = eventType match {
-        case "app_terminated_event"        => MarathonSSEClient.parseEvent[MarathonAppTerminatedEvent](sse)
-        case "health_status_changed_event" => MarathonSSEClient.parseEvent[MarathonHealthStatusChange](sse)
-        case "status_update_event"         => MarathonSSEClient.parseEvent[MarathonStatusUpdateEvent](sse)
-        case _ => {
-          log.debug(s"ignoring event ${eventType}")
-          None
-        }
-      }
-      msg.foreach(sse => self ! sse)
-      stay
-
-    case Event(_ : ServerSentEvent, d) =>
-      log.debug("received server-sent-event heartbeat from marathon event bus")
-      stay
-
-    case Event(e @ MarathonAppTerminatedEvent(FrameworkServiceFromAppId(service),_,_), d) =>
+    case Event(e @ MarathonAppTerminatedEvent(FrameworkServiceFromAppId(service),_), d) =>
       log.info(s"received ${e.eventType} for service ${service.name}")
       stay using d.update(ServiceInfo(
         service = service,
@@ -895,12 +885,12 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         status = NOT_FOUND
       ))
 
-    case Event(e @ MarathonAppTerminatedEvent(nonFrameworkAppId,_,_), d) =>
+    case Event(e @ MarathonAppTerminatedEvent(nonFrameworkAppId,_), d) =>
       log.debug(s"received ${e.eventType} for non-framework service ${nonFrameworkAppId}")
       stay
 
 
-    case Event(e @ MarathonHealthStatusChange(_, _, FrameworkServiceFromAppId(service), maybeTaskId, maybeInstanceId, _, alive), d) =>
+    case Event(e @ MarathonHealthStatusChange(_, FrameworkServiceFromAppId(service), maybeTaskId, maybeInstanceId, _, alive), d) =>
       log.info(s"received MarathonHealthStatusChange(${maybeTaskId orElse maybeInstanceId}.alive == ${alive}) for task belonging to ${service.name}")
       val updatedStatus = d.statuses.get(service).map(
         _.copy(status = if (alive) HEALTHY else UNHEALTHY)
@@ -908,11 +898,11 @@ class LauncherFSM @Inject()( config: LauncherConfig,
       updatedStatus.foreach(info => log.info(s"marking ${info.service} as ${info.status}"))
       stay using d.update(updatedStatus.toSeq)
 
-    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _) , d) =>
       log.info(s"received StatusUpdateEvent(${taskStatus}) for task belonging to ${service.name}")
       requestUpdateAndStay(service)
 
-    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _) , d) =>
       log.debug(s"ignoring StatusUpdateEvent(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
       stay
 
@@ -925,8 +915,8 @@ class LauncherFSM @Inject()( config: LauncherConfig,
     case Event(Sync, _) => {
       log.info("performing periodic sync of apps in marathon")
       val s = self
-      (marClient ? MarathonSSEClient.GetAllServiceStatus).mapTo[AllServiceStatusResponse].onComplete {
-        case Success(AllServiceStatusResponse(all)) =>
+      (marClient ? RestClientActor.GetAllServiceInfo).mapTo[Seq[ServiceInfo]].onComplete {
+        case Success(all) =>
           log.info(s"received info on ${all.size} services, sending to self to update status")
           s ! UpdateAllServiceInfo(all)
         case Failure(t) =>
@@ -980,7 +970,7 @@ class LauncherFSM @Inject()( config: LauncherConfig,
         .filter { svc => shutdownDB || !svc.isInstanceOf[DATA] }
         .reverse
       deleteApps.foreach {
-        service => (marClient ? MarathonSSEClient.KillAppRequest(service)).mapTo[Boolean].onComplete {
+        service => (marClient ? RestClientActor.KillAppRequest(service)).mapTo[Boolean].onComplete {
           case Success(true)  => s ! ServiceDeleting(service)
           case Success(false) => log.info(s"marathon app for ${service} did not exist, will not update launcher status")
           case Failure(t)     => log.error(t, s"error deleting marathon app for ${service} during shutdown")

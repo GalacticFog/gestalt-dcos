@@ -13,7 +13,7 @@ import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
 import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM.Messages._
 import com.galacticfog.gestalt.dcos.launcher.States._
-import com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient
+import com.galacticfog.gestalt.dcos.marathon.{EventBusActor, RestClientActor}
 import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.google.inject.AbstractModule
@@ -42,12 +42,14 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
     }
   }
 
-  case class TestModule(probe: ActorRef, ws: WSClient) extends AbstractModule with ScalaModule with AkkaGuiceSupport {
-    object WrapperFactory extends MarathonSSEClient .Factory {
-      def apply() = new ProbeWrapper(probe)
+  case class TestModule(sseActor: ActorRef, restActor: ActorRef, ws: WSClient) extends AbstractModule with ScalaModule with AkkaGuiceSupport {
+    object WrapperFactory extends EventBusActor.Factory with RestClientActor.Factory {
+      def apply(subscriber: ActorRef, eventFilter: Seq[String]): Actor = new ProbeWrapper(sseActor)
+      def apply(): Actor = new ProbeWrapper(restActor)
     }
     override def configure(): Unit = {
-      bind[MarathonSSEClient.Factory].toInstance(WrapperFactory)
+      bind[EventBusActor.Factory].toInstance(WrapperFactory)
+      bind[RestClientActor.Factory].toInstance(WrapperFactory)
       bind[WSClient].toInstance(ws)
       bind[AsyncHttpClient].toProvider[AsyncHttpClientProvider]
     }
@@ -57,12 +59,17 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
     extends TestKit(ActorSystem("test-system")) with Scope with ImplicitSender {
 
     val mockSSEClient = TestProbe()
+    val mockRestClient = TestProbe()
     val mockWSClient = mock[WSClient]
     val injector =
       new GuiceApplicationBuilder()
         .disable[modules.Module]
         .disable[play.api.libs.ws.ahc.AhcWSModule]
-        .bindings(TestModule(mockSSEClient.ref, mockWSClient))
+        .bindings(TestModule(
+          sseActor = mockSSEClient.ref,
+          restActor = mockRestClient.ref,
+          ws = mockWSClient
+        ))
         .configure(config:_*)
         .injector
   }
@@ -71,12 +78,17 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
     extends TestKit(ActorSystem("test-system")) with Scope with ImplicitSender {
 
     val mockSSEClient = TestProbe()
+    val mockRestClient = TestProbe()
     val mockWSClient = MockWS(routes)
     val injector =
       new GuiceApplicationBuilder()
         .disable[modules.Module]
         .disable[play.api.libs.ws.ahc.AhcWSModule]
-        .bindings(TestModule(mockSSEClient.ref, mockWSClient))
+        .bindings(TestModule(
+          sseActor = mockSSEClient.ref,
+          restActor = mockRestClient.ref,
+          ws = mockWSClient
+        ))
         .configure(config:_*)
         .injector
   }
@@ -116,21 +128,21 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         var launched = false
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case MarathonSSEClient.LaunchAppRequest(app) if app.id.get.endsWith("/elasticsearch") =>
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/elasticsearch") =>
             sender ! Json.obj()
             launched = true
             keepRunning
-          case MarathonSSEClient.GetServiceStatus(ELASTIC) if launched =>
-            sender ! MarathonSSEClient.ServiceStatusResponse(ServiceInfo(
+          case RestClientActor.GetServiceInfo(ELASTIC) if launched =>
+            sender ! ServiceInfo(
               service = ELASTIC,
               vhosts = Seq.empty,
               hostname = Some("192.168.1.51"),
               ports = Seq("9200","9300"),
               status = RUNNING
-            ))
+            )
             keepRunning
           case _ =>
             sender ! Failure(new RuntimeException("do not care"))
@@ -211,21 +223,21 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         var launched = false
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case MarathonSSEClient.LaunchAppRequest(app) if app.id.get.endsWith("/data-0") =>
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/data-0") =>
             sender ! Json.obj()
             launched = true
             keepRunning
-          case MarathonSSEClient.GetServiceStatus(DATA(0)) if launched =>
-            sender ! MarathonSSEClient.ServiceStatusResponse(ServiceInfo(
+          case RestClientActor.GetServiceInfo(DATA(0)) if launched =>
+            sender ! ServiceInfo(
               service = DATA(0),
               vhosts = Seq.empty,
               hostname = Some("192.168.1.50"),
               ports = Seq("5432"),
               status = RUNNING
-            ))
+            )
             keepRunning
           case _ =>
             sender ! Failure(new RuntimeException("do not care"))
@@ -276,9 +288,9 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case MarathonSSEClient.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
+          case RestClientActor.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
             sender ! false
             keepRunning
           case _ =>
@@ -296,7 +308,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       Seq(
         UI, META, SECURITY, RABBIT
       ).foreach {
-        svc => mockSSEClient.expectMsg(MarathonSSEClient.KillAppRequest(svc))
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
@@ -308,9 +320,9 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case MarathonSSEClient.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
+          case RestClientActor.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
             sender ! false
             keepRunning
           case _ =>
@@ -328,7 +340,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       Seq(
         UI, META, SECURITY, RABBIT
       ).foreach {
-        svc => mockSSEClient.expectMsg(MarathonSSEClient.KillAppRequest(svc))
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
@@ -340,9 +352,9 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case MarathonSSEClient.KillAppRequest(_) =>
+          case RestClientActor.KillAppRequest(_) =>
             sender ! false
             keepRunning
           case _ =>
@@ -360,7 +372,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       Seq(
         UI, META, SECURITY, RABBIT, DATA(3), DATA(2), DATA(1), DATA(0)
       ).foreach {
-        svc => mockSSEClient.expectMsg(MarathonSSEClient.KillAppRequest(svc))
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
@@ -590,7 +602,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
         orElse notFoundRoute,
       "meta.company-name" -> newCompanyDescription
     ) {
-      mockSSEClient.setAutoPilot(new TestActor.AutoPilot {
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
           case _ =>
             sender ! Failure(new RuntimeException("do not care whether i can launch apps"))
@@ -663,21 +675,21 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       }
       //
       metaProvisionLicense.timeCalled       must_== 1
-      metaProvisionWorkspace.timeCalled     must_== 1 // 2
-      metaProvisionDemoEnv.timeCalled       must_== 0 // 1
+      metaProvisionWorkspace.timeCalled     must_== 1
+      metaProvisionDemoEnv.timeCalled       must_== 0
       metaProvisionSysEnvs.timeCalled       must_== 2
       //
       metaRenameRoot.timeCalled             must_== 1
       renamedRootOrg.get()                  must_== 1
       //
-      metaProvisionDemoLambdas.timeCalled   must_== 0 // 2
-      createdSetupLambda.get()              must_== 0 // 1
-      createdTdownLambda.get()              must_== 0 // 1
+      metaProvisionDemoLambdas.timeCalled   must_== 0
+      createdSetupLambda.get()              must_== 0
+      createdTdownLambda.get()              must_== 0
       //
-      metaProvisionDemoAPI.timeCalled       must_== 0 // 1
-      metaProvisionDemoEndpoints.timeCalled must_== 0 // 2
-      createdSetupLambdaEndpoint.get()      must_== 0 // 1
-      createdTdownLambdaEndpoint.get()      must_== 0 // 1
+      metaProvisionDemoAPI.timeCalled       must_== 0
+      metaProvisionDemoEndpoints.timeCalled must_== 0
+      createdSetupLambdaEndpoint.get()      must_== 0
+      createdTdownLambdaEndpoint.get()      must_== 0
     }
 
   }

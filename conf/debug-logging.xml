@@ -44,7 +44,7 @@
 
   <logger name="com.galacticfog.gestalt.dcos.launcher.LauncherFSM" level="DEBUG" />
 
-  <logger name="com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient" level="DEBUG" />
+  <logger name="com.galacticfog.gestalt.dcos.marathon.EventBusActor" level="DEBUG" />
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor" level="DEBUG" />
 

@@ -2,12 +2,10 @@ package com.galacticfog.gestalt.dcos.marathon
 
 import java.security.spec.{PKCS8EncodedKeySpec, X509EncodedKeySpec}
 import java.security.{KeyFactory, PrivateKey, PublicKey}
-import java.util.UUID
 
 import akka.actor.{Actor, Props}
 import akka.pattern.ask
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse, InvalidateCachedToken}
-import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import io.jsonwebtoken.{Jwts, SignatureAlgorithm}
 import modules.WSClientFactory
@@ -17,7 +15,6 @@ import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps

@@ -1,6 +1,8 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-sealed trait MarathonEvent
+sealed trait MarathonEvent {
+  def eventType: String
+}
 
 case class MarathonStatusUpdateEvent( slaveId: String,
                                       taskId: String,
@@ -10,35 +12,56 @@ case class MarathonStatusUpdateEvent( slaveId: String,
                                       host: String,
                                       ports: Seq[Int],
                                       ipAddresses: Option[Seq[IPAddress]],
-                                      eventType: String,
                                       version: String,
-                                      timestamp: String) extends MarathonEvent
+                                      timestamp: String) extends MarathonEvent {
+  val eventType = MarathonStatusUpdateEvent.eventType
+}
+case object MarathonStatusUpdateEvent {
+  val eventType = "status_update_event"
+}
 
-case class MarathonDeploymentSuccess( eventType: String,
-                                      timestamp: String,
-                                      id: String) extends MarathonEvent
+case class MarathonDeploymentSuccess( timestamp: String,
+                                      id: String) extends MarathonEvent {
+  val eventType = MarathonDeploymentSuccess.eventType
+}
+case object MarathonDeploymentSuccess extends {
+  val eventType = "deployment_success"
+}
 
-case class MarathonDeploymentFailure( eventType: String,
-                                      timestamp: String,
-                                      id: String) extends MarathonEvent
+case class MarathonDeploymentFailure( timestamp: String,
+                                      id: String) extends MarathonEvent {
+  val eventType = MarathonDeploymentFailure.eventType
+}
+case object MarathonDeploymentFailure {
+  val eventType = "deployment_failed"
+}
 
-case class MarathonHealthStatusChange( eventType: String,
-                                       timestamp: String,
+case class MarathonHealthStatusChange( timestamp: String,
                                        appId: String,
                                        taskId: Option[String],
                                        instanceId: Option[String],
                                        version: String,
-                                       alive: Boolean) extends MarathonEvent
+                                       alive: Boolean) extends MarathonEvent {
+  val eventType = MarathonHealthStatusChange.eventType
+}
+case object MarathonHealthStatusChange {
+  val eventType = "health_status_changed_event"
+}
 
 case class MarathonAppTerminatedEvent( appId: String,
-                                       eventType: String,
-                                       timestamp: String) extends MarathonEvent
+                                       timestamp: String ) extends MarathonEvent {
+  val eventType = MarathonAppTerminatedEvent.eventType
+}
+case object MarathonAppTerminatedEvent {
+  val eventType = "app_terminated_event"
+}
 
 case class MarathonDeploymentInfo( currentStep: MarathonDeploymentInfo.Step,
                                    eventType: String,
                                    timestamp: String) extends MarathonEvent
-
 case object MarathonDeploymentInfo {
+  val eventType = "deployment_info"
+
   case class Step(actions: Seq[Step.Action])
 
   case object Step {
