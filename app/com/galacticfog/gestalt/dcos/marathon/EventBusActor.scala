@@ -14,6 +14,7 @@ import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
+import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonDeploymentInfo.Step
 import com.google.inject.assistedinject.Assisted
 import com.typesafe.sslconfig.akka.AkkaSSLConfig
 import javax.inject.{Inject, Named, Singleton}
@@ -25,7 +26,6 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
-@Singleton
 class EventBusActor @Inject()(launcherConfig: LauncherConfig,
                               @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef,
                               @Assisted subscriber: ActorRef,
@@ -41,12 +41,12 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
 
   private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl.stripSuffix("/")
 
-  connectToBus(subscriber)
+  connectToBus
 
-  private[this] def connectToBus(actorRef: ActorRef): Unit = {
+  private[this] def connectToBus: Unit = {
     val fMaybeAuthToken = getAuthToken // start this early
 
-    val sendToSubscriber = Sink.actorRef[MarathonEvent](actorRef, EventBusFailure("stream closed"))
+    val sendToSelf = Sink.actorRef[MarathonEvent](self, EventBusFailure("stream closed"))
 
     implicit val mat = ActorMaterializer()
 
@@ -72,26 +72,23 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
       )
     } yield resp
 
-    // TODO: this is wrong... i need to receive these messages and manually forward them to the subscriber so that i can intercept the Closed event and die
     fEventSource.flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
       .onComplete {
         case Success(eventSource) =>
           logger.info("successfully attached to marathon event bus")
-          actorRef ! ConnectedToEventBus
+          self ! ConnectedToEventBus
           eventSource
             .filter(_.eventType match {
               case Some(eventType) if !eventFilter.contains(eventType) =>
-                logger.debug(s"filtered event with type '${eventType}'")
+                logger.debug(s"filtered Marathon event of type '${eventType}'")
                 false
               case None =>
-                logger.debug("received server-sent-event heartbeat from marathon event bus")
+                logger.debug("received SSE heartbeat from Marathon event bus, filtering")
                 false
               case _ =>
                 true
             })
             .collect {
-              case sse @ ServerSentEvent(_, Some(MarathonAppTerminatedEvent.eventType), _, _) =>
-                EventBusActor.parseEvent[MarathonAppTerminatedEvent](sse)
               case sse @ ServerSentEvent(_, Some(MarathonStatusUpdateEvent.eventType), _, _) =>
                 EventBusActor.parseEvent[MarathonStatusUpdateEvent](sse)
               case sse @ ServerSentEvent(_, Some(MarathonDeploymentSuccess.eventType), _, _) =>
@@ -100,16 +97,19 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
                 EventBusActor.parseEvent[MarathonDeploymentFailure](sse)
               case sse @ ServerSentEvent(_, Some(MarathonHealthStatusChange.eventType), _, _) =>
                 EventBusActor.parseEvent[MarathonHealthStatusChange](sse)
+              case sse @ ServerSentEvent(_, Some(MarathonAppTerminatedEvent.eventType), _, _) =>
+                EventBusActor.parseEvent[MarathonAppTerminatedEvent](sse)
             }
             .collect {
+              // None means a parsing failure above
               case Some(obj) => obj
             }
-            .to(sendToSubscriber)
+            .to(sendToSelf)
             .run()
         case Failure(t) =>
           considerInvalidatingAuthToken(401)
           logger.info("failure connecting to marathon event bus", t)
-          actorRef ! EventBusFailure("error connecting to Marathon event bus", Some(t))
+          self ! EventBusFailure("error connecting to Marathon event bus", Some(t))
       }
   }
 
@@ -141,9 +141,21 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
   }
 
   override def receive: Receive = {
-    case e =>
-      val s = sender()
-      logger.info(s"received unknown message ${e} from ${s}")
+    case marEvent: MarathonEvent =>
+      logger.debug(s"sending MarathonEvent of type '${marEvent.eventType}' to subscriber")
+      subscriber ! marEvent
+    case ConnectedToEventBus =>
+      logger.info("connected to event bus")
+      subscriber ! ConnectedToEventBus
+    case f @ EventBusFailure(msg, maybeT) =>
+      maybeT match {
+        case Some(t) =>
+          logger.warn(s"event bus error: $msg", t)
+        case None =>
+          logger.warn(s"event bus error: $msg")
+      }
+      subscriber ! f // let the subscriber know there is a problem
+      throw f        // go ahead and fail, since dead event bus means we have no purpose
   }
 }
 
@@ -154,7 +166,76 @@ object EventBusActor {
   }
 
   case object ConnectedToEventBus
-  case class EventBusFailure(msg: String, t: Option[Throwable] = None)
+  case class EventBusFailure(msg: String, t: Option[Throwable] = None) extends RuntimeException
+
+  sealed trait MarathonEvent {
+    def eventType: String
+  }
+
+  case class MarathonStatusUpdateEvent( slaveId: String,
+                                        taskId: String,
+                                        taskStatus: String,
+                                        message: String,
+                                        appId: String,
+                                        host: String,
+                                        ports: Seq[Int],
+                                        ipAddresses: Option[Seq[IPAddress]],
+                                        version: String,
+                                        timestamp: String) extends MarathonEvent {
+    val eventType = MarathonStatusUpdateEvent.eventType
+  }
+  case object MarathonStatusUpdateEvent {
+    val eventType = "status_update_event"
+  }
+
+  case class MarathonDeploymentSuccess( timestamp: String,
+                                        id: String) extends MarathonEvent {
+    val eventType = MarathonDeploymentSuccess.eventType
+  }
+  case object MarathonDeploymentSuccess extends {
+    val eventType = "deployment_success"
+  }
+
+  case class MarathonDeploymentFailure( timestamp: String,
+                                        id: String) extends MarathonEvent {
+    val eventType = MarathonDeploymentFailure.eventType
+  }
+  case object MarathonDeploymentFailure {
+    val eventType = "deployment_failed"
+  }
+
+  case class MarathonHealthStatusChange( timestamp: String,
+                                         appId: String,
+                                         taskId: Option[String],
+                                         instanceId: Option[String],
+                                         version: String,
+                                         alive: Boolean) extends MarathonEvent {
+    val eventType = MarathonHealthStatusChange.eventType
+  }
+  case object MarathonHealthStatusChange {
+    val eventType = "health_status_changed_event"
+  }
+
+  case class MarathonAppTerminatedEvent( appId: String,
+                                         timestamp: String ) extends MarathonEvent {
+    val eventType = MarathonAppTerminatedEvent.eventType
+  }
+  case object MarathonAppTerminatedEvent {
+    val eventType = "app_terminated_event"
+  }
+
+  case class MarathonDeploymentInfo( currentStep: MarathonDeploymentInfo.Step,
+                                     eventType: String,
+                                     timestamp: String) extends MarathonEvent
+  case object MarathonDeploymentInfo {
+    val eventType = "deployment_info"
+
+    case class Step(actions: Seq[Step.Action])
+
+    case object Step {
+      case class Action(action: String, app: String)
+    }
+  }
 
   val logger: Logger = Logger(this.getClass())
 
@@ -178,6 +259,15 @@ object EventBusActor {
   }
 
   implicit val formatSSE: OFormat[ServerSentEvent] = Json.format[ServerSentEvent]
+
+  implicit val statusUpdateEventRead: Reads[MarathonStatusUpdateEvent] = Json.reads[MarathonStatusUpdateEvent]
+  implicit val deploymentSuccessRead: Reads[MarathonDeploymentSuccess] = Json.reads[MarathonDeploymentSuccess]
+  implicit val deploymentFailureRead: Reads[MarathonDeploymentFailure] = Json.reads[MarathonDeploymentFailure]
+  implicit val healthStatusChangedRead: Reads[MarathonHealthStatusChange] = Json.reads[MarathonHealthStatusChange]
+  implicit val appTerminatedEventRead: Reads[MarathonAppTerminatedEvent] = Json.reads[MarathonAppTerminatedEvent]
+  implicit val deploymentStepActions: Reads[MarathonDeploymentInfo.Step.Action] = Json.reads[MarathonDeploymentInfo.Step.Action]
+  implicit val deploymentStep: Reads[MarathonDeploymentInfo.Step] = Json.reads[MarathonDeploymentInfo.Step]
+  implicit val deploymentInfo: Reads[MarathonDeploymentInfo] = Json.reads[MarathonDeploymentInfo]
 
 }
 

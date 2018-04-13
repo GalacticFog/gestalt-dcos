@@ -3,13 +3,13 @@ package com.galacticfog.gestalt.dcos.launcher
 import java.io.{PrintWriter, StringWriter}
 import java.util.UUID
 
-import akka.actor.{ActorSystem, FSM, LoggingFSM}
-import akka.pattern.{ask, pipe}
+import akka.actor.{ActorSystem, FSM, LoggingFSM, Props}
+import akka.pattern.{Backoff, BackoffSupervisor, ask, pipe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos._
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.EventBusFailure
-import com.galacticfog.gestalt.dcos.marathon.{RestClientActor, EventBusActor, MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonStatusUpdateEvent}
+import com.galacticfog.gestalt.dcos.marathon.EventBusActor.{EventBusFailure, MarathonAppTerminatedEvent, MarathonHealthStatusChange, MarathonStatusUpdateEvent}
+import com.galacticfog.gestalt.dcos.marathon.{EventBusActor, RestClientActor}
 import com.galacticfog.gestalt.patch.PatchOp
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import javax.inject.Inject
@@ -44,8 +44,6 @@ object LauncherFSM {
 
     // private messages: internal only
     private[launcher] case class RetryRequest(state: LauncherState)
-
-    private[launcher] case object OpenConnectionToMarathonEventBus
 
     private[launcher] final case class ErrorEvent(message: String, errorStage: Option[String])
 
@@ -105,11 +103,20 @@ class LauncherFSM @Inject()(config: LauncherConfig,
 
   val marathonBaseUrl: String = config.marathon.baseUrl
 
-  // TODO: need to have a supervisor strategy in place, or maybe a BackupSupervisor: https://doc.akka.io/docs/akka/current/general/supervision.html#backoff-supervisor
-  val eventBusClient = injectedChild(
-    marathonEventBusFactory.apply(context.self, Seq("app_terminated_event", "health_status_changed_event", "status_update_event")),
-    name = "marathon-event-bus-client"
+  val eventBusSupervisorProps = BackoffSupervisor.props(
+    Backoff.onFailure(
+      childProps = Props(marathonEventBusFactory.apply(context.self, Seq(
+        MarathonAppTerminatedEvent.eventType, MarathonHealthStatusChange.eventType, MarathonStatusUpdateEvent.eventType
+      ))),
+      childName = "marathon-event-bus-client",
+      minBackoff = 1 second,
+      maxBackoff = 30 seconds,
+      randomFactor = 0.2
+    )
   )
+  val eventBusSupervisor = system.actorOf(eventBusSupervisorProps)
+
+  // default supervision strategy is to restart this actor, which is sufficient
   val marClient = injectedChild(
     marathonRestClientFactory.apply(),
     name = "marathon-api-client"
@@ -572,10 +579,6 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   ))
 
   when(Uninitialized) {
-    // this is a bootstrap situation... we need to get the complete state and connect the Marathon event bus
-    case Event(LaunchServicesRequest,d) =>
-      self ! OpenConnectionToMarathonEventBus
-      stay
     // the Marathon event bus connection will trigger this (or an error), but we won't proceed to launching until we get it
     case Event(UpdateAllServiceInfo(all), d) =>
       log.info("initializing all services")
@@ -583,11 +586,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         svcInfo => log.info(s"${svcInfo.service} : ${svcInfo.status}")
       }
       this.context.system.scheduler.schedule(1 minute, 1 minute, self, Sync)
-      if (config.database.provision) {
-        goto(config.LAUNCH_ORDER.head) using d.update(all)
-      } else {
-        goto(LaunchingRabbit) using d.update(all)
-      }
+      goto(LaunchingRabbit) using d.update(all)
     case Event(ShutdownRequest(_),d) =>
       log.info("Ignoring ShutdownRequest from Uninitialized state")
       stay
@@ -596,11 +595,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   when(ShuttingDown) {
     // this is similar to above, but we assume that we've already been initialized so we can proceed directly to launching
     case Event(LaunchServicesRequest,d) =>
-      if (config.database.provision) {
-        goto(config.LAUNCH_ORDER.head)
-      } else {
-        goto(LaunchingRabbit)
-      }
+      goto(config.LAUNCH_ORDER.head)
   }
 
   onTransition {
@@ -715,7 +710,6 @@ class LauncherFSM @Inject()(config: LauncherConfig,
             //
             _ <- Future.sequence(Seq(
               renameMetaRootOrg(metaUrl,apiKey),
-              // TODO: we ever gonna enable this again?
               // provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
@@ -844,15 +838,6 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       *
       *************************************************/
 
-    case Event(OpenConnectionToMarathonEventBus, d) =>
-      if (d.connected) {
-        log.info("ignoring request OpenConnectionToMarathonEventBus, I think I'm already connected")
-      } else {
-        log.info("attempting to connect to Marathon event bus")
-        // marClient.connectToBus(self)
-      }
-      stay
-
     case Event(EventBusActor.ConnectedToEventBus, d) =>
       log.info("successfully connected to Marathon event bus, requesting service update")
       val s = self
@@ -891,7 +876,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
 
 
     case Event(e @ MarathonHealthStatusChange(_, FrameworkServiceFromAppId(service), maybeTaskId, maybeInstanceId, _, alive), d) =>
-      log.info(s"received MarathonHealthStatusChange(${maybeTaskId orElse maybeInstanceId}.alive == ${alive}) for task belonging to ${service.name}")
+      log.info(s"received ${e.eventType}(${maybeTaskId orElse maybeInstanceId}.alive == ${alive}) for task belonging to ${service.name}")
       val updatedStatus = d.statuses.get(service).map(
         _.copy(status = if (alive) HEALTHY else UNHEALTHY)
       )
@@ -899,11 +884,11 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       stay using d.update(updatedStatus.toSeq)
 
     case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _) , d) =>
-      log.info(s"received StatusUpdateEvent(${taskStatus}) for task belonging to ${service.name}")
+      log.info(s"received ${e.eventType}(${taskStatus}) for task belonging to ${service.name}")
       requestUpdateAndStay(service)
 
     case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _) , d) =>
-      log.debug(s"ignoring StatusUpdateEvent(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
+      log.debug(s"ignoring ${e.eventType}(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
       stay
 
     /**************************************************

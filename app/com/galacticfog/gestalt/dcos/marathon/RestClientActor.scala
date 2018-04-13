@@ -19,7 +19,6 @@ import scala.concurrent.duration._
 import scala.language.postfixOps
 import scala.util.Try
 
-@Singleton
 class RestClientActor @Inject()(launcherConfig: LauncherConfig,
                                 wsFactory: WSClientFactory,
                                 @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef ) extends Actor {

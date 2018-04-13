@@ -1,15 +1,24 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import akka.actor.{ActorRef, Props}
+import akka.actor.SupervisorStrategy.Stop
+import akka.actor.{Actor, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
 import akka.http.scaladsl.model.sse.ServerSentEvent
-import akka.testkit.{TestActor, TestProbe}
+import akka.testkit.{TestActor, TestActorRef, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenRequest, DCOSAuthTokenResponse}
+import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonHealthStatusChange
 import mockws.{MockWS, MockWSHelpers}
 import org.specs2.mock.Mockito
 import play.api.test._
 
 import scala.concurrent.duration._
+
+class DummySupervisor extends Actor {
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
+    case _: RuntimeException => Stop
+  }
+  override def receive: Receive = { case _ => }
+}
 
 class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpers with TestHelper {
 
@@ -25,12 +34,15 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
       }
     })
     val subscriberProbe = TestProbe("test-subscriber-probe")
-    val busActor = system.actorOf(Props(new EventBusActor(
+
+    val supervisor = TestActorRef[DummySupervisor]
+    val busActor = TestActorRef(Props(new EventBusActor(
       injector.instanceOf[LauncherConfig],
       tokenActorProbe.ref,
       subscriberProbe.ref,
       Seq.empty
-    )), "test-marathon-sse-client")
+    )), supervisor, "test-marathon-sse-client")
+
   }
 
   "EventBusActor" should {
@@ -85,7 +97,6 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
         data = json_new,
         `type` = "health_status_changed_event"
       )) must beSome
-
     }
 
 
