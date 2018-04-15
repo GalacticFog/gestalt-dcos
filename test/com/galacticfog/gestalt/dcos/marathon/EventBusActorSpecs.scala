@@ -2,6 +2,8 @@ package com.galacticfog.gestalt.dcos.marathon
 
 import akka.actor.SupervisorStrategy.Stop
 import akka.actor.{Actor, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
+import akka.http.scaladsl.model.headers.RawHeader
+import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.testkit.{TestActor, TestActorRef, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig
@@ -11,6 +13,7 @@ import mockws.{MockWS, MockWSHelpers}
 import org.specs2.mock.Mockito
 import play.api.test._
 
+import scala.concurrent.Future
 import scala.concurrent.duration._
 
 class DummySupervisor extends Actor {
@@ -23,7 +26,8 @@ class DummySupervisor extends Actor {
 class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpers with TestHelper {
 
   abstract class WithMarSSEConfig( config: Seq[(String,Any)] = Seq.empty,
-                                   routes: MockWS.Routes = PartialFunction.empty )
+                                   routes: MockWS.Routes = PartialFunction.empty,
+                                   response: String = "")
     extends WithConfig( config, routes ) {
 
     val tokenActorProbe = TestProbe("token-actor-probe")
@@ -36,9 +40,16 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
     val subscriberProbe = TestProbe("test-subscriber-probe")
 
     val supervisor = TestActorRef[DummySupervisor]
+    val mockEventStream = mock[EventBusActor.DefaultHttpResponder]
+    mockEventStream.apply(any)(any) returns Future.successful(
+      HttpResponse(
+        entity = HttpEntity(MediaTypes.`text/event-stream`, response.getBytes)
+      )
+    )
     val busActor = TestActorRef(Props(new EventBusActor(
       injector.instanceOf[LauncherConfig],
       tokenActorProbe.ref,
+      mockEventStream,
       subscriberProbe.ref,
       Seq.empty
     )), supervisor, "test-marathon-sse-client")
@@ -55,14 +66,16 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
         serviceAccountId = testServiceId,
         privateKey = testPrivateKey
       ))
-      subscriberProbe.expectMsgType[EventBusActor.EventBusFailure]
+      subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
+      subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
     }
 
     "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
       config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig
     ) {
       tokenActorProbe.expectNoMessage(2 seconds)
-      subscriberProbe.expectMsgType[EventBusActor.EventBusFailure]
+      subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
+      subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
     }
 
     "parse pre- and post-1.9 marathon health event payloads" in new WithConfig() {

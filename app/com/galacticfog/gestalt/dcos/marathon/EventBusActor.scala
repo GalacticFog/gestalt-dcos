@@ -1,10 +1,10 @@
 package com.galacticfog.gestalt.dcos.marathon
 
 import akka.NotUsed
-import akka.actor.{Actor, ActorRef}
+import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.client.RequestBuilding.Get
-import akka.http.scaladsl.model.MediaTypes
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaTypes}
 import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.http.scaladsl.unmarshalling.Unmarshal
@@ -28,6 +28,7 @@ import scala.util.{Failure, Success, Try}
 
 class EventBusActor @Inject()(launcherConfig: LauncherConfig,
                               @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef,
+                              httpResponder: EventBusActor.HttpResponder,
                               @Assisted subscriber: ActorRef,
                               @Assisted eventFilter: Seq[String] ) extends Actor with EventStreamUnmarshalling {
 
@@ -50,6 +51,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
 
     implicit val mat = ActorMaterializer()
 
+    // TODO: consider filtering /v2/events per https://mesosphere.github.io/marathon/docs/event-bus.html
     val fEventSource = for {
       maybeAuthToken <- fMaybeAuthToken
       req = maybeAuthToken.foldLeft(
@@ -61,15 +63,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
             Authorization(GenericHttpCredentials("token="+tok, ""))
           )
       }
-      http = Http(context.system)
-      resp <- http.singleRequest(
-        connectionContext = if (launcherConfig.acceptAnyCertificate) {
-          logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
-          val badSslConfig = AkkaSSLConfig(context.system).mapSettings(s => s.withLoose(s.loose.withDisableHostnameVerification(true)))
-          http.createClientHttpsContext(badSslConfig)
-        } else http.defaultClientHttpsContext,
-        request = req
-      )
+      resp <- httpResponder(req)(context.system)
     } yield resp
 
     fEventSource.flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
@@ -150,7 +144,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
     case f @ EventBusFailure(msg, maybeT) =>
       maybeT match {
         case Some(t) =>
-          logger.warn(s"event bus error: $msg", t)
+          logger.warn(s"event bus error: $msg")
         case None =>
           logger.warn(s"event bus error: $msg")
       }
@@ -163,6 +157,27 @@ object EventBusActor {
 
   trait Factory {
     def apply(subscriber: ActorRef, eventFilter: Seq[String]): Actor
+  }
+
+  trait HttpResponder {
+    def apply(req: HttpRequest)(implicit system: ActorSystem): Future[HttpResponse]
+  }
+
+  class DefaultHttpResponder @Inject()(launcherConfig: LauncherConfig) extends HttpResponder {
+
+    override def apply(req: HttpRequest)
+                      (implicit system: ActorSystem): Future[HttpResponse] = {
+      val http = Http(system)
+      http.singleRequest(
+        connectionContext = if (launcherConfig.acceptAnyCertificate) {
+          logger.warn("disabling certificate checking for connection to Marathon REST API; this is not recommended because it opens communications up to MITM attacks")
+          val badSslConfig = AkkaSSLConfig(system).mapSettings(s => s.withLoose(s.loose.withDisableHostnameVerification(true)))
+          http.createClientHttpsContext(badSslConfig)
+        } else http.defaultClientHttpsContext,
+        request = req
+      )
+    }
+
   }
 
   case object ConnectedToEventBus

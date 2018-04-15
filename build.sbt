@@ -24,6 +24,8 @@ lazy val root = (project in file(".")).
 
 scalaVersion := "2.11.11"
 
+javaOptions in Test += "-Dlogger.file=conf/debug-logging.xml"
+
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
 dockerBaseImage := "java:8-jre-alpine"

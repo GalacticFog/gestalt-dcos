@@ -21,6 +21,7 @@ class Module extends AbstractModule with AkkaGuiceSupport with ScalaModule {
     bindActor[LauncherFSM]("scheduler-actor")
     bind[Kickstart].asEagerSingleton()
     bind[WSClientFactory].to[DefaultWSClientFactory]
+    bind[EventBusActor.HttpResponder].to[EventBusActor.DefaultHttpResponder]
     bindActor[DCOSAuthTokenActor](DCOSAuthTokenActor.name)
     bindActorFactory[EventBusActor, EventBusActor.Factory]
     bindActorFactory[RestClientActor, RestClientActor.Factory]
