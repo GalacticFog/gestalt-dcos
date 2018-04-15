@@ -1,12 +1,8 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonDeploymentInfo.Step
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonDeploymentInfo.Step.Action
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.{MarathonAppTerminatedEvent, MarathonDeploymentFailure, MarathonDeploymentInfo, MarathonDeploymentSuccess, MarathonHealthStatusChange, MarathonStatusUpdateEvent}
-import play.api.libs.json.{Json, OFormat, Reads}
-import play.api.libs.json._
-import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
+import play.api.libs.json.Reads._
+import play.api.libs.json.{Json, OFormat, _}
 
 package object marathon {
 

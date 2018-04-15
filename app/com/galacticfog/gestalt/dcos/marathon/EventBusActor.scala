@@ -4,7 +4,7 @@ import akka.NotUsed
 import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.client.RequestBuilding.Get
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaTypes}
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaTypes, Uri}
 import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.http.scaladsl.unmarshalling.Unmarshal
@@ -30,7 +30,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
                               @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef,
                               httpResponder: EventBusActor.HttpResponder,
                               @Assisted subscriber: ActorRef,
-                              @Assisted eventFilter: Seq[String] ) extends Actor with EventStreamUnmarshalling {
+                              @Assisted eventFilter: Option[Seq[String]] ) extends Actor with EventStreamUnmarshalling {
 
   import EventBusActor._
   import context.dispatcher
@@ -51,11 +51,18 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
 
     implicit val mat = ActorMaterializer()
 
-    // TODO: consider filtering /v2/events per https://mesosphere.github.io/marathon/docs/event-bus.html
     val fEventSource = for {
       maybeAuthToken <- fMaybeAuthToken
+      uri = eventFilter.foldLeft(
+        Uri(s"${marathonBaseUrl}/v2/events")
+      ){ case (uri,qs) =>
+        val q = qs.foldLeft(Uri.Query()) {
+          case (q, eventType) => q.+:("event_type" -> eventType)
+        }
+        uri.withQuery(q)
+      }
       req = maybeAuthToken.foldLeft(
-        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(MediaTypes.`text/event-stream`))
+        Get(uri).addHeader(Accept(MediaTypes.`text/event-stream`))
       ) {
         case (req, tok) =>
           logger.debug("adding header to event bus request")
@@ -73,7 +80,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
           self ! ConnectedToEventBus
           eventSource
             .filter(_.eventType match {
-              case Some(eventType) if !eventFilter.contains(eventType) =>
+              case Some(eventType) if eventFilter.exists(_.contains(eventType) == false) =>
                 logger.debug(s"filtered Marathon event of type '${eventType}'")
                 false
               case None =>
@@ -93,6 +100,8 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
                 EventBusActor.parseEvent[MarathonHealthStatusChange](sse)
               case sse @ ServerSentEvent(_, Some(MarathonAppTerminatedEvent.eventType), _, _) =>
                 EventBusActor.parseEvent[MarathonAppTerminatedEvent](sse)
+              case sse @ ServerSentEvent(_, Some(MarathonDeploymentInfo.eventType), _, _) =>
+                EventBusActor.parseEvent[MarathonDeploymentInfo](sse)
             }
             .collect {
               // None means a parsing failure above

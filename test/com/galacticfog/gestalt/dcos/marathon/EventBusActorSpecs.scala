@@ -1,14 +1,14 @@
 package com.galacticfog.gestalt.dcos.marathon
 
 import akka.actor.SupervisorStrategy.Stop
-import akka.actor.{Actor, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
+import akka.actor.{Actor, ActorLogging, ActorRef, OneForOneStrategy, Props, SupervisorStrategy}
 import akka.http.scaladsl.model.headers.RawHeader
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.sse.ServerSentEvent
 import akka.testkit.{TestActor, TestActorRef, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenRequest, DCOSAuthTokenResponse}
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonHealthStatusChange
+import com.galacticfog.gestalt.dcos.marathon.EventBusActor.{MarathonAppTerminatedEvent, MarathonDeploymentSuccess, MarathonEvent, MarathonHealthStatusChange}
 import mockws.{MockWS, MockWSHelpers}
 import org.specs2.mock.Mockito
 import play.api.test._
@@ -16,9 +16,11 @@ import play.api.test._
 import scala.concurrent.Future
 import scala.concurrent.duration._
 
-class DummySupervisor extends Actor {
+class DummySupervisor extends Actor with ActorLogging {
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
-    case _: RuntimeException => Stop
+    case _: RuntimeException =>
+      log.info("stopping child actor in test")
+      Stop
   }
   override def receive: Receive = { case _ => }
 }
@@ -27,7 +29,9 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
 
   abstract class WithMarSSEConfig( config: Seq[(String,Any)] = Seq.empty,
                                    routes: MockWS.Routes = PartialFunction.empty,
-                                   response: String = "")
+                                   response: String = "",
+                                   eventFilter: Option[Seq[String]] = None
+                                 )
     extends WithConfig( config, routes ) {
 
     val tokenActorProbe = TestProbe("token-actor-probe")
@@ -41,17 +45,15 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
 
     val supervisor = TestActorRef[DummySupervisor]
     val mockEventStream = mock[EventBusActor.DefaultHttpResponder]
-    mockEventStream.apply(any)(any) returns Future.successful(
-      HttpResponse(
-        entity = HttpEntity(MediaTypes.`text/event-stream`, response.getBytes)
-      )
-    )
+    mockEventStream.apply(any)(any) returns Future.successful(HttpResponse(
+      entity = HttpEntity(MediaTypes.`text/event-stream`, response.getBytes)
+    ))
     val busActor = TestActorRef(Props(new EventBusActor(
       injector.instanceOf[LauncherConfig],
       tokenActorProbe.ref,
       mockEventStream,
       subscriberProbe.ref,
-      Seq.empty
+      eventFilter
     )), supervisor, "test-marathon-sse-client")
 
   }
@@ -68,6 +70,9 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
       ))
       subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
       subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
+      there was one(mockEventStream).apply(argThat(
+        (req: HttpRequest) => req.headers.exists(h => h.name() == "Authorization" && h.value() == s"token=${authToken}")
+      ))(any)
     }
 
     "not request auth token from DCOSAuthTokenActor for un-authed provider" in new WithMarSSEConfig(
@@ -76,6 +81,52 @@ class EventBusActorSpecs extends PlaySpecification with Mockito with MockWSHelpe
       tokenActorProbe.expectNoMessage(2 seconds)
       subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
       subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
+      there was one(mockEventStream).apply(argThat(
+        (req: HttpRequest) => !req.headers.exists(h => h.name() == "Authorization")
+      ))(any)
+    }
+
+    "abide the filter in the query and the forwarded messages" in new WithMarSSEConfig(
+      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig,
+      response = scala.io.Source.fromInputStream(getClass.getResourceAsStream("/marathon-event-stream.txt")).getLines().mkString("\n"),
+      eventFilter = Some(Seq(MarathonDeploymentSuccess.eventType, MarathonAppTerminatedEvent.eventType))
+    ) {
+      subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
+      subscriberProbe.expectMsgType[MarathonDeploymentSuccess]
+      subscriberProbe.expectMsgType[MarathonDeploymentSuccess]
+      subscriberProbe.expectMsgType[MarathonAppTerminatedEvent]
+      subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
+      there was one(mockEventStream).apply(
+        ((_: HttpRequest).uri.rawQueryString) ^^ beSome(
+          contain(s"event_type=${MarathonDeploymentSuccess.eventType}")
+            and
+          contain(s"event_type=${MarathonAppTerminatedEvent.eventType}")
+        )
+      )(any)
+    }
+
+    "empty filter sends everything" in new WithMarSSEConfig(
+      config = TestConfigs.noAuthConfig ++ TestConfigs.marathonConfig,
+      response = scala.io.Source.fromInputStream(getClass.getResourceAsStream("/marathon-event-stream.txt")).getLines().mkString("\n"),
+      eventFilter = None
+    ) {
+      subscriberProbe.expectMsg(EventBusActor.ConnectedToEventBus)
+      subscriberProbe.receiveN(8).map {
+        _.asInstanceOf[MarathonEvent].eventType
+      } must containTheSameElementsAs(Seq(
+        "deployment_info",
+        "status_update_event",
+        "deployment_success",
+        "deployment_info",
+        "status_update_event",
+        "status_update_event",
+        "deployment_success",
+        "app_terminated_event"
+      ))
+      subscriberProbe.expectMsg(EventBusActor.EventBusFailure("stream closed"))
+      there was one(mockEventStream).apply(
+        ((_: HttpRequest).uri.rawQueryString) ^^ beNone
+      )(any)
     }
 
     "parse pre- and post-1.9 marathon health event payloads" in new WithConfig() {
