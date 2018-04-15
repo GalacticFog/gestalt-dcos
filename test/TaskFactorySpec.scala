@@ -32,7 +32,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     "test-elastic", "http", 9200, 9300, "test-elastic-cluster-name"
   )))
 
-  val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
+  val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), disabled = false)
 
   "GestaltTaskFactory" should {
 

@@ -167,7 +167,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
         stateName = LaunchingElastic,
         stateData = ServiceData(
           statuses = Map(),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = launcher.stateData.globalConfig,
@@ -262,7 +262,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
         stateName = LaunchingDB(0),
         stateData = ServiceData(
           statuses = Map(),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = launcher.stateData.globalConfig,
@@ -290,7 +290,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       // return Future{false} short-circuits any additional processing
       mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case RestClientActor.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
+          case RestClientActor.KillAppRequest(svc) if !svc.isInstanceOf[DATA] =>
             sender ! false
             keepRunning
           case _ =>
@@ -322,7 +322,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       // return Future{false} short-circuits any additional processing
       mockRestClient.setAutoPilot(new TestActor.AutoPilot {
         def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
-          case RestClientActor.KillAppRequest(svc) if svc.isInstanceOf[DATA] == false =>
+          case RestClientActor.KillAppRequest(svc) if !svc.isInstanceOf[DATA] =>
             sender ! false
             keepRunning
           case _ =>
@@ -491,7 +491,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
     val metaRenameRoot = Route({
       case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action { request =>
         (request.body.asJson.get).asOpt[Seq[PatchOp]] match {
-          case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(newCompanyDescription)))) =>
+          case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(_)))) =>
             renamedRootOrg.getAndIncrement()
             Ok(Json.obj())
           case _ => BadRequest("")
@@ -625,7 +625,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
             SECURITY -> ServiceInfo(SECURITY, Seq.empty, Some("security.test"), Seq("9455"), RUNNING),
             META     -> ServiceInfo(META, Seq.empty, Some(metaHost), Seq(metaPort), RUNNING)
           ),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = GlobalConfig()

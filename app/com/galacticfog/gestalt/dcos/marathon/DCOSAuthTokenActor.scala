@@ -86,8 +86,8 @@ object DCOSAuthTokenActor {
       pkcs8.replace("-----BEGIN PRIVATE KEY-----\n", "")
            .replace("-----END PRIVATE KEY-----", "")
     )
-    val kf = KeyFactory.getInstance("RSA");
-    val keySpec = new PKCS8EncodedKeySpec(encoded);
+    val kf = KeyFactory.getInstance("RSA")
+    val keySpec = new PKCS8EncodedKeySpec(encoded)
     kf.generatePrivate(keySpec)
   }
 
@@ -96,7 +96,7 @@ object DCOSAuthTokenActor {
       pkcs8.replace("-----BEGIN PUBLIC KEY-----\n", "")
         .replace("-----END PUBLIC KEY-----", "")
     )
-    val kf = KeyFactory.getInstance("RSA");
+    val kf = KeyFactory.getInstance("RSA")
     val keySpec = new X509EncodedKeySpec(encoded)
     kf.generatePublic(keySpec)
   }
@@ -130,18 +130,18 @@ class DCOSAuthTokenRequestActor(client: WSClient) extends Actor {
         _ = log.debug("sending " + Json.prettyPrint(payload) + " to " + url)
         resp <- client.url(url).post(payload)
       } yield resp
-      f.onComplete(_ match {
+      f.onComplete {
         case Success(resp) if resp.status == 200 =>
           log.trace("response from acs service: " + Json.stringify(resp.json))
           (resp.json \ "token").asOpt[String] match {
             case Some(tok) => s ! DCOSAuthTokenActor.DCOSAuthTokenResponse(tok)
-            case None      => s ! DCOSAuthTokenActor.DCOSAuthTokenError("acs responded with 200 but response did not have parsable token")
+            case None => s ! DCOSAuthTokenActor.DCOSAuthTokenError("acs responded with 200 but response did not have parsable token")
           }
         case Success(resp) if resp.status != 200 =>
           log.trace("non-200 response form acs service: " + resp)
           s ! DCOSAuthTokenActor.DCOSAuthTokenError(resp.body)
         case Failure(t) =>
           s ! DCOSAuthTokenActor.DCOSAuthTokenError(t.getMessage)
-      })
+      }
   }
 }

@@ -103,7 +103,7 @@ class LauncherConfig @Inject()(config: Configuration) {
       case JsError(errors) =>
         log.error("Failure deserializing auth.acs_service_acct_creds/DCOS_ACS_SERVICE_ACCT_CREDS JSON to acs service account credentials. " +
           errors.foldLeft[String]("[ "){
-            case (acc, (path, errors)) => acc + "(%s, %s)".format(path, errors.foldLeft("")(_ + "," + _.message))
+            case (acc, (path, e)) => acc + "(%s, %s)".format(path, e.foldLeft("")(_ + "," + _.message))
           } + "]"
         )
         None

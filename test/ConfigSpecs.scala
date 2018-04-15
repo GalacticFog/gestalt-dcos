@@ -1,5 +1,3 @@
-package test
-
 import com.galacticfog.gestalt.dcos.HealthCheck._
 import com.galacticfog.gestalt.dcos.{GestaltTaskFactory, LauncherConfig}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
@@ -18,7 +16,7 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
     val injector = Option(appGroup).foldLeft(
       new GuiceApplicationBuilder().disable[modules.Module]
     )({
-      case (builder,appGroup) => builder.configure("marathon.app-group" -> appGroup)
+      case (builder,group) => builder.configure("marathon.app-group" -> group)
     }).injector
 
     val launcherConfig = injector.instanceOf[LauncherConfig]
@@ -42,7 +40,7 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
     }
 
     "configure caas provider with application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
-      gtf.getCaasProvider().toString must /("properties") /("config") /("appGroupPrefix" -> "gestalt-tasks-in-test/dev")
+      gtf.getCaasProvider.toString must /("properties") /("config") /("appGroupPrefix" -> "gestalt-tasks-in-test/dev")
     }
 
     "generate named VIP from requested nested application group" in new WithAppGroup("/gestalt-tasks-in-test/dev/") {
@@ -118,7 +116,7 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
 
     "provision network list from config" in new WithConfig("marathon.network-list" -> "network-1,network-2") {
       launcherConfig.marathon.networkList must beSome("network-1,network-2")
-      (gtf.getCaasProvider() \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
+      (gtf.getCaasProvider \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
         Json.obj("name" -> "network-1"),
         Json.obj("name" -> "network-2")
       ))
@@ -126,7 +124,7 @@ class ConfigSpecs extends PlaySpecification with Mockito with JsonMatchers {
 
     "provision network list with defaults if not configured" in new WithConfig( /* "marathon.network-list" -> "network-1,network-2" */ ) {
       launcherConfig.marathon.networkList must beNone
-      (gtf.getCaasProvider() \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
+      (gtf.getCaasProvider \ "properties" \ "config" \ "networks").as[Seq[JsObject]] must containTheSameElementsAs(Seq(
         Json.obj("name" -> "HOST"),
         Json.obj("name" -> "BRIDGE")
       ))

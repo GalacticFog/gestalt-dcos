@@ -15,7 +15,7 @@ lazy val root = (project in file(".")).
             val extracted = new java.io.InputStreamReader(
               java.lang.Runtime.getRuntime().exec("git rev-parse HEAD").getInputStream())
             (new java.io.BufferedReader(extracted)).readLine()
-          } catch {      case t: Throwable => "get git hash failed"    }
+          } catch {      case _: Throwable => "get git hash failed"    }
         }}.toString()
     ),
     buildInfoPackage := "com.galacticfog.gestalt.dcos",

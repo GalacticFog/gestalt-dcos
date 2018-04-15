@@ -287,7 +287,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       resp.status match {
         case 200 => resp.json match {
           case arr: JsArray => arr.as[Seq[JsValue]].find(matchesName)
-          case v: JsValue => if (matchesName(v)) Some(v) else None
+          case v: JsValue => Some(v).filter(matchesName)
         }
         case _ =>
           val msg = getMessageFromResponse
@@ -443,25 +443,6 @@ class LauncherFSM @Inject()(config: LauncherConfig,
     ))
   }
 
-  private[this] def provisionDemo( metaUrl: String,
-                                   apiKey: GestaltAPIKey,
-                                   laserProvider: UUID,
-                                   gatewayProvider: UUID,
-                                   kongProvider: UUID ): Future[MetaProvisioned.type] =
-  {
-    val metaApiUrl = "http://" + config.vipHostname(META) + ":" + META.port
-    for {
-      wrkId <- provisionMetaWorkspace(metaUrl, apiKey, "root", "demo", "Demo")
-      envId <- provisionMetaEnvironment(metaUrl, apiKey, "root", wrkId, "demo", "Demo", "production")
-      Seq(setupLambdaId,tdownLambdaId) <- Future.sequence(provisionDemoLambdas(metaUrl, metaApiUrl, apiKey, envId, laserProvider))
-      demoApiId <- provisionApi(metaUrl, apiKey, envId, gatewayProvider, kongProvider, "demo")
-      _ <- Future.sequence(Seq(
-         provisionEndpoint(metaUrl, apiKey, demoApiId, "setup",    setupLambdaId),
-         provisionEndpoint(metaUrl, apiKey, demoApiId, "teardown", tdownLambdaId)
-      ))
-    } yield MetaProvisioned
-  }
-
   private[this] def getMessageFromResponse(implicit response: WSResponse) = {
     Try{(response.json \ "message").as[String]}.getOrElse(response.body)
   }
@@ -587,14 +568,14 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       }
       this.context.system.scheduler.schedule(1 minute, 1 minute, self, Sync)
       goto(LaunchingRabbit) using d.update(all)
-    case Event(ShutdownRequest(_),d) =>
+    case Event(ShutdownRequest(_),_) =>
       log.info("Ignoring ShutdownRequest from Uninitialized state")
       stay
   }
 
   when(ShuttingDown) {
     // this is similar to above, but we assume that we've already been initialized so we can proceed directly to launching
-    case Event(LaunchServicesRequest,d) =>
+    case Event(LaunchServicesRequest,_) =>
       goto(config.LAUNCH_ORDER.head)
   }
 
@@ -670,9 +651,9 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         case (Some(metaUrl),Some(apiKey)) =>
           val gc = nextStateData.globalConfig
           val baseProviderPayloads = Seq(
-            gtf.getCaasProvider(),
+            gtf.getCaasProvider,
             gtf.getDbProvider(gc.dbConfig.get),
-            gtf.getRabbitProvider(),
+            gtf.getRabbitProvider,
             gtf.getSecurityProvider(gc.secConfig.get)
           )
           val enabledExecutorPayloads = config.laser.enabledRuntimes map gtf.getExecutorProvider
@@ -701,7 +682,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
               logProviderId => configureCaaSProviderWithLoggingProvider(metaUrl, apiKey, dcosProviderId, logProviderId)
             ))
             //
-            Seq(policyProviderId,gtwProviderId) <- Future.sequence(
+            _ <- Future.sequence(
               provisionMetaProviders(metaUrl,apiKey, Seq(
                 gtf.getPolicyProvider(apiKey, dcosProviderId, laserProviderId, rabbitProviderId),
                 gtf.getGatewayProvider(dbProviderId, secProviderId, kongProviderId, dcosProviderId)
@@ -753,7 +734,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   }
 
   when(RetrievingAPIKeys) {
-    case Event(RetryRequest(RetrievingAPIKeys), d) =>
+    case Event(RetryRequest(RetrievingAPIKeys), _) =>
       goto(RetrievingAPIKeys)
     case Event(SecurityInitializationComplete(apiKey), d) =>
       log.debug("received apiKey:\n{}",Json.prettyPrint(Json.toJson(apiKey)))
@@ -779,9 +760,9 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   }
 
   when(BootstrappingMeta) {
-    case Event(RetryRequest(BootstrappingMeta), d) =>
+    case Event(RetryRequest(BootstrappingMeta), _) =>
       goto(BootstrappingMeta)
-    case Event(MetaBootstrapFinished, d) =>
+    case Event(MetaBootstrapFinished, _) =>
       goto(nextState(stateName))
     case Event(MetaBootstrapTimeout, d) =>
       val msg = "timed out waiting for bootstrap of gestalt-meta"
@@ -792,9 +773,9 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   }
 
   when(SyncingMeta) {
-    case Event(RetryRequest(SyncingMeta), d) =>
+    case Event(RetryRequest(SyncingMeta), _) =>
       goto(SyncingMeta)
-    case Event(MetaSyncFinished, d) =>
+    case Event(MetaSyncFinished, _) =>
       goto(nextState(stateName))
     case Event(MetaSyncTimeout, d) =>
       val msg = "timed out waiting for sync of gestalt-meta"
@@ -805,9 +786,9 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   }
 
   when(ProvisioningMeta) {
-    case Event(RetryRequest(ProvisioningMeta), d) =>
+    case Event(RetryRequest(ProvisioningMeta), _) =>
       goto(ProvisioningMeta)
-    case Event(MetaProvisioned, d) =>
+    case Event(MetaProvisioned, _) =>
       goto(nextState(stateName))
     case Event(MetaProvisioningTimeout, d) =>
       val msg = "timed out provisioning gestalt-meta"
@@ -870,7 +851,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         status = NOT_FOUND
       ))
 
-    case Event(e @ MarathonAppTerminatedEvent(nonFrameworkAppId,_), d) =>
+    case Event(e @ MarathonAppTerminatedEvent(nonFrameworkAppId,_), _) =>
       log.debug(s"received ${e.eventType} for non-framework service ${nonFrameworkAppId}")
       stay
 
@@ -883,11 +864,11 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       updatedStatus.foreach(info => log.info(s"marking ${info.service} as ${info.status}"))
       stay using d.update(updatedStatus.toSeq)
 
-    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, FrameworkServiceFromAppId(service), _, _, _, _, _) , _) =>
       log.info(s"received ${e.eventType}(${taskStatus}) for task belonging to ${service.name}")
       requestUpdateAndStay(service)
 
-    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _) , d) =>
+    case Event(e @ MarathonStatusUpdateEvent(_, _, taskStatus, _, nonFrameworkAppId, _, _, _, _, _) , _) =>
       log.debug(s"ignoring ${e.eventType}(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
       stay
 
@@ -943,7 +924,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       )
     }
 
-    case Event(LaunchServicesRequest,d) =>
+    case Event(LaunchServicesRequest,_) =>
       // we only recognize this request while in Uninitialized or ShuttingDown
       log.info("ignoring LauncherServicesRequest in stage " + stateName)
       stay
@@ -972,13 +953,13 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         case _ => stateName.toString
       }
       val services = config.provisionedServices.map(service =>
-        d.statuses.get(service) getOrElse ServiceInfo(
+        d.statuses.getOrElse(service, ServiceInfo(
           service = service,
           vhosts = Seq.empty,
           hostname = None,
           ports = Seq.empty,
           status = NOT_FOUND
-        )
+        ))
       )
       stay replying StatusResponse(
         launcherStage = stage,
@@ -987,14 +968,14 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         isConnectedToMarathon = d.connected
       )
 
-    case Event(t: TimeoutEvent, d) =>
+    case Event(_: TimeoutEvent, _) =>
       stay
 
-    case Event(rr @ RetryRequest(_), d) =>
+    case Event(rr @ RetryRequest(_), _) =>
       log.info(s"ignoring ${rr}")
       stay
 
-    case Event(e, d) =>
+    case Event(e, _) =>
       log.warning("unhandled event of type " + e.getClass.toString)
       stay
   }

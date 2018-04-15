@@ -1,5 +1,3 @@
-package test
-
 import com.google.inject.AbstractModule
 import modules.DefaultWSClientFactory
 import net.codingwell.scalaguice.ScalaModule

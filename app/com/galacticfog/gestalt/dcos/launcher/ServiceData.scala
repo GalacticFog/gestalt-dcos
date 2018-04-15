@@ -38,6 +38,6 @@ final case class ServiceData(statuses: Map[FrameworkService, ServiceInfo],
 }
 
 case object ServiceData {
-  def init: ServiceData = ServiceData(Map.empty, None, None, None, GlobalConfig.empty, false)
+  def init: ServiceData = ServiceData(Map.empty, None, None, None, GlobalConfig.empty, connected = false)
 }
 

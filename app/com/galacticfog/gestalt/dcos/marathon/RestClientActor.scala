@@ -89,7 +89,7 @@ class RestClientActor @Inject()(launcherConfig: LauncherConfig,
           case 200 | 201 | 409 =>
             if (resp.status == 409) logger.warn(s"launchApp(${appId}) response is 409: ${resp.body}, will ignore")
             Future.successful(resp.json)
-          case s =>
+          case _ =>
             logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
             Future.failed(new RuntimeException(
               Try {
@@ -186,7 +186,7 @@ class RestClientActor @Inject()(launcherConfig: LauncherConfig,
     ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports.map(_.toString),status)
   }
 
-  private[this] def getServices(): Future[Seq[ServiceInfo]] = {
+  private[this] def getServices: Future[Seq[ServiceInfo]] = {
     val endpoint = s"/v2/groups/${appGroup}"
     for {
       req <- genRequest(endpoint)
@@ -239,7 +239,7 @@ class RestClientActor @Inject()(launcherConfig: LauncherConfig,
     case LaunchAppRequest(payload) => pipe(launchApp(payload)) to sender()
     case KillAppRequest(svc) => pipe(killApp(svc)) to sender()
     case GetServiceInfo(svc) => pipe(getServiceStatus(svc)) to sender()
-    case GetAllServiceInfo => pipe(getServices()) to sender()
+    case GetAllServiceInfo => pipe(getServices) to sender()
     case e =>
       val s = sender()
       logger.info(s"received unknown message ${e} from ${s}")
@@ -261,7 +261,7 @@ object RestClientActor {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
     lazy val HAPROXY_N_VPATH = "HAPROXY_([0-9]+)_PATH".r
     lazy val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
-    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).filter(_.trim.nonEmpty).isDefined ) {
+    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).exists(_.trim.nonEmpty) ) {
       val vhosts = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_VHOST(index), vhost) => (index.toInt -> vhost)
       })

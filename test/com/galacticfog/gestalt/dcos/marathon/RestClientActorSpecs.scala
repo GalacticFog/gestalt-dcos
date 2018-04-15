@@ -27,10 +27,10 @@ class RestClientActorSpecs extends PlaySpecification with Mockito with MockWSHel
     def launch(auth: Boolean): MockWS.Routes = {
       case (POST, url) if url == marathonBaseUrl+s"/v2/apps" => Action { request =>
         request match {
-          case AuthedRequest(authToken) if  auth => Ok(Json.obj("id" -> testAppId))
-          case AuthedRequest(_)         if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
-          case _                        if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
-          case _                        if !auth => Ok(Json.obj("id" -> testAppId))
+          case AuthedRequest(_) if  auth => Ok(Json.obj("id" -> testAppId))
+          case AuthedRequest(_) if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
+          case _                if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
+          case _                if !auth => Ok(Json.obj("id" -> testAppId))
         }
       }
     }
@@ -38,10 +38,10 @@ class RestClientActorSpecs extends PlaySpecification with Mockito with MockWSHel
     def kill(auth: Boolean): MockWS.Routes = {
       case (DELETE, url) if url == marathonBaseUrl+s"/v2/apps/gestalt-framework/data-0" => Action { request =>
         request match {
-          case AuthedRequest(authToken) if  auth => Ok(Json.obj())
-          case AuthedRequest(_)         if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
-          case _                        if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
-          case _                        if !auth => Ok(Json.obj())
+          case AuthedRequest(_) if  auth => Ok(Json.obj())
+          case AuthedRequest(_) if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
+          case _                if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
+          case _                if !auth => Ok(Json.obj())
         }
       }
     }
@@ -50,10 +50,10 @@ class RestClientActorSpecs extends PlaySpecification with Mockito with MockWSHel
       case (GET, url) if url == marathonBaseUrl+s"/v2/apps/gestalt-framework/data-0" => Action { request =>
         val resp = Json.parse(scala.io.Source.fromInputStream(getClass.getResourceAsStream("/marathon-app-response.json")).getLines().mkString)
         request match {
-          case AuthedRequest(authToken) if auth => Ok(resp)
+          case AuthedRequest(_) if  auth => Ok(resp)
           case AuthedRequest(_) if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
-          case _ if auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
-          case _ if !auth => Ok(resp)
+          case _                if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
+          case _                if !auth => Ok(resp)
         }
       }
     }
@@ -62,10 +62,10 @@ class RestClientActorSpecs extends PlaySpecification with Mockito with MockWSHel
       case (GET, url) if url == marathonBaseUrl+s"/v2/groups/gestalt-framework" => Action { request =>
         val resp = Json.parse(scala.io.Source.fromInputStream(getClass.getResourceAsStream("/marathon-apps-response.json")).getLines().mkString)
         request match {
-          case AuthedRequest(authToken) if auth => Ok(resp)
+          case AuthedRequest(_) if  auth => Ok(resp)
           case AuthedRequest(_) if !auth => Unauthorized(Json.obj("message" -> "i was not expecting a token"))
-          case _ if auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
-          case _ if !auth => Ok(resp)
+          case _                if  auth => Unauthorized(Json.obj("message" -> "i did not get the expected token"))
+          case _                if !auth => Ok(resp)
         }
       }
     }

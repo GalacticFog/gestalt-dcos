@@ -231,7 +231,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("SCALE_DOWN_TIME_SECONDS" -> "300")
     }
 
@@ -243,7 +243,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid, Some(GlobalElasticConfig(
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid, Some(GlobalElasticConfig(
         hostname = "my-es-cluster",
         protocol = "https",
         portApi = 2222,
@@ -263,7 +263,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must notHavePrivateVar("ES_PROTOCOL") and notHavePublicVar("ES_PROTOCOL")
       laserPayload must notHavePrivateVar("ES_HOST") and notHavePublicVar("ES_HOST")
       laserPayload must notHavePrivateVar("ES_PORT") and notHavePublicVar("ES_PORT")
@@ -277,7 +277,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must notHavePrivateVar("ES_PROTOCOL") and notHavePublicVar("ES_PROTOCOL")
       laserPayload must notHavePrivateVar("ES_HOST") and notHavePublicVar("ES_HOST")
       laserPayload must notHavePrivateVar("ES_PORT") and notHavePublicVar("ES_PORT")
@@ -291,7 +291,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("META_NETWORK_NAME" -> "user-network")
     }
 
@@ -303,7 +303,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("META_NETWORK_NAME" -> "HOST")
       (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "HOST"
     }
@@ -316,7 +316,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val cspec = (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties")
       (cspec \ "network").as[String] must_== "HOST"
       (cspec \ "cmd").as[String] must contain("MANAGEMENT_PORT=$PORT1")
@@ -333,7 +333,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("MANAGEMENT_PORT" -> "60500")
     }
 
@@ -345,7 +345,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("MAX_COOL_CONNECTION_TIME" -> "45")
     }
 
@@ -357,7 +357,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("MAX_COOL_CONNECTION_TIME" -> LauncherConfig.LaserConfig.Defaults.MAX_COOL_CONNECTION_TIME.toString)
     }
 
@@ -369,7 +369,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_TIMEOUT" -> "45000")
     }
 
@@ -381,7 +381,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_TIMEOUT" -> LauncherConfig.LaserConfig.Defaults.EXECUTOR_HEARTBEAT_TIMEOUT.toString)
     }
 
@@ -393,7 +393,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_MILLIS" -> "30000")
     }
 
@@ -405,7 +405,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("EXECUTOR_HEARTBEAT_MILLIS" -> LauncherConfig.LaserConfig.Defaults.EXECUTOR_HEARTBEAT_MILLIS.toString)
     }
 
@@ -417,7 +417,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("DEFAULT_EXECUTOR_CPU" -> "1.1")
     }
 
@@ -429,7 +429,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("DEFAULT_EXECUTOR_CPU" -> LauncherConfig.LaserConfig.Defaults.DEFAULT_EXECUTOR_CPU.toString)
     }
 
@@ -441,7 +441,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("DEFAULT_EXECUTOR_MEM" -> "1111")
     }
 
@@ -453,7 +453,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       laserPayload must havePrivateVar("DEFAULT_EXECUTOR_MEM" -> LauncherConfig.LaserConfig.Defaults.DEFAULT_EXECUTOR_MEM.toString)
     }
 
@@ -503,7 +503,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .disable[Module]
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
       val data = gtf.getMarathonPayload(RABBIT, emptyDbConfig)
       data.container.flatMap(_.docker) must beSome
       val Some(docker) = data.container.flatMap(_.docker)
@@ -659,7 +658,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       Json.toJson(payload).toString must /("properties") /("config") /("accept_any_cert" -> true)
     }
 
@@ -671,7 +670,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       Json.toJson(payload).toString must /("properties") /("config") /("accept_any_cert" -> false)
     }
 
@@ -682,7 +681,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       Json.toJson(payload).toString must /("properties") /("config") /("accept_any_cert" -> false)
     }
 
@@ -704,7 +703,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (payload \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
         "scheme" -> "acs",
         "service_account_id" -> testServiceId,
@@ -720,7 +719,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (payload \ "properties" \ "config" \ "auth").as[JsObject] must_== Json.obj(
         "scheme" -> "Basic",
         "username" -> "unused",
@@ -738,7 +737,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (payload \ "properties" \ "config" \ "secret_support").asOpt[Boolean] must beSome(true)
       (payload \ "properties" \ "config" \ "secret_url").asOpt[String] must beSome("https://secrets.are/here")
       (payload \ "properties" \ "config" \ "secret_store").asOpt[String] must beSome("not-default")
@@ -812,7 +811,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "custom-group-1,custom-group-2"
     }
 
@@ -824,7 +823,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (Json.toJson(payload) \ "properties" \ "config" \ "haproxyGroup").as[String] must_== "external"
     }
 
@@ -837,7 +836,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (Json.toJson(payload) \ "properties" \ "config" \ "marathon_framework_name").asOpt[String] must beSome("marathon-user")
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("my-dcos-cluster")
     }
@@ -851,7 +850,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val payload = gtf.getCaasProvider()
+      val payload = gtf.getCaasProvider
       (Json.toJson(payload) \ "properties" \ "config" \ "marathon_framework_name").asOpt[String] must beSome("marathon")
       (Json.toJson(payload) \ "properties" \ "config" \ "dcos_cluster_name").asOpt[String] must beSome("thisdcos")
     }
@@ -901,8 +900,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
-
-      def uuid = UUID.randomUUID()
 
       Fragment.foreach(config.provisionedServices) { svc =>
         val payload = gtf.getMarathonPayload(svc, testGlobalVars)
@@ -957,8 +954,6 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val config = injector.instanceOf[LauncherConfig]
 
-      def uuid = UUID.randomUUID()
-
       Fragment.foreach(config.provisionedServices) { svc =>
         val payload = gtf.getMarathonPayload(svc, testGlobalVars)
         svc.name ! {
@@ -981,9 +976,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
 
-      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,disabled = false)
       val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
@@ -1017,9 +1011,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
 
-      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,disabled = false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
@@ -1051,9 +1044,8 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         )
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val config = injector.instanceOf[LauncherConfig]
 
-      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,false)
+      val creds = GestaltAPIKey("thekey",Some("sshhh"),uuid,disabled = false)
       val laser = gtf.getLaserProvider(creds, uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val Some(logging) = gtf.getLogProvider(uuid, testGlobalVars.elasticConfig.get)
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)

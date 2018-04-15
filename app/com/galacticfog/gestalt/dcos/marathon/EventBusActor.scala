@@ -44,7 +44,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
 
   connectToBus
 
-  private[this] def connectToBus: Unit = {
+  private[this] def connectToBus(): Unit = {
     val fMaybeAuthToken = getAuthToken // start this early
 
     val sendToSelf = Sink.actorRef[MarathonEvent](self, EventBusFailure("stream closed"))
@@ -55,18 +55,18 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
       maybeAuthToken <- fMaybeAuthToken
       uri = eventFilter.foldLeft(
         Uri(s"${marathonBaseUrl}/v2/events")
-      ){ case (uri,qs) =>
-        val q = qs.foldLeft(Uri.Query()) {
-          case (q, eventType) => q.+:("event_type" -> eventType)
+      ){ case (u,filters) =>
+        val q = filters.foldLeft(Uri.Query()) {
+          case (flt, eventType) => flt.+:("event_type" -> eventType)
         }
-        uri.withQuery(q)
+        u.withQuery(q)
       }
       req = maybeAuthToken.foldLeft(
         Get(uri).addHeader(Accept(MediaTypes.`text/event-stream`))
       ) {
-        case (req, tok) =>
+        case (r, tok) =>
           logger.debug("adding header to event bus request")
-          req.addHeader(
+          r.addHeader(
             Authorization(GenericHttpCredentials("token="+tok, ""))
           )
       }
@@ -152,7 +152,7 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
       subscriber ! ConnectedToEventBus
     case f @ EventBusFailure(msg, maybeT) =>
       maybeT match {
-        case Some(t) =>
+        case Some(_) =>
           logger.warn(s"event bus error: $msg")
         case None =>
           logger.warn(s"event bus error: $msg")

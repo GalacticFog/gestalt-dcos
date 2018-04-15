@@ -118,8 +118,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     }
     base.copy(
       env = base.env ++ launcherConfig.extraEnv(service),
-      cpus = launcherConfig.resources.cpu.get(service).getOrElse(base.cpus),
-      mem  = launcherConfig.resources.mem.get(service).getOrElse(base.mem)
+      cpus = launcherConfig.resources.cpu.getOrElse(service, base.cpus),
+      mem  = launcherConfig.resources.mem.getOrElse(service, base.mem)
     )
   }
 
@@ -359,7 +359,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  def getCaasProvider(): JsValue = {
+  def getCaasProvider: JsValue = {
     GestaltProviderBuilder.caasProvider(CaaSSecrets(
       url = Some(launcherConfig.marathon.baseUrl),
       username = Some("unused"),
@@ -395,7 +395,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
-  def getRabbitProvider(): JsValue = {
+  def getRabbitProvider: JsValue = {
     GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
       host = launcherConfig.vipHostname(RABBIT_AMQP),
       port = RABBIT_AMQP.port
@@ -460,8 +460,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceConfig = LaserSecrets.ServiceConfig(
           dbName = "default-laser-provider",
           laserImage = launcherConfig.dockerImage(LASER),
-          laserCpu = launcherConfig.resources.cpu.get(LASER) getOrElse LASER.cpu,
-          laserMem = launcherConfig.resources.mem.get(LASER) getOrElse LASER.mem,
+          laserCpu = launcherConfig.resources.cpu.getOrElse(LASER, LASER.cpu),
+          laserMem = launcherConfig.resources.mem.getOrElse(LASER, LASER.mem),
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
           laserEthernetPort = None,
           serviceHostOverride = launcherConfig.laser.serviceHostOverride,
