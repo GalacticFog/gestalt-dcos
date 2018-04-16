@@ -61,8 +61,10 @@ libraryDependencies ++= Seq(
   guice,
   "com.typesafe.akka" %% "akka-http" % "10.0.8",
   "com.typesafe.play" %% "play-json" % "2.6.9",
-  "org.webjars" %% "webjars-play" % "2.6.3",
+  //
+  "org.webjars" %% "webjars-play" % "2.6.1",
   "org.webjars" % "bootstrap" % "3.1.1-2",
+  //
   "org.scalikejdbc" %% "scalikejdbc" % "3.2.2",
   "org.postgresql" % "postgresql" % "9.3-1104-jdbc4",
   "net.codingwell"  %% "scala-guice" 					 % "4.1.1",

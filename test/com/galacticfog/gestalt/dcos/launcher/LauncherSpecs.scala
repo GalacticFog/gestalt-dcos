@@ -44,7 +44,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
   case class TestModule(sseActor: ActorRef, restActor: ActorRef, ws: WSClient) extends AbstractModule with ScalaModule with AkkaGuiceSupport {
     object WrapperFactory extends EventBusActor.Factory with RestClientActor.Factory {
-      def apply(subscriber: ActorRef, eventFilter: Seq[String]): Actor = new ProbeWrapper(sseActor)
+      def apply(subscriber: ActorRef, eventFilter: Option[Seq[String]]): Actor = new ProbeWrapper(sseActor)
       def apply(): Actor = new ProbeWrapper(restActor)
     }
     override def configure(): Unit = {

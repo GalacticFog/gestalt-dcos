@@ -13,13 +13,14 @@
         <title>@title</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        @webJarsUtil.locate("jquery.min.js").script()
-        @webJarsUtil.locate("bootstrap.min.js").script()
-        @webJarsUtil.locate("bootstrap.min.css").css()
-        @webJarsUtil.locate("bootstrap-theme.min.css").css()
-        <link rel="stylesheet" media="screen" href="@routes.Assets.at("stylesheets/main.css").toString.stripPrefix("/")">
-        <link rel="stylesheet" media="screen" href="@routes.Assets.at("stylesheets/sticky-footer.css").toString.stripPrefix("/")">
-        <link rel="shortcut icon" type="image/png" href="@routes.Assets.at("images/favicon.png").toString.stripPrefix("/")">
+        @Html(webJarsUtil.script("jquery.min.js"))
+        @Html(webJarsUtil.script("bootstrap.min.js"))
+        @Html(webJarsUtil.css("bootstrap.min.css"))
+        @Html(webJarsUtil.css("bootstrap-theme.min.css"))
+        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css")">
+        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/sticky-footer.css")">
+        <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png")">
+
     </head>
     <body>
 
@@ -35,4 +36,5 @@
         </footer>
 
     </body>
+
 </html>

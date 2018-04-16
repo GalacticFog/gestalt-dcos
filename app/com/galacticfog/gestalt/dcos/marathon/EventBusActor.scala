@@ -4,9 +4,9 @@ import akka.NotUsed
 import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.client.RequestBuilding.Get
-import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaTypes, Uri}
 import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.model.sse.ServerSentEvent
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse, MediaTypes, Uri}
 import akka.http.scaladsl.unmarshalling.Unmarshal
 import akka.http.scaladsl.unmarshalling.sse.EventStreamUnmarshalling
 import akka.pattern.ask
@@ -14,10 +14,9 @@ import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.galacticfog.gestalt.dcos.LauncherConfig
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
-import com.galacticfog.gestalt.dcos.marathon.EventBusActor.MarathonDeploymentInfo.Step
 import com.google.inject.assistedinject.Assisted
 import com.typesafe.sslconfig.akka.AkkaSSLConfig
-import javax.inject.{Inject, Named, Singleton}
+import javax.inject.{Inject, Named}
 import play.api.Logger
 import play.api.libs.json._
 
@@ -164,8 +163,10 @@ class EventBusActor @Inject()(launcherConfig: LauncherConfig,
 
 object EventBusActor {
 
+  val logger: Logger = Logger(this.getClass())
+
   trait Factory {
-    def apply(subscriber: ActorRef, eventFilter: Seq[String]): Actor
+    def apply(subscriber: ActorRef, eventFilter: Option[Seq[String]]): Actor
   }
 
   trait HttpResponder {
@@ -173,7 +174,6 @@ object EventBusActor {
   }
 
   class DefaultHttpResponder @Inject()(launcherConfig: LauncherConfig) extends HttpResponder {
-
     override def apply(req: HttpRequest)
                       (implicit system: ActorSystem): Future[HttpResponse] = {
       val http = Http(system)
@@ -186,7 +186,6 @@ object EventBusActor {
         request = req
       )
     }
-
   }
 
   case object ConnectedToEventBus
@@ -260,8 +259,6 @@ object EventBusActor {
       case class Action(action: String, app: String)
     }
   }
-
-  val logger: Logger = Logger(this.getClass())
 
   def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[T] = {
     Option(event.data) filter {_.trim.nonEmpty} flatMap { data =>

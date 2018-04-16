@@ -105,14 +105,14 @@ class LauncherFSM @Inject()(config: LauncherConfig,
 
   val eventBusSupervisorProps = BackoffSupervisor.props(
     Backoff.onFailure(
-      childProps = Props(marathonEventBusFactory.apply(context.self, Seq(
+      childProps = Props(marathonEventBusFactory(context.self, Some(Seq(
         MarathonAppTerminatedEvent.eventType, MarathonHealthStatusChange.eventType, MarathonStatusUpdateEvent.eventType
-      ))),
+      )))),
       childName = "marathon-event-bus-client",
-      minBackoff = 1 second,
-      maxBackoff = 30 seconds,
-      randomFactor = 0.2
-    )
+      minBackoff = 5 second,
+      maxBackoff = 5 minutes,
+      randomFactor = 0.1
+    ).withManualReset
   )
   val eventBusSupervisor = system.actorOf(eventBusSupervisorProps)
 
@@ -821,6 +821,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
 
     case Event(EventBusActor.ConnectedToEventBus, d) =>
       log.info("successfully connected to Marathon event bus, requesting service update")
+      eventBusSupervisor ! BackoffSupervisor.Reset
       val s = self
       (marClient ? RestClientActor.GetAllServiceInfo).mapTo[Seq[ServiceInfo]].onComplete {
         case Success(all) =>
