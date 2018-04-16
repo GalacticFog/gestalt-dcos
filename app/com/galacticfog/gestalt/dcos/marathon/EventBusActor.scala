@@ -180,7 +180,12 @@ object EventBusActor {
       http.singleRequest(
         connectionContext = if (launcherConfig.acceptAnyCertificate) {
           logger.warn("disabling certificate checking for connection to Marathon REST API; this is not recommended because it opens communications up to MITM attacks")
-          val badSslConfig = AkkaSSLConfig(system).mapSettings(s => s.withLoose(s.loose.withDisableHostnameVerification(true)))
+          val badSslConfig = AkkaSSLConfig(system).mapSettings(s => s
+            .withLoose(s.loose
+              .withDisableHostnameVerification(value = true)
+              .withAcceptAnyCertificate(value = true)
+            )
+          )
           http.createClientHttpsContext(badSslConfig)
         } else http.defaultClientHttpsContext,
         request = req
