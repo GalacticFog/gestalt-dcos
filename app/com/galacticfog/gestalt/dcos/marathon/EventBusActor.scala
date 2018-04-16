@@ -1,8 +1,10 @@
 package com.galacticfog.gestalt.dcos.marathon
 
+import java.security.cert.X509Certificate
+
 import akka.NotUsed
 import akka.actor.{Actor, ActorRef, ActorSystem}
-import akka.http.scaladsl.Http
+import akka.http.scaladsl.{Http, HttpsConnectionContext}
 import akka.http.scaladsl.client.RequestBuilding.Get
 import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
 import akka.http.scaladsl.model.sse.ServerSentEvent
@@ -17,6 +19,7 @@ import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenEr
 import com.google.inject.assistedinject.Assisted
 import com.typesafe.sslconfig.akka.AkkaSSLConfig
 import javax.inject.{Inject, Named}
+import javax.net.ssl.{KeyManager, SSLContext, X509TrustManager}
 import play.api.Logger
 import play.api.libs.json._
 
@@ -174,24 +177,48 @@ object EventBusActor {
   }
 
   class DefaultHttpResponder @Inject()(launcherConfig: LauncherConfig) extends HttpResponder {
+    lazy private val trustfulSslContext: SSLContext = {
+      object NoCheckX509TrustManager extends X509TrustManager {
+        override def checkClientTrusted(chain: Array[X509Certificate], authType: String) = ()
+
+        override def checkServerTrusted(chain: Array[X509Certificate], authType: String) = ()
+
+        override def getAcceptedIssuers = Array[X509Certificate]()
+      }
+      val context = SSLContext.getInstance("TLS")
+      context.init(Array[KeyManager](), Array(NoCheckX509TrustManager), null)
+      context
+    }
+
     override def apply(req: HttpRequest)
                       (implicit system: ActorSystem): Future[HttpResponse] = {
-      val http = Http(system)
+      val http = Http()
       http.singleRequest(
+        request = req,
         connectionContext = if (launcherConfig.acceptAnyCertificate) {
           logger.warn("disabling certificate checking for connection to Marathon REST API; this is not recommended because it opens communications up to MITM attacks")
-          val badSslConfig = AkkaSSLConfig(system).mapSettings(s => s
-            .withLoose(s.loose
-              .withDisableHostnameVerification(value = true)
-              .withAcceptAnyCertificate(value = true)
+          val badSslConfig: AkkaSSLConfig = AkkaSSLConfig().mapSettings(s =>
+            s.withLoose(
+              s.loose
+                .withDisableHostnameVerification(value = true)
+                .withAcceptAnyCertificate(value = true)
             )
           )
-          http.createClientHttpsContext(badSslConfig)
-        } else http.defaultClientHttpsContext,
-        request = req
+          val ctx = http.createClientHttpsContext(badSslConfig)
+          new HttpsConnectionContext(
+            trustfulSslContext,
+            ctx.sslConfig,
+            ctx.enabledCipherSuites,
+            ctx.enabledProtocols,
+            ctx.clientAuth,
+            ctx.sslParameters
+          )
+        } else http.defaultClientHttpsContext
       )
     }
   }
+
+
 
   case object ConnectedToEventBus
   case class EventBusFailure(msg: String, t: Option[Throwable] = None) extends RuntimeException
