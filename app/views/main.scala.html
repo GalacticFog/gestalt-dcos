@@ -13,13 +13,13 @@
         <title>@title</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        @Html(webJarsUtil.script("jquery.min.js"))
-        @Html(webJarsUtil.script("bootstrap.min.js"))
-        @Html(webJarsUtil.css("bootstrap.min.css"))
-        @Html(webJarsUtil.css("bootstrap-theme.min.css"))
-        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css")">
-        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/sticky-footer.css")">
-        <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png")">
+        @Html(webJarsUtil.script(webJarsUtil.url("jquery.min.js").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.script(webJarsUtil.url("bootstrap.min.js").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.css(webJarsUtil.url("bootstrap.min.css").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.css(webJarsUtil.url("bootstrap-theme.min.css").map(_.stripPrefix("/"))))
+        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css").toString.stripPrefix("/")">
+        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/sticky-footer.css").toString.stripPrefix("/")">
+        <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png").toString.stripPrefix("/")">
 
     </head>
     <body>
