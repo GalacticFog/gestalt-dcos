@@ -560,14 +560,14 @@ class LauncherFSM @Inject()(config: LauncherConfig,
   ))
 
   when(Uninitialized) {
-    // the Marathon event bus connection will trigger this (or an error), but we won't proceed to launching until we get it
+    // the Marathon event bus connection will trigger this (or an error), but we won't begin launching until we get it
     case Event(UpdateAllServiceInfo(all), d) =>
       log.info("initializing all services")
       all.foreach {
         svcInfo => log.info(s"${svcInfo.service} : ${svcInfo.status}")
       }
       this.context.system.scheduler.schedule(1 minute, 1 minute, self, Sync)
-      goto(LaunchingRabbit) using d.update(all)
+      goto(config.LAUNCH_ORDER.head) using d.update(all)
     case Event(ShutdownRequest(_),_) =>
       log.info("Ignoring ShutdownRequest from Uninitialized state")
       stay

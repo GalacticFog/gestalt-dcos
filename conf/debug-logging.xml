@@ -25,6 +25,7 @@
   </appender>
 
   <logger name="play" level="DEBUG" />
+  <logger name="play.shaded.ahc" level="DEBUG" />
   <logger name="application" level="DEBUG" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->

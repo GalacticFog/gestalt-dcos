@@ -180,9 +180,7 @@ object EventBusActor {
     lazy private val trustfulSslContext: SSLContext = {
       object NoCheckX509TrustManager extends X509TrustManager {
         override def checkClientTrusted(chain: Array[X509Certificate], authType: String) = ()
-
         override def checkServerTrusted(chain: Array[X509Certificate], authType: String) = ()
-
         override def getAcceptedIssuers = Array[X509Certificate]()
       }
       val context = SSLContext.getInstance("TLS")

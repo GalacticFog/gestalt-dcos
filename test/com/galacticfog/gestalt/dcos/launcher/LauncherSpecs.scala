@@ -283,6 +283,90 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
       ))
     }
 
+    "for provisioned db, launch db after initial service sync" in new WithConfig(
+      "logging.provision-elastic" -> false,
+      "database.provision" -> true,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/data-0") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(DATA(0)) if launched =>
+            sender ! ServiceInfo(
+              service = DATA(0),
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.50"),
+              ports = Seq("5432"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+      expectMsg(CurrentState(launcher, Uninitialized))
+
+      launcher ! UpdateAllServiceInfo(Seq.empty)
+      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
+      expectMsg(Transition(launcher, LaunchingDB(0), launcher.underlyingActor.nextState(LaunchingDB(0))))
+    }
+
+    "for non-provisioned db, launch rabbit after initial service sync" in new WithConfig(
+      "logging.provision-elastic" -> false,
+      "database.provision" -> false,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/rabbit") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(RABBIT) if launched =>
+            sender ! ServiceInfo(
+              service = RABBIT,
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.50"),
+              ports = Seq("5672","15672"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+      expectMsg(CurrentState(launcher, Uninitialized))
+
+      launcher ! UpdateAllServiceInfo(Seq.empty)
+      expectMsg(Transition(launcher, Uninitialized, LaunchingRabbit))
+      expectMsg(Transition(launcher, LaunchingRabbit, launcher.underlyingActor.nextState(LaunchingRabbit)))
+    }
+
     "not shutdown database containers if they were not provisioned even if asked to" in new WithConfig("database.provision" -> false) {
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
       launcher.stateName must_== States.Uninitialized
