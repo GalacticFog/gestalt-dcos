@@ -79,5 +79,5 @@
         </div>
     </div>
 
-    <script type="text/javascript" src="@routes.Assets.versioned("scripts/launcher.js")"></script>
+    <script type="text/javascript" src="@routes.Assets.versioned("scripts/launcher.js").toString.stripPrefix("/")"></script>
 }
