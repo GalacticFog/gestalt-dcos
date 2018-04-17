@@ -47,7 +47,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.3.4" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.3.6" withSources()
 )
 
 scalacOptions ++= Seq("-feature")

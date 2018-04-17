@@ -28,10 +28,6 @@
   <logger name="application" level="INFO" />
 
   <logger name="play.shaded.ahc" level="INFO" />
-  <logger name="play.shaded.ahc.org.asynchttpclient.netty.handler.HttpHandler" level="INFO" />
-  <logger name="play.shaded.ahc.org.asynchttpclient.netty.channel.DefaultChannelPool" level="INFO" />
-  <logger name="play.shaded.ahc.org.asynchttpclient.netty.channel.ChannelManager" level="INFO" />
-  <logger name="play.shaded.ahc.org.asynchttpclient.netty.request.NettyRequestSender" level="INFO" />
 
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.avaje.ebean.config.PropertyMapLoader" level="OFF" />
