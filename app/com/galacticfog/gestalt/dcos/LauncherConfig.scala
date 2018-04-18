@@ -446,14 +446,14 @@ object LauncherConfig {
     case class LaserRuntime(name: String, runtime: String, image: String, cmd: String, metaType: String, laserExecutor: Option[WellKnownLaserExecutor] = None)
 
     val KNOWN_LASER_RUNTIMES: Map[WellKnownLaserExecutor, LaserRuntime] = Map(
-      EXECUTOR_NODEJS   -> LaserRuntime("nodejs-executor",  "nodejs",        "", "bin/gestalt-laser-executor-nodejs", "NodeJS", Some(EXECUTOR_NODEJS)),
-      EXECUTOR_NASHORN  -> LaserRuntime("nashorn-executor", "nashorn",       "", "bin/gestalt-laser-executor-js",     "Nashorn", Some(EXECUTOR_NASHORN)),
-      EXECUTOR_JVM      -> LaserRuntime("jvm-executor",     "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java", Some(EXECUTOR_JVM)),
-      EXECUTOR_DOTNET   -> LaserRuntime("dotnet-executor",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp", Some(EXECUTOR_DOTNET)),
-      EXECUTOR_PYTHON   -> LaserRuntime("python-executor",  "python",        "", "bin/gestalt-laser-executor-python", "Python", Some(EXECUTOR_PYTHON)),
-      EXECUTOR_RUBY     -> LaserRuntime("ruby-executor",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby", Some(EXECUTOR_RUBY)),
-      EXECUTOR_BASH     -> LaserRuntime("bash-executor",    "bash",          "", "bin/gestalt-laser-executor-bash"  , "Bash", Some(EXECUTOR_BASH)),
-      EXECUTOR_GOLANG   -> LaserRuntime("golang-executor",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang", Some(EXECUTOR_GOLANG))
+      EXECUTOR_NODEJS   -> LaserRuntime("nodejs",  "nodejs",        "", "bin/gestalt-laser-executor-nodejs", "NodeJS", Some(EXECUTOR_NODEJS)),
+      EXECUTOR_NASHORN  -> LaserRuntime("nashorn", "nashorn",       "", "bin/gestalt-laser-executor-js",     "Nashorn", Some(EXECUTOR_NASHORN)),
+      EXECUTOR_JVM      -> LaserRuntime("jvm",     "java;scala",    "", "bin/gestalt-laser-executor-jvm"   , "Java", Some(EXECUTOR_JVM)),
+      EXECUTOR_DOTNET   -> LaserRuntime("dotnet",  "csharp;dotnet", "", "bin/gestalt-laser-executor-dotnet", "CSharp", Some(EXECUTOR_DOTNET)),
+      EXECUTOR_PYTHON   -> LaserRuntime("python",  "python",        "", "bin/gestalt-laser-executor-python", "Python", Some(EXECUTOR_PYTHON)),
+      EXECUTOR_RUBY     -> LaserRuntime("ruby",    "ruby",          "", "bin/gestalt-laser-executor-ruby"  , "Ruby", Some(EXECUTOR_RUBY)),
+      EXECUTOR_BASH     -> LaserRuntime("bash",    "bash",          "", "bin/gestalt-laser-executor-bash"  , "Bash", Some(EXECUTOR_BASH)),
+      EXECUTOR_GOLANG   -> LaserRuntime("golang",  "golang",        "", "bin/gestalt-laser-executor-golang", "GoLang", Some(EXECUTOR_GOLANG))
     )
   }
 
