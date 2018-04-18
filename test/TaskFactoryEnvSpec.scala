@@ -74,14 +74,14 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "nashorn-executor" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
-        case "nodejs-executor"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
-        case "jvm-executor"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
-        case "dotnet-executor"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
-        case "python-executor"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
-        case "ruby-executor"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
-        case "bash-executor"    => env("LASER_EXECUTOR_BASH_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-bash:release-${ensVer}")
-        case "golang-executor"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
+        case "nashorn" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
+        case "nodejs"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
+        case "jvm"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
+        case "dotnet"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
+        case "python"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
+        case "ruby"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
+        case "bash"    => env("LASER_EXECUTOR_BASH_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-bash:release-${ensVer}")
+        case "golang"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
         case _ => throw new RuntimeException("unexpected")
       }
 
