@@ -873,6 +873,10 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       log.debug(s"ignoring ${e.eventType}(${taskStatus}) for task from non-framework app ${nonFrameworkAppId}")
       stay
 
+    case Event(e @ MarathonHealthStatusChange(_, nonFrameworkAppid, _, _, _, alive), _) =>
+      log.debug(s"ignoring ${e.eventType}(alive = $alive) for task from non-framework app ${nonFrameworkAppid}")
+      stay
+
     /**************************************************
       *
       * miscellaneous events, mostly updates to state
