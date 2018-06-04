@@ -1,0 +1,89 @@
+{
+  "apps": [{
+    "container": {
+      "docker": {
+        "forcePullImage": true,
+        "image": "galacticfog/postgres_repl:release-1.5.0",
+        "parameters": [],
+        "privileged": false
+      },
+      "portMappings": [
+        {
+          "containerPort": 5432,
+          "hostPort": 5432,
+          "labels": {
+            "VIP_0": "/rc-galacticfog-com-data-primary:5432"
+          },
+          "name": "sql",
+          "protocol": "tcp",
+          "servicePort": 10127
+        }
+      ],
+      "type": "DOCKER"
+    },
+    "cpus": 2,
+    "disk": 0,
+    "env": {},
+    "healthChecks": [
+      {
+        "delaySeconds": 15,
+        "gracePeriodSeconds": 300,
+        "intervalSeconds": 30,
+        "maxConsecutiveFailures": 4,
+        "portIndex": 0,
+        "protocol": "TCP",
+        "timeoutSeconds": 15
+      }
+    ],
+    "id": "/gestalt-framework/data-0",
+    "instances": 1,
+    "labels": {},
+    "mem": 4096,
+    "networks": [
+      {
+        "mode": "container/bridge"
+      }
+    ],
+    "requirePorts": false,
+    "tasks": [
+      {
+        "appId": "/gestalt-framework/data-0",
+        "healthCheckResults": [
+          {
+            "alive": true,
+            "consecutiveFailures": 0,
+            "firstSuccess": "2018-04-07T06:31:29.996Z",
+            "instanceId": "rc-galacticfog-com_data-0.marathon-1129728f-22d4-11e8-a925-3a96106a5393",
+            "lastFailure": "2018-04-09T23:50:04.237Z",
+            "lastFailureCause": "ConnectException: Connection refused (Connection refused)",
+            "lastSuccess": "2018-04-10T14:37:39.205Z"
+          }
+        ],
+        "host": "67.207.85.232",
+        "id": "test-galacticfog-com_data-0.1129728f-22d4-11e8-a925-3a96106a5393.3",
+        "ipAddresses": [
+          {
+            "ipAddress": "172.17.0.3",
+            "protocol": "IPv4"
+          }
+        ],
+        "localVolumes": [],
+        "ports": [ 5432 ],
+        "slaveId": "30464d3f-eded-4669-8e3e-343b2a23981b-S5",
+        "stagedAt": "2018-04-09T23:50:29.675Z",
+        "startedAt": "2018-04-09T23:50:31.569Z",
+        "state": "TASK_RUNNING",
+        "version": "2018-03-08T13:24:41.048Z"
+      }
+    ],
+    "tasksHealthy": 1,
+    "tasksRunning": 1,
+    "tasksStaged": 0,
+    "tasksUnhealthy": 0,
+    "version": "2018-03-08T13:24:41.048Z",
+    "versionInfo": {
+      "lastConfigChangeAt": "2018-03-08T13:24:41.048Z",
+      "lastScalingAt": "2018-03-08T13:24:41.048Z"
+    }
+  }]
+}

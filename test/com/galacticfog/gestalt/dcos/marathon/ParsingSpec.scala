@@ -4,8 +4,6 @@ import org.specs2.matcher.JsonMatchers
 import org.specs2.mutable.Specification
 import play.api.libs.json.Json
 
-import scala.util.Try
-
 class ParsingSpec extends Specification with JsonMatchers {
 
   "MarathonAppPayload" should {

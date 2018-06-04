@@ -51,7 +51,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
           portSvc = 2222,
           clusterName = "my-es-cluster-name"
         )))
-      val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
+      val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), disabled = false)
 
       def uuid = UUID.randomUUID()
 
@@ -74,14 +74,14 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(env("GESTALT_API_GATEWAY_IMG").getOrElse(s"galacticfog/gestalt-api-gateway:release-${ensVer}"))
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "nashorn-executor" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
-        case "nodejs-executor"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
-        case "jvm-executor"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
-        case "dotnet-executor"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
-        case "python-executor"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
-        case "ruby-executor"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
-        case "bash-executor"    => env("LASER_EXECUTOR_BASH_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-bash:release-${ensVer}")
-        case "golang-executor"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
+        case "nashorn" => env("LASER_EXECUTOR_JS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-js:release-${ensVer}")
+        case "nodejs"  => env("LASER_EXECUTOR_NODEJS_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-nodejs:release-${ensVer}")
+        case "jvm"     => env("LASER_EXECUTOR_JVM_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-jvm:release-${ensVer}")
+        case "dotnet"  => env("LASER_EXECUTOR_DOTNET_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-dotnet:release-${ensVer}")
+        case "python"  => env("LASER_EXECUTOR_PYTHON_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-python:release-${ensVer}")
+        case "ruby"    => env("LASER_EXECUTOR_RUBY_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-ruby:release-${ensVer}")
+        case "bash"    => env("LASER_EXECUTOR_BASH_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-bash:release-${ensVer}")
+        case "golang"  => env("LASER_EXECUTOR_GOLANG_IMG").getOrElse(s"galacticfog/gestalt-laser-executor-golang:release-${ensVer}")
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -140,7 +140,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .injector
       val launcherConfig = injector.instanceOf[LauncherConfig]
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
 
       // should work with any env var starting with LASER_, but these are the important legacy ones
       Result.foreach( Seq(
@@ -290,7 +290,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .injector
       val launcherConfig = injector.instanceOf[LauncherConfig]
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val key = GestaltAPIKey("", Some(""), uuid, false)
+      val key = GestaltAPIKey("", Some(""), uuid, disabled = false)
 
       // should work with any env var starting with LASER_, but these are the important legacy ones
       Result.foreach( Seq(
@@ -380,7 +380,7 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         .injector
       val launcherConfig = injector.instanceOf[LauncherConfig]
       val gtf = injector.instanceOf[GestaltTaskFactory]
-      val key = GestaltAPIKey("", Some(""), uuid, false)
+      val key = GestaltAPIKey("", Some(""), uuid, disabled = false)
 
       // should work with any env var starting with LASER_, but these are the important legacy ones
       Result.foreach( Seq(
@@ -475,17 +475,17 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
       val lc  = injector.instanceOf[LauncherConfig]
 
       val dbconfig = DatabaseConfig(
-        provision = sys.env.get("DATABASE_PROVISION").map(_.toBoolean).getOrElse(true),
-        provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(DatabaseConfig.DEFAULT_DISK),
+        provision = sys.env.get("DATABASE_PROVISION").forall(_.toBoolean),
+        provisionedSize = sys.env.get("DATABASE_PROVISIONED_SIZE").map(_.toInt).getOrElse(100),
         provisionedCpu = sys.env.get("DATABASE_PROVISIONED_CPU").map(_.toDouble),
         provisionedMemory = sys.env.get("DATABASE_PROVISIONED_MEMORY").map(_.toInt),
         numSecondaries = sys.env.get("DATABASE_NUM_SECONDARIES").map(_.toInt).getOrElse(0),
-        pgreplToken = sys.env.get("DATABASE_PGREPL_TOKEN").getOrElse("iw4nn4b3likeu"),
-        hostname = sys.env.get("DATABASE_HOSTNAME").getOrElse("gestalt-framework-data"),
+        pgreplToken = sys.env.getOrElse("DATABASE_PGREPL_TOKEN", "iw4nn4b3likeu"),
+        hostname = sys.env.getOrElse("DATABASE_HOSTNAME", "gestalt-framework-data"),
         port = sys.env.get("DATABASE_PORT").map(_.toInt).getOrElse(5432),
-        username = sys.env.get("DATABASE_USERNAME").getOrElse("gestaltdev"),
-        password = sys.env.get("DATABASE_PASSWORD").getOrElse("letmein"),
-        prefix = sys.env.get("DATABASE_PREFIX").getOrElse("gestalt-")
+        username = sys.env.getOrElse("DATABASE_USERNAME", "gestaltdev"),
+        password = sys.env.getOrElse("DATABASE_PASSWORD", "letmein"),
+        prefix = sys.env.getOrElse("DATABASE_PREFIX", "gestalt-")
       )
       lc.database must_== dbconfig
     }
@@ -504,9 +504,9 @@ class TaskFactoryEnvSpec extends Specification with JsonMatchers with TestingUti
         esPortTransport = sys.env.get("LOGGING_ES_PORT_TRANSPORT").map(_.toInt),
         esPortREST      = sys.env.get("LOGGING_ES_PORT_REST").map(_.toInt),
         esProtocol = sys.env.get("LOGGING_ES_PROTOCOL"),
-        provisionProvider = sys.env.get("LOGGING_PROVISION_PROVIDER").map(_.toBoolean).getOrElse(false),
-        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").map(_.toBoolean).getOrElse(false),
-        provisionElastic = sys.env.get("LOGGING_PROVISION_ELASTIC").map(_.toBoolean).getOrElse(false)
+        provisionProvider = sys.env.get("LOGGING_PROVISION_PROVIDER").exists(_.toBoolean),
+        configureLaser = sys.env.get("LOGGING_CONFIGURE_LASER").exists(_.toBoolean),
+        provisionElastic = sys.env.get("LOGGING_PROVISION_ELASTIC").exists(_.toBoolean)
       )
       lc.logging must_== esconfig
     }

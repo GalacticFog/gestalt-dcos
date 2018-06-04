@@ -1,11 +1,8 @@
 package com.galacticfog.gestalt.dcos
 
-import com.galacticfog.gestalt.dcos.marathon.MarathonDeploymentInfo.Step
-import com.galacticfog.gestalt.dcos.marathon.MarathonDeploymentInfo.Step.Action
-import play.api.libs.json.{Json, OFormat, Reads}
-import play.api.libs.json._
-import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
+import play.api.libs.json.Reads._
+import play.api.libs.json.{Json, OFormat, _}
 
 package object marathon {
 
@@ -151,14 +148,5 @@ package object marathon {
     (p.taskKillGracePeriodSeconds,
       p.networks))
   )
-
-  implicit val statusUpdateEventRead: Reads[MarathonStatusUpdateEvent] = Json.reads[MarathonStatusUpdateEvent]
-  implicit val deploymentSuccessRead: Reads[MarathonDeploymentSuccess] = Json.reads[MarathonDeploymentSuccess]
-  implicit val deploymentFailureRead: Reads[MarathonDeploymentFailure] = Json.reads[MarathonDeploymentFailure]
-  implicit val healthStatusChangedRead: Reads[MarathonHealthStatusChange] = Json.reads[MarathonHealthStatusChange]
-  implicit val appTerminatedEventRead: Reads[MarathonAppTerminatedEvent] = Json.reads[MarathonAppTerminatedEvent]
-  implicit val deploymentStepActions: Reads[Action] = Json.reads[MarathonDeploymentInfo.Step.Action]
-  implicit val deploymentStep: Reads[Step] = Json.reads[MarathonDeploymentInfo.Step]
-  implicit val deploymentInfo: Reads[MarathonDeploymentInfo] = Json.reads[MarathonDeploymentInfo]
 
 }

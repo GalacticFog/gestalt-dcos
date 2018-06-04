@@ -13,8 +13,6 @@ import com.galacticfog.gestalt.dcos.AppSpec.USER
 import com.galacticfog.gestalt.dcos.HealthCheck.{MARATHON_HTTP, MARATHON_TCP}
 import com.galacticfog.gestalt.dcos.marathon.MarathonAppPayload.IPPerTaskInfo
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
-import org.apache.mesos.Protos.Environment.Variable
-import org.apache.mesos.Protos._
 import play.api.Logger
 import play.api.libs.json._
 
@@ -120,8 +118,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     }
     base.copy(
       env = base.env ++ launcherConfig.extraEnv(service),
-      cpus = launcherConfig.resources.cpu.get(service).getOrElse(base.cpus),
-      mem  = launcherConfig.resources.mem.get(service).getOrElse(base.mem)
+      cpus = launcherConfig.resources.cpu.getOrElse(service, base.cpus),
+      mem  = launcherConfig.resources.mem.getOrElse(service, base.mem)
     )
   }
 
@@ -304,17 +302,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  implicit private[this] def getVariables(env: Map[String,String]): Environment = {
-    val builder = Environment.newBuilder()
-    env.foreach {
-      case (name,value) => builder.addVariables(Variable.newBuilder
-        .setName(name)
-        .setValue(value)
-      )
-    }
-    builder.build
-  }
-
   def getMarathonPayload( service: FrameworkService,
                           globalConfig: GlobalConfig ): MarathonAppPayload = toMarathonPayload(getAppSpec(service, globalConfig))
 
@@ -372,7 +359,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     )
   }
 
-  def getCaasProvider(): JsValue = {
+  def getCaasProvider: JsValue = {
     GestaltProviderBuilder.caasProvider(CaaSSecrets(
       url = Some(launcherConfig.marathon.baseUrl),
       username = Some("unused"),
@@ -385,16 +372,16 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           "dcos_base_url" -> auth.login_endpoint.stripSuffix("/acs/api/v1/auth/login")
         )
       ),
-      acceptAnyCert = launcherConfig.acceptAnyCertificate,
+      acceptAnyCert = Some(launcherConfig.acceptAnyCertificate),
       kubeconfig = None,
       appGroupPrefix = Some(launcherConfig.marathon.appGroup),
       marathonFrameworkName = Some(launcherConfig.marathon.frameworkName),
       dcosClusterName = Some(launcherConfig.marathon.clusterName),
       networks = launcherConfig.marathon.networkList,
       loadBalancerGroups = launcherConfig.marathon.haproxyGroups.map(_.split(",")),
-      dcosSecretSupport = launcherConfig.dcos.secretSupport,
+      dcosSecretSupport = Some(launcherConfig.dcos.secretSupport),
       dcosSecretUrl = launcherConfig.dcos.secretUrl,
-      dcosSecretStore = launcherConfig.dcos.secretStore
+      dcosSecretStore = Some(launcherConfig.dcos.secretStore)
     ), GestaltProviderBuilder.CaaSTypes.DCOS)
   }
 
@@ -408,7 +395,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
     ))
   }
 
-  def getRabbitProvider(): JsValue = {
+  def getRabbitProvider: JsValue = {
     GestaltProviderBuilder.rabbitProvider(RabbitSecrets(
       host = launcherConfig.vipHostname(RABBIT_AMQP),
       port = RABBIT_AMQP.port
@@ -473,8 +460,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
         serviceConfig = LaserSecrets.ServiceConfig(
           dbName = "default-laser-provider",
           laserImage = launcherConfig.dockerImage(LASER),
-          laserCpu = launcherConfig.resources.cpu.get(LASER) getOrElse LASER.cpu,
-          laserMem = launcherConfig.resources.mem.get(LASER) getOrElse LASER.mem,
+          laserCpu = launcherConfig.resources.cpu.getOrElse(LASER, LASER.cpu),
+          laserMem = launcherConfig.resources.mem.getOrElse(LASER, LASER.mem),
           laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
           laserEthernetPort = None,
           serviceHostOverride = launcherConfig.laser.serviceHostOverride,

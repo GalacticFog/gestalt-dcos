@@ -1,49 +1,32 @@
 package com.galacticfog.gestalt.dcos.marathon
 
-import java.security.cert.X509Certificate
-import javax.inject.{Inject, Named, Singleton}
-import javax.net.ssl.{SSLContext, TrustManager, X509TrustManager}
-
-import scala.language.postfixOps
-import akka.pattern.ask
-import akka.NotUsed
-import akka.actor.{ActorRef, ActorSystem}
-import akka.http.scaladsl.{Http, HttpsConnectionContext}
-import akka.http.scaladsl.model.headers.{Accept, Authorization, GenericHttpCredentials}
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
-import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
-import play.api.libs.ws.{WSClient, WSRequest}
-import play.api.Logger
-import play.api.libs.json._
-import play.api.libs.json.Reads._
-
-import scala.concurrent.Future
-import scala.concurrent.duration._
-import scala.util.{Failure, Success, Try}
-import de.heikoseeberger.akkasse.{EventStreamUnmarshalling, ServerSentEvent}
-import akka.http.scaladsl.client.RequestBuilding.Get
+import akka.actor.{Actor, ActorRef}
+import akka.pattern.{ask, pipe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
 import com.galacticfog.gestalt.dcos.ServiceStatus._
 import com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor.{DCOSAuthTokenError, DCOSAuthTokenResponse}
-import de.heikoseeberger.akkasse.MediaTypes.`text/event-stream`
+import com.galacticfog.gestalt.dcos.{LauncherConfig, ServiceInfo}
+import javax.inject.{Inject, Named, Singleton}
 import modules.WSClientFactory
+import play.api.Logger
 import play.api.http.HeaderNames
+import play.api.libs.json.Reads._
+import play.api.libs.json._
+import play.api.libs.ws.{WSClient, WSRequest}
 
-@Singleton
-class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
-                                    wsFactory: WSClientFactory,
-                                    @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef )
-                                  ( implicit system: ActorSystem ) extends EventStreamUnmarshalling {
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import scala.language.postfixOps
+import scala.util.Try
 
-  import system.dispatcher
-  import MarathonSSEClient._
+class RestClientActor @Inject()(launcherConfig: LauncherConfig,
+                                wsFactory: WSClientFactory,
+                                @Named(DCOSAuthTokenActor.name) authTokenActor: ActorRef ) extends Actor {
 
-  override protected def maxLineSize: Int = launcherConfig.marathon.sseMaxLineSize
-  override protected def maxEventSize: Int = launcherConfig.marathon.sseMaxEventSize
+  import RestClientActor._
+  import context.dispatcher
 
-  val logger: Logger = Logger(this.getClass())
+  private[this] val logger: Logger = Logger(this.getClass())
 
   private[this] val marathonBaseUrl = launcherConfig.marathon.baseUrl.stripSuffix("/")
 
@@ -52,26 +35,10 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
 
   private[this] val STATUS_UPDATE_TIMEOUT = 15.seconds
 
-  private[marathon] def client: WSClient = wsFactory.getClient
-
-  private[marathon] val connectionContext: HttpsConnectionContext = {
-    if (launcherConfig.acceptAnyCertificate.contains(true)) {
-      logger.warn("disabling certificate checking for connection to Marathon REST API, this is not recommended because it opens communications up to MITM attacks")
-      // Create a trust manager that does not validate certificate chains
-      val trustAllCerts: Array[TrustManager] = Array(new X509TrustManager {
-        override def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
-        override def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String): Unit = {}
-        override def getAcceptedIssuers: Array[X509Certificate] = {null}
-      })
-      // Install the all-trusting trust manager
-      val sc = SSLContext.getInstance("SSL")
-      sc.init(null, trustAllCerts, new java.security.SecureRandom())
-      new HttpsConnectionContext(sc, None, None, None, None, None)
-    } else Http(system).defaultClientHttpsContext
-  }
+  private[this] def client: WSClient = wsFactory.getClient
 
   private[this] def getAuthToken: Future[Option[String]] = {
-   launcherConfig.dcosAuth match {
+    launcherConfig.dcosAuth match {
       case None =>
         Future.successful(None)
       case Some(auth) =>
@@ -97,58 +64,23 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
-  def connectToBus(actorRef: ActorRef): Unit = {
-    val fMaybeAuthToken = getAuthToken // start this early
-    implicit val mat = ActorMaterializer()
-    val handler = Sink.actorRef(actorRef, akka.actor.Status.Failure(new RuntimeException("stream closed")))
-
-    val fEventSource = for {
-      maybeAuthToken <- fMaybeAuthToken
-      req = maybeAuthToken.foldLeft(
-        Get(s"${marathonBaseUrl}/v2/events").addHeader(Accept(`text/event-stream`))
-      ) {
-        case (req, tok) =>
-          logger.debug("adding header to event bus request")
-          req.addHeader(
-            Authorization(GenericHttpCredentials("token="+tok, ""))
-          )
-      }
-      resp <- Http(system).singleRequest(
-        connectionContext = connectionContext,
-        request = req
-      )
-    } yield resp
-
-    fEventSource.flatMap(Unmarshal(_).to[Source[ServerSentEvent, NotUsed]])
-      .onComplete {
-        case Success(eventSource) =>
-          logger.info("successfully attached to marathon event bus")
-          actorRef ! Connected
-          eventSource.runWith(handler)
-        case Failure(t) =>
-          considerInvalidatingAuthToken(401)
-          logger.info("failure connecting to marathon event bus", t)
-          actorRef ! akka.actor.Status.Failure(new RuntimeException("error connecting to Marathon event bus", t))
-      }
-  }
-
   private[this] def genRequest(endpoint: String): Future[WSRequest] = {
     val fMaybeToken = getAuthToken
     val url = marathonBaseUrl + "/" + endpoint.stripPrefix("/")
     fMaybeToken map {
       _.foldLeft(client.url(url)){
-        case (r,t) => r.withHeaders(
+        case (r,t) => r.addHttpHeaders(
           HeaderNames.AUTHORIZATION -> s"token=${t}"
         )
       }
     }
   }
 
-  def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
+  private[this] def launchApp(appPayload: MarathonAppPayload): Future[JsValue] = {
     val appId = appPayload.id.getOrElse(throw new RuntimeException("launchApp missing appId")).stripPrefix("/")
     for {
       req <- genRequest(s"/v2/apps")
-      resp <- req.withQueryString("force" -> "true").post(
+      resp <- req.addQueryStringParameters("force" -> "true").post(
         Json.toJson(appPayload)
       )
       json <- {
@@ -157,7 +89,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
           case 200 | 201 | 409 =>
             if (resp.status == 409) logger.warn(s"launchApp(${appId}) response is 409: ${resp.body}, will ignore")
             Future.successful(resp.json)
-          case s =>
+          case _ =>
             logger.info(s"launchApp(${appId}) response: ${resp.status}:${resp.statusText}")
             Future.failed(new RuntimeException(
               Try {
@@ -169,13 +101,13 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     } yield json
   }
 
-  def killApp(service: FrameworkService): Future[Boolean] = {
+  private[this] def killApp(service: FrameworkService): Future[Boolean] = {
     logger.info(s"asking marathon to shut down ${service.name}")
     val appId = s"/${appGroup}/${service.name}"
     val endpoint = "/v2/apps" + appId
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("force" -> "true").delete()
+      resp <- req.addQueryStringParameters("force" -> "true").delete()
       deleted <- {
         logger.info(s"marathon.delete(${service.name}) => ${resp.statusText}")
         considerInvalidatingAuthToken(resp.status)
@@ -186,20 +118,6 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
         }
       }
     } yield deleted
-  }
-
-  def stopApp(svcName: String): Future[Boolean] = {
-    logger.info(s"asking marathon to shut down ${svcName}")
-    val endpoint = "/v2/apps/${appGroup}/${svcName}"
-    for {
-      req <- genRequest(endpoint)
-      resp <- req.withQueryString("force" -> "true").put(Json.obj("instances" -> 0))
-      maybeOk = {
-        logger.info(s"marathon.stop(${svcName}) => ${resp.statusText}")
-        considerInvalidatingAuthToken(resp.status)
-        resp.status == 200
-      }
-    } yield maybeOk
   }
 
   private[marathon] def toServiceInfo(service: FrameworkService, app: MarathonAppPayload): ServiceInfo = {
@@ -268,11 +186,11 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     ServiceInfo(service,vhosts ++ serviceEndpoints,hostname,ports.map(_.toString),status)
   }
 
-  def getServices(): Future[Seq[ServiceInfo]] = {
+  private[this] def getServices: Future[Seq[ServiceInfo]] = {
     val endpoint = s"/v2/groups/${appGroup}"
     for {
       req <- genRequest(endpoint)
-      resp <- req.withQueryString("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
+      resp <- req.addQueryStringParameters("embed" -> "group.apps", "embed" -> "group.apps.counts", "embed" -> "group.apps.tasks").withRequestTimeout(STATUS_UPDATE_TIMEOUT).get()
       svcs <- {
         considerInvalidatingAuthToken(resp.status)
         resp.status match {
@@ -291,7 +209,7 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     } yield svcs
   }
 
-  def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
+  private[this] def getServiceStatus(service: FrameworkService): Future[ServiceInfo] = {
     val endpoint = s"/v2/apps/${appGroup}/${service.name}"
     val fStat = for {
       req <- genRequest(endpoint)
@@ -317,17 +235,33 @@ class MarathonSSEClient @Inject() ( launcherConfig: LauncherConfig,
     }
   }
 
+  override def receive: Receive = {
+    case LaunchAppRequest(payload) => pipe(launchApp(payload)) to sender()
+    case KillAppRequest(svc) => pipe(killApp(svc)) to sender()
+    case GetServiceInfo(svc) => pipe(getServiceStatus(svc)) to sender()
+    case GetAllServiceInfo => pipe(getServices) to sender()
+    case e =>
+      val s = sender()
+      logger.info(s"received unknown message ${e} from ${s}")
+  }
 }
 
-object MarathonSSEClient {
+object RestClientActor {
 
-  case object Connected
+  trait Factory {
+    def apply(): Actor
+  }
+
+  case class LaunchAppRequest(appPayload: MarathonAppPayload)
+  case class GetServiceInfo(service: LauncherConfig.FrameworkService)
+  case object GetAllServiceInfo
+  case class KillAppRequest(service: LauncherConfig.FrameworkService)
 
   def getVHosts(app: MarathonAppPayload): Seq[String] = {
     lazy val HAPROXY_N_VHOST = "HAPROXY_([0-9]+)_VHOST".r
     lazy val HAPROXY_N_VPATH = "HAPROXY_([0-9]+)_PATH".r
     lazy val HAPROXY_N_ENABLED = "HAPROXY_([0-9]+)_ENABLED".r
-    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).filter(_.trim.nonEmpty).isDefined ) {
+    if ( app.labels.flatMap(_.get("HAPROXY_GROUP")).exists(_.trim.nonEmpty) ) {
       val vhosts = app.labels.getOrElse(Map.empty).collect({
         case (HAPROXY_N_VHOST(index), vhost) => (index.toInt -> vhost)
       })
@@ -345,29 +279,5 @@ object MarathonSSEClient {
     else Seq.empty
   }
 
-  val logger: Logger = Logger(this.getClass())
-
-  def parseEvent[T](event: ServerSentEvent)(implicit rds: play.api.libs.json.Reads[T]): Option[T] = {
-    event.data filter {_.trim.nonEmpty} flatMap { data =>
-      Try{Json.parse(data)} match {
-        case Failure(e) =>
-          logger.warn(s"error parsing event data as JSON:\n${data}", e)
-          logger.warn(s"payload was:\n${data}")
-          None
-        case Success(js) =>
-          js.validate[T] match {
-            case JsError(_) =>
-              logger.warn(s"error unmarshalling ${event.`type`} JSON")
-              logger.warn(s"payload was:\n${data}")
-              None
-            case JsSuccess(obj, _) => Some(obj)
-          }
-      }
-    }
-  }
-
-  implicit val formatSSE: OFormat[ServerSentEvent] = Json.format[ServerSentEvent]
-
 }
-
 

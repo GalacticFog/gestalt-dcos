@@ -32,7 +32,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
     "test-elastic", "http", 9200, 9300, "test-elastic-cluster-name"
   )))
 
-  val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), false)
+  val apiKey = GestaltAPIKey("", Some(""), UUID.randomUUID(), disabled = false)
 
   "GestaltTaskFactory" should {
 
@@ -83,14 +83,14 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "nodejs-executor"  => "test-nodejs-executor:tag"
-        case "nashorn-executor" => "test-js-executor:tag"
-        case "jvm-executor"     => "test-jvm-executor:tag"
-        case "dotnet-executor"  => "test-dotnet-executor:tag"
-        case "python-executor"  => "test-python-executor:tag"
-        case "ruby-executor"    => "test-ruby-executor:tag"
-        case "bash-executor"    => "test-bash-executor:tag"
-        case "golang-executor"  => "test-golang-executor:tag"
+        case "nodejs"  => "test-nodejs-executor:tag"
+        case "nashorn" => "test-js-executor:tag"
+        case "jvm"     => "test-jvm-executor:tag"
+        case "dotnet"  => "test-dotnet-executor:tag"
+        case "python"  => "test-python-executor:tag"
+        case "ruby"    => "test-ruby-executor:tag"
+        case "bash"    => "test-bash-executor:tag"
+        case "golang"  => "test-golang-executor:tag"
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -127,14 +127,14 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("galacticfog/gestalt-api-gateway:release-9.10.11.12")
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "nodejs-executor"  => "galacticfog/gestalt-laser-executor-nodejs:release-9.10.11.12"
-        case "nashorn-executor" => "galacticfog/gestalt-laser-executor-js:release-9.10.11.12"
-        case "jvm-executor"     => "galacticfog/gestalt-laser-executor-jvm:release-9.10.11.12"
-        case "dotnet-executor"  => "galacticfog/gestalt-laser-executor-dotnet:release-9.10.11.12"
-        case "python-executor"  => "galacticfog/gestalt-laser-executor-python:release-9.10.11.12"
-        case "ruby-executor"    => "galacticfog/gestalt-laser-executor-ruby:release-9.10.11.12"
-        case "bash-executor"    => "galacticfog/gestalt-laser-executor-bash:release-9.10.11.12"
-        case "golang-executor"  => "galacticfog/gestalt-laser-executor-golang:release-9.10.11.12"
+        case "nodejs"  => "galacticfog/gestalt-laser-executor-nodejs:release-9.10.11.12"
+        case "nashorn" => "galacticfog/gestalt-laser-executor-js:release-9.10.11.12"
+        case "jvm"     => "galacticfog/gestalt-laser-executor-jvm:release-9.10.11.12"
+        case "dotnet"  => "galacticfog/gestalt-laser-executor-dotnet:release-9.10.11.12"
+        case "python"  => "galacticfog/gestalt-laser-executor-python:release-9.10.11.12"
+        case "ruby"    => "galacticfog/gestalt-laser-executor-ruby:release-9.10.11.12"
+        case "bash"    => "galacticfog/gestalt-laser-executor-bash:release-9.10.11.12"
+        case "golang"  => "galacticfog/gestalt-laser-executor-golang:release-9.10.11.12"
         case _ => throw new RuntimeException("unexpected")
       }
 
@@ -171,14 +171,14 @@ class TaskFactorySpec extends Specification with JsonMatchers {
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage(s"galacticfog/gestalt-api-gateway:release-${ver}")
 
       def getImage(lr: LaserRuntime) = lr.name match {
-        case "nashorn-executor" => s"galacticfog/gestalt-laser-executor-js:release-${ver}"
-        case "nodejs-executor"  => s"galacticfog/gestalt-laser-executor-nodejs:release-${ver}"
-        case "jvm-executor"     => s"galacticfog/gestalt-laser-executor-jvm:release-${ver}"
-        case "dotnet-executor"  => s"galacticfog/gestalt-laser-executor-dotnet:release-${ver}"
-        case "python-executor"  => s"galacticfog/gestalt-laser-executor-python:release-${ver}"
-        case "ruby-executor"    => s"galacticfog/gestalt-laser-executor-ruby:release-${ver}"
-        case "bash-executor"    => s"galacticfog/gestalt-laser-executor-bash:release-${ver}"
-        case "golang-executor"  => s"galacticfog/gestalt-laser-executor-golang:release-${ver}"
+        case "nashorn" => s"galacticfog/gestalt-laser-executor-js:release-${ver}"
+        case "nodejs"  => s"galacticfog/gestalt-laser-executor-nodejs:release-${ver}"
+        case "jvm"     => s"galacticfog/gestalt-laser-executor-jvm:release-${ver}"
+        case "dotnet"  => s"galacticfog/gestalt-laser-executor-dotnet:release-${ver}"
+        case "python"  => s"galacticfog/gestalt-laser-executor-python:release-${ver}"
+        case "ruby"    => s"galacticfog/gestalt-laser-executor-ruby:release-${ver}"
+        case "bash"    => s"galacticfog/gestalt-laser-executor-bash:release-${ver}"
+        case "golang"  => s"galacticfog/gestalt-laser-executor-golang:release-${ver}"
         case _ => throw new RuntimeException("unexpected")
       }
 

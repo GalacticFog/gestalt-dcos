@@ -27,6 +27,8 @@
   <logger name="play" level="INFO" />
   <logger name="application" level="INFO" />
 
+  <logger name="play.shaded.ahc" level="INFO" />
+
   <!-- Off these ones as they are annoying, and anyway we manage configuration ourselves -->
   <logger name="com.avaje.ebean.config.PropertyMapLoader" level="OFF" />
   <logger name="com.avaje.ebeaninternal.server.core.XmlConfigLoader" level="OFF" />
@@ -44,7 +46,7 @@
 
   <logger name="com.galacticfog.gestalt.dcos.launcher.LauncherFSM" level="INFO" />
 
-  <logger name="com.galacticfog.gestalt.dcos.marathon.MarathonSSEClient" level="INFO" />
+  <logger name="com.galacticfog.gestalt.dcos.marathon.EventBusActor" level="INFO" />
 
   <logger name="com.galacticfog.gestalt.dcos.marathon.DCOSAuthTokenActor" level="INFO" />
 

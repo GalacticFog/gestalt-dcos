@@ -4,7 +4,7 @@
  * two arguments, a `String` for the title of the page and an `Html`
  * object to insert into the body of the page.
  *@
-@(webJarAssets: WebJarAssets, title: String, version: String)(content: Html)
+@(webJarsUtil: org.webjars.play.WebJarsUtil, title: String, version: String)(content: Html)
 
 <!DOCTYPE html>
 <html lang="en">
@@ -13,14 +13,14 @@
         <title>@title</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-
-        <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("jquery.min.js")).toString.stripPrefix("/")'></script>
-        <script type='text/javascript' src='@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.js")).toString.stripPrefix("/")'></script>
-        <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap.min.css")).toString.stripPrefix("/")">
-        <link rel="stylesheet" href="@routes.WebJarAssets.at(webJarAssets.locate("bootstrap-theme.min.css")).toString.stripPrefix("/")">
+        @Html(webJarsUtil.script(webJarsUtil.url("jquery.min.js").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.script(webJarsUtil.url("bootstrap.min.js").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.css(webJarsUtil.url("bootstrap.min.css").map(_.stripPrefix("/"))))
+        @Html(webJarsUtil.css(webJarsUtil.url("bootstrap-theme.min.css").map(_.stripPrefix("/"))))
         <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/main.css").toString.stripPrefix("/")">
         <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/sticky-footer.css").toString.stripPrefix("/")">
         <link rel="shortcut icon" type="image/png" href="@routes.Assets.versioned("images/favicon.png").toString.stripPrefix("/")">
+
     </head>
     <body>
 
@@ -36,4 +36,5 @@
         </footer>
 
     </body>
+
 </html>

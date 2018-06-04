@@ -1,0 +1,60 @@
+
+event: event_stream_attached
+data: {"remoteAddress":"10.10.10.10","eventType":"event_stream_attached","timestamp":"2018-04-15T15:14:17.521Z"}
+
+event: deployment_info
+data: {"plan":{"id":"74777cfe-6ab3-4508-af0c-14ae6a11a8ac","original":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:05.028Z"},"target":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"steps":[],"version":"2018-04-15T14:39:38.264Z"},"currentStep":{"actions":[]},"eventType":"deployment_info","timestamp":"2018-04-15T14:39:38.336Z"}
+
+event: group_change_success
+data: {"groupId":"/","version":"2018-04-15T14:39:38.264Z","eventType":"group_change_success","timestamp":"2018-04-15T14:39:38.351Z"}
+
+event: api_post_event
+data: {"clientIp":"198.199.65.87","uri":"/v2/apps","appDefinition":{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}},"eventType":"api_post_event","timestamp":"2018-04-15T14:39:38.351Z"}
+
+event: instance_changed_event
+data: {"instanceId":"test-container.marathon-d309a701-40ba-11e8-9b0b-3665226eea24","condition":"Created","runSpecId":"/test-container","agentId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","host":"165.227.93.209","runSpecVersion":"2018-04-15T14:39:38.264Z","timestamp":"2018-04-15T14:39:38.354Z","eventType":"instance_changed_event"}
+
+event: status_update_event
+data: {"slaveId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","taskId":"test-container.d309a701-40ba-11e8-9b0b-3665226eea24","taskStatus":"TASK_RUNNING","message":"","appId":"/test-container","host":"165.227.93.209","ipAddresses":[{"ipAddress":"172.17.0.7","protocol":"IPv4"}],"ports":[],"version":"2018-04-15T14:39:38.264Z","eventType":"status_update_event","timestamp":"2018-04-15T14:39:39.345Z"}
+
+event: instance_changed_event
+data: {"instanceId":"test-container.marathon-d309a701-40ba-11e8-9b0b-3665226eea24","condition":"Running","runSpecId":"/test-container","agentId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","host":"165.227.93.209","runSpecVersion":"2018-04-15T14:39:38.264Z","timestamp":"2018-04-15T14:39:39.346Z","eventType":"instance_changed_event"}
+
+event: deployment_step_success
+data: {"plan":{"id":"74777cfe-6ab3-4508-af0c-14ae6a11a8ac","original":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:05.028Z"},"target":{"id":"/","apps":[{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","versionInfo":{"lastScalingAt":"2018-04-15T14:39:38.264Z","lastConfigChangeAt":"2018-04-15T14:39:38.264Z"},"killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}}],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"steps":[{"actions":[{"action":"StartApplication","app":"/test-container"}]},{"actions":[{"action":"ScaleApplication","app":"/test-container"}]}],"version":"2018-04-15T14:39:38.264Z"},"currentStep":{"actions":[{"action":"ScaleApplication","app":"/test-container"}]},"eventType":"deployment_step_success","timestamp":"2018-04-15T14:39:39.353Z"}
+
+event: deployment_success
+data: {"id":"74777cfe-6ab3-4508-af0c-14ae6a11a8ac","plan":{"id":"74777cfe-6ab3-4508-af0c-14ae6a11a8ac","original":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:05.028Z"},"target":{"id":"/","apps":[{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","versionInfo":{"lastScalingAt":"2018-04-15T14:39:38.264Z","lastConfigChangeAt":"2018-04-15T14:39:38.264Z"},"killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}}],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"steps":[{"actions":[{"action":"StartApplication","app":"/test-container"}]},{"actions":[{"action":"ScaleApplication","app":"/test-container"}]}],"version":"2018-04-15T14:39:38.264Z"},"eventType":"deployment_success","timestamp":"2018-04-15T14:39:39.354Z"}
+
+event: deployment_info
+data: {"plan":{"id":"aeab1c68-8643-470c-ad60-bb3aab5f10c4","original":{"id":"/","apps":[{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","versionInfo":{"lastScalingAt":"2018-04-15T14:39:38.264Z","lastConfigChangeAt":"2018-04-15T14:39:38.264Z"},"killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}}],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"target":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:40:00.621Z"},"steps":[{"actions":[{"action":"StopApplication","app":"/test-container"}]}],"version":"2018-04-15T14:40:00.621Z"},"currentStep":{"actions":[{"action":"StopApplication","app":"/test-container"}]},"eventType":"deployment_info","timestamp":"2018-04-15T14:40:00.703Z"}
+
+event: status_update_event
+data: {"slaveId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","taskId":"test-container.d309a701-40ba-11e8-9b0b-3665226eea24","taskStatus":"TASK_KILLING","message":"","appId":"/test-container","host":"165.227.93.209","ipAddresses":[{"ipAddress":"172.17.0.7","protocol":"IPv4"}],"ports":[],"version":"2018-04-15T14:39:38.264Z","eventType":"status_update_event","timestamp":"2018-04-15T14:40:00.713Z"}
+
+event: instance_changed_event
+data: {"instanceId":"test-container.marathon-d309a701-40ba-11e8-9b0b-3665226eea24","condition":"Killing","runSpecId":"/test-container","agentId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","host":"165.227.93.209","runSpecVersion":"2018-04-15T14:39:38.264Z","timestamp":"2018-04-15T14:40:00.714Z","eventType":"instance_changed_event"}
+
+event: group_change_success
+data: {"groupId":"/","version":"2018-04-15T14:40:00.621Z","eventType":"group_change_success","timestamp":"2018-04-15T14:40:00.730Z"}
+
+event: status_update_event
+data: {"slaveId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","taskId":"test-container.d309a701-40ba-11e8-9b0b-3665226eea24","taskStatus":"TASK_FINISHED","message":"Container exited with status 0","appId":"/test-container","host":"165.227.93.209","ipAddresses":[{"ipAddress":"172.17.0.7","protocol":"IPv4"}],"ports":[],"version":"2018-04-15T14:39:38.264Z","eventType":"status_update_event","timestamp":"2018-04-15T14:40:01.006Z"}
+
+event: instance_changed_event
+data: {"instanceId":"test-container.marathon-d309a701-40ba-11e8-9b0b-3665226eea24","condition":"Finished","runSpecId":"/test-container","agentId":"30464d3f-eded-4669-8e3e-343b2a23981b-S3","host":"165.227.93.209","runSpecVersion":"2018-04-15T14:39:38.264Z","timestamp":"2018-04-15T14:40:01.006Z","eventType":"instance_changed_event"}
+
+event: deployment_step_success
+data: {"plan":{"id":"aeab1c68-8643-470c-ad60-bb3aab5f10c4","original":{"id":"/","apps":[{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","versionInfo":{"lastScalingAt":"2018-04-15T14:39:38.264Z","lastConfigChangeAt":"2018-04-15T14:39:38.264Z"},"killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}}],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"target":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:40:00.621Z"},"steps":[{"actions":[{"action":"StopApplication","app":"/test-container"}]}],"version":"2018-04-15T14:40:00.621Z"},"currentStep":{"actions":[{"action":"StopApplication","app":"/test-container"}]},"eventType":"deployment_step_success","timestamp":"2018-04-15T14:40:01.012Z"}
+
+event: deployment_success
+data: {"id":"aeab1c68-8643-470c-ad60-bb3aab5f10c4","plan":{"id":"aeab1c68-8643-470c-ad60-bb3aab5f10c4","original":{"id":"/","apps":[{"id":"/test-container","backoffFactor":1.15,"backoffSeconds":1,"container":{"type":"DOCKER","docker":{"forcePullImage":false,"image":"nginx:alpine","parameters":[],"privileged":false},"volumes":[],"portMappings":[]},"cpus":0.1,"disk":0,"executor":"","instances":1,"labels":{},"maxLaunchDelaySeconds":3600,"mem":128,"gpus":0,"networks":[{"mode":"container/bridge"}],"requirePorts":false,"upgradeStrategy":{"maximumOverCapacity":1,"minimumHealthCapacity":1},"version":"2018-04-15T14:39:38.264Z","versionInfo":{"lastScalingAt":"2018-04-15T14:39:38.264Z","lastConfigChangeAt":"2018-04-15T14:39:38.264Z"},"killSelection":"YOUNGEST_FIRST","unreachableStrategy":{"inactiveAfterSeconds":0,"expungeAfterSeconds":0}}],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:39:38.264Z"},"target":{"id":"/","apps":[],"pods":[],"groups":[],"dependencies":[],"version":"2018-04-15T14:40:00.621Z"},"steps":[{"actions":[{"action":"StopApplication","app":"/test-container"}]}],"version":"2018-04-15T14:40:00.621Z"},"eventType":"deployment_success","timestamp":"2018-04-15T14:40:01.012Z"}
+
+event: app_terminated_event
+data: {"appId":"/test-container","eventType":"app_terminated_event","timestamp":"2018-04-15T14:40:01.014Z"}
+
+event: event_stream_detached
+data: {"remoteAddress":"10.10.10.10","eventType":"event_stream_detached","timestamp":"2018-04-15T15:14:26.555Z"}
+
+
+

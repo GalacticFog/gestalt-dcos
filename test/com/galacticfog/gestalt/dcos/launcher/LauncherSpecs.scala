@@ -3,55 +3,73 @@ package com.galacticfog.gestalt.dcos.launcher
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.ActorSystem
 import akka.actor.FSM.{CurrentState, SubscribeTransitionCallBack, Transition}
+import akka.actor.Status.Failure
+import akka.actor.{Actor, ActorRef, ActorSystem}
 import akka.pattern.ask
-import akka.testkit.{ImplicitSender, TestFSMRef, TestKit}
-import com.galacticfog.gestalt.dcos.LauncherConfig.FrameworkService
+import akka.testkit.{ImplicitSender, TestActor, TestFSMRef, TestKit, TestProbe}
 import com.galacticfog.gestalt.dcos.LauncherConfig.Services._
-import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.ServiceStatus.RUNNING
+import com.galacticfog.gestalt.dcos._
 import com.galacticfog.gestalt.dcos.launcher.LauncherFSM.Messages._
 import com.galacticfog.gestalt.dcos.launcher.States._
-import com.galacticfog.gestalt.dcos.marathon.{MarathonAppPayload, MarathonSSEClient}
+import com.galacticfog.gestalt.dcos.marathon.{EventBusActor, RestClientActor}
 import com.galacticfog.gestalt.patch.{PatchOp, PatchOps}
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import com.google.inject.AbstractModule
-import mockws.{MockWS, Route}
+import mockws.{MockWS, MockWSHelpers, Route}
+import net.codingwell.scalaguice.ScalaModule
 import org.specs2.execute.Result
 import org.specs2.mock.Mockito
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.libs.concurrent.AkkaGuiceSupport
 import play.api.libs.json.Json
 import play.api.libs.ws.WSClient
-import play.api.mvc._
+import play.api.libs.ws.ahc.AsyncHttpClientProvider
 import play.api.mvc.Results._
 import play.api.test._
+import play.shaded.ahc.org.asynchttpclient.AsyncHttpClient
 
 import scala.collection.mutable
-import scala.concurrent.duration._
-import scala.concurrent.Future
 import scala.util.Success
 
-class LauncherSpecs extends PlaySpecification with Mockito {
+class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
-  case class TestModule(sse: MarathonSSEClient, ws: WSClient) extends AbstractModule {
+  class ProbeWrapper(target: ActorRef) extends Actor {
+    def receive = {
+      case msg => target forward msg
+    }
+  }
+
+  case class TestModule(sseActor: ActorRef, restActor: ActorRef, ws: WSClient) extends AbstractModule with ScalaModule with AkkaGuiceSupport {
+    object WrapperFactory extends EventBusActor.Factory with RestClientActor.Factory {
+      def apply(subscriber: ActorRef, eventFilter: Option[Seq[String]]): Actor = new ProbeWrapper(sseActor)
+      def apply(): Actor = new ProbeWrapper(restActor)
+    }
     override def configure(): Unit = {
-      bind(classOf[MarathonSSEClient]).toInstance(sse)
-      bind(classOf[WSClient]).toInstance(ws)
+      bind[EventBusActor.Factory].toInstance(WrapperFactory)
+      bind[RestClientActor.Factory].toInstance(WrapperFactory)
+      bind[WSClient].toInstance(ws)
+      bind[AsyncHttpClient].toProvider[AsyncHttpClientProvider]
     }
   }
 
   abstract class WithConfig(config: (String,Any)*)
     extends TestKit(ActorSystem("test-system")) with Scope with ImplicitSender {
 
-    val mockSSEClient = mock[MarathonSSEClient]
+    val mockSSEClient = TestProbe()
+    val mockRestClient = TestProbe()
     val mockWSClient = mock[WSClient]
     val injector =
       new GuiceApplicationBuilder()
         .disable[modules.Module]
         .disable[play.api.libs.ws.ahc.AhcWSModule]
-        .bindings(TestModule(mockSSEClient, mockWSClient))
+        .bindings(TestModule(
+          sseActor = mockSSEClient.ref,
+          restActor = mockRestClient.ref,
+          ws = mockWSClient
+        ))
         .configure(config:_*)
         .injector
   }
@@ -59,13 +77,18 @@ class LauncherSpecs extends PlaySpecification with Mockito {
   abstract class WithRoutesAndConfig(routes: MockWS.Routes, config: (String,Any)*)
     extends TestKit(ActorSystem("test-system")) with Scope with ImplicitSender {
 
-    val mockSSEClient = mock[MarathonSSEClient]
+    val mockSSEClient = TestProbe()
+    val mockRestClient = TestProbe()
     val mockWSClient = MockWS(routes)
     val injector =
       new GuiceApplicationBuilder()
         .disable[modules.Module]
         .disable[play.api.libs.ws.ahc.AhcWSModule]
-        .bindings(TestModule(mockSSEClient, mockWSClient))
+        .bindings(TestModule(
+          sseActor = mockSSEClient.ref,
+          restActor = mockRestClient.ref,
+          ws = mockWSClient
+        ))
         .configure(config:_*)
         .injector
   }
@@ -105,24 +128,27 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
-      mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.get.endsWith("/elasticsearch")
-      )) returns {
-        // also setup getServiceStatus mock
-        mockSSEClient.getServiceStatus(ELASTIC) returns Future.successful(ServiceInfo(
-          service = ELASTIC,
-          vhosts = Seq.empty,
-          hostname = Some("192.168.1.51"),
-          ports = Seq("9200","9300"),
-          status = RUNNING
-        ))
-        Future.successful(Json.obj())
-      }
-      mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => !app.id.get.endsWith("/elasticsearch")
-      )) returns {
-        Future.failed(new RuntimeException("do not care what happens next"))
-      }
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/elasticsearch") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(ELASTIC) if launched =>
+            sender ! ServiceInfo(
+              service = ELASTIC,
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.51"),
+              ports = Seq("9200","9300"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
 
       launcher.stateName must_== States.Uninitialized
 
@@ -141,7 +167,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         stateName = LaunchingElastic,
         stateData = ServiceData(
           statuses = Map(),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = launcher.stateData.globalConfig,
@@ -197,24 +223,27 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
-      mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => app.id.get.endsWith("/data-0")
-      )) returns {
-        // also setup getServiceStatus mock
-        mockSSEClient.getServiceStatus(DATA(0)) returns Future.successful(ServiceInfo(
-          service = DATA(0),
-          vhosts = Seq.empty,
-          hostname = Some("192.168.1.50"),
-          ports = Seq("5432"),
-          status = RUNNING
-        ))
-        Future.successful(Json.obj())
-      }
-      mockSSEClient.launchApp(argThat(
-        (app: MarathonAppPayload) => !app.id.get.endsWith("/data-0")
-      )) returns {
-        Future.failed(new RuntimeException("do not care what happens next"))
-      }
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/data-0") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(DATA(0)) if launched =>
+            sender ! ServiceInfo(
+              service = DATA(0),
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.50"),
+              ports = Seq("5432"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
 
       launcher.stateName must_== States.Uninitialized
 
@@ -233,7 +262,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         stateName = LaunchingDB(0),
         stateData = ServiceData(
           statuses = Map(),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = launcher.stateData.globalConfig,
@@ -254,12 +283,105 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       ))
     }
 
+    "for provisioned db, launch db after initial service sync" in new WithConfig(
+      "logging.provision-elastic" -> false,
+      "database.provision" -> true,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/data-0") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(DATA(0)) if launched =>
+            sender ! ServiceInfo(
+              service = DATA(0),
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.50"),
+              ports = Seq("5432"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+      expectMsg(CurrentState(launcher, Uninitialized))
+
+      launcher ! UpdateAllServiceInfo(Seq.empty)
+      expectMsg(Transition(launcher, Uninitialized, LaunchingDB(0)))
+      expectMsg(Transition(launcher, LaunchingDB(0), launcher.underlyingActor.nextState(LaunchingDB(0))))
+    }
+
+    "for non-provisioned db, launch rabbit after initial service sync" in new WithConfig(
+      "logging.provision-elastic" -> false,
+      "database.provision" -> false,
+      "database.username" -> "test-username",
+      "database.password" -> "test-password",
+      "database.prefix"   -> "gestalt-test-"
+    ) {
+
+      val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
+
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        var launched = false
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.LaunchAppRequest(app) if app.id.get.endsWith("/rabbit") =>
+            sender ! Json.obj()
+            launched = true
+            keepRunning
+          case RestClientActor.GetServiceInfo(RABBIT) if launched =>
+            sender ! ServiceInfo(
+              service = RABBIT,
+              vhosts = Seq.empty,
+              hostname = Some("192.168.1.50"),
+              ports = Seq("5672","15672"),
+              status = RUNNING
+            )
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
+
+      launcher.stateName must_== States.Uninitialized
+
+      launcher ! SubscribeTransitionCallBack(testActor)
+      expectMsg(CurrentState(launcher, Uninitialized))
+
+      launcher ! UpdateAllServiceInfo(Seq.empty)
+      expectMsg(Transition(launcher, Uninitialized, LaunchingRabbit))
+      expectMsg(Transition(launcher, LaunchingRabbit, launcher.underlyingActor.nextState(LaunchingRabbit)))
+    }
+
     "not shutdown database containers if they were not provisioned even if asked to" in new WithConfig("database.provision" -> false) {
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.KillAppRequest(svc) if !svc.isInstanceOf[DATA] =>
+            sender ! false
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
 
       launcher.setState(
         stateName = ShuttingDown, // any state except Uninitialized will work
@@ -267,15 +389,11 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       )
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
-      Result.foreach(Seq(
-        RABBIT, SECURITY, META, UI
-      )) {
-        svc => there was one(mockSSEClient).killApp(svc)
+      Seq(
+        UI, META, SECURITY, RABBIT
+      ).foreach {
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
-      there was no(mockSSEClient).killApp(
-        argThat((svc: FrameworkService) => svc.isInstanceOf[DATA])
-      )
-
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
       launcher.stateData.errorStage must beNone
@@ -286,7 +404,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.KillAppRequest(svc) if !svc.isInstanceOf[DATA] =>
+            sender ! false
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
 
       launcher.setState(
         stateName = ShuttingDown, // any state except Uninitialized will work
@@ -294,15 +421,11 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       )
       val future = launcher ? ShutdownRequest(shutdownDB = false)
       val Success(ShutdownAcceptedResponse) = future.value.get
-      Result.foreach(Seq(
-        RABBIT, SECURITY, META, UI
-      )) {
-        svc => there was one(mockSSEClient).killApp(svc)
+      Seq(
+        UI, META, SECURITY, RABBIT
+      ).foreach {
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
-      there was no(mockSSEClient).killApp(
-        argThat((svc: FrameworkService) => svc.isInstanceOf[DATA])
-      )
-
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
       launcher.stateData.errorStage must beNone
@@ -313,7 +436,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       launcher.stateName must_== States.Uninitialized
 
       // return Future{false} short-circuits any additional processing
-      mockSSEClient.killApp(any[FrameworkService]) returns Future.successful(false)
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case RestClientActor.KillAppRequest(_) =>
+            sender ! false
+            keepRunning
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care"))
+            noAutoPilot
+        }
+      })
 
       launcher.setState(
         stateName = ShuttingDown, // any state except Uninitialized will work
@@ -321,20 +453,16 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       )
       val future = launcher ? ShutdownRequest(shutdownDB = true)
       val Success(ShutdownAcceptedResponse) = future.value.get
-      Result.foreach(Seq(
-        RABBIT, SECURITY, META, UI, DATA(0), DATA(1), DATA(2), DATA(3)
-      )) {
-        svc => there was one(mockSSEClient).killApp(svc)
+      Seq(
+        UI, META, SECURITY, RABBIT, DATA(3), DATA(2), DATA(1), DATA(0)
+      ).foreach {
+        svc => mockRestClient.expectMsg(RestClientActor.KillAppRequest(svc))
       }
-      // make sure only DATA(0 to 3) were killed; no less, no more
-      there were 4.times(mockSSEClient).killApp(
-        argThat((svc: FrameworkService) => svc.isInstanceOf[DATA])
-      )
-
       launcher.stateName must_== ShuttingDown
       launcher.stateData.error must beNone
       launcher.stateData.errorStage must beNone
     }
+
   }
 
   "GestaltMarathonLauncher provision of meta" should {
@@ -376,10 +504,10 @@ class LauncherSpecs extends PlaySpecification with Mockito {
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action(BodyParsers.parse.json) { request =>
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{ request =>
         providerCreateAttempts.getAndIncrement()
-        val providerName = (request.body \ "name").as[String]
-        val providerType = (request.body \ "resource_type").asOpt[String]
+        val providerName = (request.body.asJson.get \ "name").as[String]
+        val providerType = (request.body.asJson.get \ "resource_type").asOpt[String]
         providerType match {
           case Some(pt) if pt.startsWith("Gestalt::Configuration::Provider::Lambda::Executor::") =>
             val pid = UUID.randomUUID()
@@ -445,9 +573,9 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaRenameRoot = Route({
-      case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action(BodyParsers.parse.json) { request =>
-        (request.body).asOpt[Seq[PatchOp]] match {
-          case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(newCompanyDescription)))) =>
+      case (PATCH, u) if u == s"http://$metaHost:$metaPort/root" => Action { request =>
+        (request.body.asJson.get).asOpt[Seq[PatchOp]] match {
+          case Some(Seq(PatchOp(PatchOps.Replace, "/description", Some(_)))) =>
             renamedRootOrg.getAndIncrement()
             Ok(Json.obj())
           case _ => BadRequest("")
@@ -456,8 +584,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionWorkspace = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("gestalt-system-workspace") => Created(Json.obj(
             "id" -> sysWrkId
           ))
@@ -470,8 +598,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoEnv = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("demo") )
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$demoWrkId/environments" => Action { request =>
+        if ( (request.body.asJson.get \ "name").asOpt[String].contains("demo") )
           Created(Json.obj("id" -> demoEnvId))
         else
           BadRequest("")
@@ -479,10 +607,10 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionSysEnvs = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action(BodyParsers.parse.json) { request =>
-        if ( (request.body \ "name").asOpt[String].contains("gestalt-system-environment") )
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/workspaces/$sysWrkId/environments" => Action { request =>
+        if ( (request.body.asJson.get \ "name").asOpt[String].contains("gestalt-system-environment") )
           Created(Json.obj("id" -> UUID.randomUUID()))
-        else if ( (request.body \ "name").asOpt[String].contains("gestalt-laser-environment") )
+        else if ( (request.body.asJson.get \ "name").asOpt[String].contains("gestalt-laser-environment") )
           Created(Json.obj("id" -> UUID.randomUUID()))
         else
           BadRequest("")
@@ -490,8 +618,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoLambdas = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/lambdas" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("demo-setup")    =>
             createdSetupLambda.getAndIncrement()
             Created(Json.obj(
@@ -508,8 +636,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoAPI = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/environments/$demoEnvId/apis" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("demo")    =>
             Created(Json.obj(
               "id" -> demoApi
@@ -520,8 +648,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionDemoEndpoints = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "name").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/apis/$demoApi/apiendpoints" => Action { request =>
+        (request.body.asJson.get \ "name").asOpt[String] match {
           case Some("-setup")    =>
             createdSetupLambdaEndpoint.getAndIncrement()
             Created(Json.obj(
@@ -538,8 +666,8 @@ class LauncherSpecs extends PlaySpecification with Mockito {
     })
 
     val metaProvisionLicense = Route({
-      case (POST, u) if u == s"http://$metaHost:$metaPort/root/licenses" => Action(BodyParsers.parse.json) { request =>
-        (request.body \ "properties" \ "data").asOpt[String] match {
+      case (POST, u) if u == s"http://$metaHost:$metaPort/root/licenses" => Action { request =>
+        (request.body.asJson.get \ "properties" \ "data").asOpt[String] match {
           case Some(s) if s.nonEmpty => Created("")
           case _ => BadRequest("")
         }
@@ -558,7 +686,13 @@ class LauncherSpecs extends PlaySpecification with Mockito {
         orElse notFoundRoute,
       "meta.company-name" -> newCompanyDescription
     ) {
-      mockSSEClient.launchApp(any[MarathonAppPayload]) returns Future.failed(new RuntimeException("i don't care whether i can launch apps"))
+      mockRestClient.setAutoPilot(new TestActor.AutoPilot {
+        def run(sender: ActorRef, msg: Any): TestActor.AutoPilot = msg match {
+          case _ =>
+            sender ! Failure(new RuntimeException("do not care whether i can launch apps"))
+            keepRunning
+        }
+      })
 
       val launcher = TestFSMRef(injector.instanceOf[LauncherFSM])
 
@@ -575,7 +709,7 @@ class LauncherSpecs extends PlaySpecification with Mockito {
             SECURITY -> ServiceInfo(SECURITY, Seq.empty, Some("security.test"), Seq("9455"), RUNNING),
             META     -> ServiceInfo(META, Seq.empty, Some(metaHost), Seq(metaPort), RUNNING)
           ),
-          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),false)),
+          adminKey = Some(GestaltAPIKey("key",Some("secret"),UUID.randomUUID(),disabled = false)),
           error = None,
           errorStage = None,
           globalConfig = GlobalConfig()
@@ -625,21 +759,21 @@ class LauncherSpecs extends PlaySpecification with Mockito {
       }
       //
       metaProvisionLicense.timeCalled       must_== 1
-      metaProvisionWorkspace.timeCalled     must_== 1 // 2
-      metaProvisionDemoEnv.timeCalled       must_== 0 // 1
+      metaProvisionWorkspace.timeCalled     must_== 1
+      metaProvisionDemoEnv.timeCalled       must_== 0
       metaProvisionSysEnvs.timeCalled       must_== 2
       //
       metaRenameRoot.timeCalled             must_== 1
       renamedRootOrg.get()                  must_== 1
       //
-      metaProvisionDemoLambdas.timeCalled   must_== 0 // 2
-      createdSetupLambda.get()              must_== 0 // 1
-      createdTdownLambda.get()              must_== 0 // 1
+      metaProvisionDemoLambdas.timeCalled   must_== 0
+      createdSetupLambda.get()              must_== 0
+      createdTdownLambda.get()              must_== 0
       //
-      metaProvisionDemoAPI.timeCalled       must_== 0 // 1
-      metaProvisionDemoEndpoints.timeCalled must_== 0 // 2
-      createdSetupLambdaEndpoint.get()      must_== 0 // 1
-      createdTdownLambdaEndpoint.get()      must_== 0 // 1
+      metaProvisionDemoAPI.timeCalled       must_== 0
+      metaProvisionDemoEndpoints.timeCalled must_== 0
+      createdSetupLambdaEndpoint.get()      must_== 0
+      createdTdownLambdaEndpoint.get()      must_== 0
     }
 
   }
