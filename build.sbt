@@ -37,6 +37,13 @@ dockerCommands := dockerCommands.value.flatMap {
   )
   case other => List(other)
 }
+dockerLabels := Map(
+  "org.label-schema.schema-version" -> "1.0",
+  "org.label-schema.vcs-ref" -> git.gitHeadCommit.value.getOrElse(""),
+  "org.label-schema.vcs-url" -> "https://github.com/GalacticFog/gestalt-dcos",
+  "org.label-schema.name" -> "galacticfog/gestalt-dcos",
+  "org.label-schema.description" -> "Galactic Fog Installer for Mesosphere DC/OS"
+)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 
