@@ -19,7 +19,7 @@ docker-publish:
   services:
     - docker:dind
   script: 
-    - sbt publish
+    - sbt docker:publish
 
 github-publish:
   stage: publish
