@@ -28,6 +28,7 @@ javaOptions in Test += "-Dlogger.file=conf/debug-logging.xml"
 
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+packageName in Docker := "galacticfog/gestalt-dcos"
 dockerBaseImage := "java:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
