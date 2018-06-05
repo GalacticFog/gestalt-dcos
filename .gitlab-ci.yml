@@ -8,31 +8,18 @@ cache:
   key: "$CI_PIPELINE_ID"
   untracked: false
 
-variables:
-  DOCKER_IMG: "galacticfog/gestalt-dcos"
-
 test:
   stage: test
   script:
-    - sbt clean update docker:stage
+    - sbt clean update 
     - ./env-var-test.sh
-  artifacts:
-    expire_in: 30 minutes
-    paths:
-    - target/docker/stage/
 
 docker-publish:
   stage: publish
   services:
     - docker:dind
   script: 
-    - VERSION=$(grep "^version" build.sbt | sed 's/.*:=[ ]*//' | sed 's/"//g')
-    - DOCKER_TAG=${CI_BUILD_TAG-$VERSION-${CI_BUILD_REF:0:8}}
-    - cd target/docker/stage
-    - echo building $DOCKER_IMG:$DOCKER_TAG
-    - docker build -t $DOCKER_IMG:$DOCKER_TAG .
-    - docker push     $DOCKER_IMG:$DOCKER_TAG
-    - docker rmi      $DOCKER_IMG:$DOCKER_TAG
+    - sbt docker:publish
 
 github-publish:
   stage: publish

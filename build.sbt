@@ -1,10 +1,7 @@
 name := """gestalt-dcos"""
 
-version := "1.6.0"
-
 lazy val root = (project in file(".")).
-  enablePlugins(PlayScala).
-  enablePlugins(BuildInfoPlugin).
+  enablePlugins(PlayScala, BuildInfoPlugin, GitVersioning).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](
       name, version, scalaVersion, sbtVersion,
@@ -22,12 +19,16 @@ lazy val root = (project in file(".")).
     buildInfoUsePackageAsPath := true
   )
 
+git.baseVersion := "2.1.0"
+git.useGitDescribe := true
+
 scalaVersion := "2.11.11"
 
 javaOptions in Test += "-Dlogger.file=conf/debug-logging.xml"
 
 import com.typesafe.sbt.packager.docker._
 maintainer in Docker := "Chris Baker <chris@galacticfog.com>"
+packageName in Docker := "galacticfog/gestalt-dcos"
 dockerBaseImage := "java:8-jre-alpine"
 dockerExposedPorts := Seq(9000)
 dockerCommands := dockerCommands.value.flatMap {
@@ -37,6 +38,13 @@ dockerCommands := dockerCommands.value.flatMap {
   )
   case other => List(other)
 }
+dockerLabels := Map(
+  "org.label-schema.schema-version" -> "1.0",
+  "org.label-schema.vcs-ref" -> git.gitHeadCommit.value.getOrElse(""),
+  "org.label-schema.vcs-url" -> "https://github.com/GalacticFog/gestalt-dcos",
+  "org.label-schema.name" -> "galacticfog/gestalt-dcos",
+  "org.label-schema.description" -> "Galactic Fog Installer for Mesosphere DC/OS"
+)
 
 resolvers ++= Seq("snapshots", "releases").map(Resolver.sonatypeRepo)
 
@@ -47,7 +55,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.3.6" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.3.8" withSources()
 )
 
 scalacOptions ++= Seq("-feature")
