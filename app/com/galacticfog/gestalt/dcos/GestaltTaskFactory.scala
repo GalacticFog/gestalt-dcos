@@ -489,7 +489,6 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserMaxCoolConnectionTime = Some(launcherConfig.laser.maxCoolConnectionTime),
           laserExecutorHeartbeatTimeout = Some(launcherConfig.laser.executorHeartbeatTimeout),
           laserExecutorHeartbeatPeriod = Some(launcherConfig.laser.executorHeartbeatPeriod),
-          laserExecutorPort = if (launcherConfig.marathon.networkName.isDefined) Some(60500) else None,
           esHost = esc.map(_.hostname),
           esPort = esc.map(_.portApi),
           esProtocol = esc.map(_.protocol)

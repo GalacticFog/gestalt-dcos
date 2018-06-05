@@ -1,10 +1,7 @@
 name := """gestalt-dcos"""
 
-version := "1.6.0"
-
 lazy val root = (project in file(".")).
-  enablePlugins(PlayScala).
-  enablePlugins(BuildInfoPlugin).
+  enablePlugins(PlayScala, BuildInfoPlugin, GitVersioning).
   settings(
     buildInfoKeys := Seq[BuildInfoKey](
       name, version, scalaVersion, sbtVersion,
@@ -21,6 +18,9 @@ lazy val root = (project in file(".")).
     buildInfoPackage := "com.galacticfog.gestalt.dcos",
     buildInfoUsePackageAsPath := true
   )
+
+git.baseVersion := "2.1.0"
+git.useGitDescribe := true
 
 scalaVersion := "2.11.11"
 
@@ -47,7 +47,7 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "com.galacticfog" %% "gestalt-security-sdk-scala" % "2.4.0-SNAPSHOT" withSources(),
-  "com.galacticfog" %% "gestalt-cli" % "2.3.6" withSources()
+  "com.galacticfog" %% "gestalt-cli" % "2.3.8" withSources()
 )
 
 scalacOptions ++= Seq("-feature")

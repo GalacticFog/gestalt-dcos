@@ -295,7 +295,7 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       laserPayload must havePrivateVar("META_NETWORK_NAME" -> "user-network")
     }
 
-    "fall back to HOST networking on laser scheduler if meta-network-name not configured" in {
+    "fall back to BRIDGE networking on laser scheduler if meta-network-name not configured" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -304,11 +304,11 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
         .injector
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must havePrivateVar("META_NETWORK_NAME" -> "HOST")
-      (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "HOST"
+      laserPayload must havePrivateVar("META_NETWORK_NAME" -> "BRIDGE")
+      (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").as[String] must_== "BRIDGE"
     }
 
-    "provision two ports with HOST networking for laser scheduler, with port and host vars" in {
+    "provision three ports with BRIDGE networking for laser scheduler, with port and host vars" in {
       val injector = new GuiceApplicationBuilder()
         .disable[Module]
         .configure(
@@ -318,23 +318,10 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val gtf = injector.instanceOf[GestaltTaskFactory]
       val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
       val cspec = (laserPayload \ "properties" \ "services" \(0) \ "container_spec" \ "properties")
-      (cspec \ "network").as[String] must_== "HOST"
-      (cspec \ "cmd").as[String] must contain("MANAGEMENT_PORT=$PORT1")
-      (cspec \ "cmd").as[String] must contain("ADVERTISE_HOSTNAME=$HOST")
-      (cspec \ "port_mappings").as[Seq[JsObject]] must haveSize(2)
-      (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "host_port").asOpt[Int]) must containTheSameElementsAs(Seq(0,0))
-    }
-
-    "set MANAGEMENT_PORT when using non-HOST networking for laser scheduler" in {
-      val injector = new GuiceApplicationBuilder()
-        .disable[Module]
-        .configure(
-          "marathon.network-name" -> "user-network"
-        )
-        .injector
-      val gtf = injector.instanceOf[GestaltTaskFactory]
-      val laserPayload = gtf.getLaserProvider(GestaltAPIKey("",Some(""),uuid,disabled = false), uuid, uuid, uuid, uuid, Seq.empty, uuid)
-      laserPayload must havePrivateVar("MANAGEMENT_PORT" -> "60500")
+      (cspec \ "network").as[String] must_== "BRIDGE"
+      (cspec \ "port_mappings").as[Seq[JsObject]] must haveSize(3)
+      (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "container_port").asOpt[Int]) must containTheSameElementsAs(Seq(9000,9001,9002))
+      (cspec \ "port_mappings").as[Seq[JsObject]].flatMap(j => (j \ "lb_port").asOpt[Int]) must containTheSameElementsAs(Seq(9000,9001,9002))
     }
 
     "set max-connection-time on laser provider as specified" in {
@@ -983,11 +970,9 @@ class PayloadGenerationSpec extends Specification with JsonMatchers with Testing
       val gtw   = gtf.getGatewayProvider(uuid, uuid, uuid, uuid)
       val policy = gtf.getPolicyProvider(creds, uuid, uuid, uuid)
       val kong = gtf.getKongProvider(uuid, uuid)
-      "gestalt-laser" ! {
-        (laser \ "properties" \ "services" \(0) \ "container_spec" \ "properties" \ "network").asOpt[String] must beSome("HOST")
-      }
       Fragment.foreach( Seq(
         "gestalt-api-gateway" -> gtw,
+        "gestalt-laser" -> laser,
         "gestalt-log" -> logging,
         "gestalt-policy" -> policy,
         "kong" -> kong ) ) {
