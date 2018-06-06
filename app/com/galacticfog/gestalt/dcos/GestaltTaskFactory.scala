@@ -462,7 +462,7 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserImage = launcherConfig.dockerImage(LASER),
           laserCpu = launcherConfig.resources.cpu.getOrElse(LASER, LASER.cpu),
           laserMem = launcherConfig.resources.mem.getOrElse(LASER, LASER.mem),
-          laserVHost = launcherConfig.marathon.tld.map("default-laser." + _),
+          laserVHost = None,
           laserEthernetPort = None,
           serviceHostOverride = launcherConfig.laser.serviceHostOverride,
           servicePortOverride = launcherConfig.laser.servicePortOverride
