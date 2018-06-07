@@ -19,7 +19,7 @@ lazy val root = (project in file(".")).
     buildInfoUsePackageAsPath := true
   )
 
-git.baseVersion := "2.1.0"
+git.baseVersion := "2.2.0"
 git.useGitDescribe := true
 
 scalaVersion := "2.11.11"
