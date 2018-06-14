@@ -67,6 +67,8 @@ object LauncherFSM {
 
     private[launcher] case object MetaBootstrapFinished
 
+    private[launcher] case object MetaMigrateFinished
+
     private[launcher] case object MetaBootstrapTimeout extends TimeoutEvent
 
     private[launcher] case object MetaSyncFinished
@@ -251,7 +253,7 @@ class LauncherFSM @Inject()(config: LauncherConfig,
       check <- genRequest(rootUrl, apiKey).get()
       done <- if (check.status != 200) {
         log.info("attempting to bootstrap meta")
-        genRequest(initUrl, apiKey).post("") flatMap { implicit resp =>
+        genRequest(initUrl, apiKey).withQueryStringParameters("migrate" -> "false").post("") flatMap { implicit resp =>
           log.info("meta.bootstrap response: {}",resp.status)
           log.debug("meta.bootstrap response body: {}",resp.body)
           resp.status match {
@@ -277,6 +279,53 @@ class LauncherFSM @Inject()(config: LauncherConfig,
         case _ => futureFailureWithMessage
       }
     }
+  }
+
+  private[this] def migrateMeta(metaUrl: String, apiKey: GestaltAPIKey, lambdaProviderId: UUID) = {
+    val metaSvcUrl = s"http://${config.vipHostname(META)}:${META.port}"
+    val migrationPayload = Json.obj(
+      "V7" -> Json.obj(
+        "lambda" -> Json.obj(
+          "name" -> "streamspec-impl-v1",
+          "description" -> "",
+          "properties" -> Json.obj(
+            "env" -> Json.obj(),
+            "headers" -> Json.obj(
+              "Accept" -> "application/json"
+            ),
+            "code_type" -> "package",
+            "compressed" -> true,
+            "cpus" -> 0.1,
+            "memory" -> 512,
+            "timeout" -> 30,
+            "handler" -> "index.js;entryPoint",
+            "package_url" -> s"$metaSvcUrl/assets/system/lambdas/streamspec_impl.zip",
+            "public" -> true,
+            "runtime" -> "nodejs",
+            "provider" -> Json.obj(
+              "id" -> lambdaProviderId,
+              "locations" -> Seq()
+            ),
+            "periodic_info" -> Json.obj(),
+            "apiendpoints" -> Seq()
+          )
+        )
+      )
+    )
+    val migrateUrl = s"http://${metaUrl}/migrate"
+    for {
+      done <- {
+        log.info("attempting to migrate meta")
+        genRequest(migrateUrl, apiKey).post(migrationPayload) flatMap { implicit resp =>
+          log.info("meta.migrate response: {}",resp.status)
+          log.debug("meta.migrate response body: {}",resp.body)
+          resp.status match {
+            case s if Range(200,209).contains(s) => Future.successful(MetaMigrateFinished)
+            case _ => futureFailureWithMessage
+          }
+        }
+      }
+    } yield done
   }
 
   private[this] def resourceExistsInList(url: String, apiKey: GestaltAPIKey, name: String): Future[Option[JsValue]] = {
@@ -694,6 +743,8 @@ class LauncherFSM @Inject()(config: LauncherConfig,
               // provisionDemo(metaUrl, apiKey, laserProvider = laserProviderId, gatewayProvider = gtwProviderId, kongProvider = kongProviderId),
               provisionMetaLicense(metaUrl,apiKey)
             ))
+            //
+            _ <- migrateMeta(metaUrl,apiKey,laserProviderId)
           } yield MetaProvisioned
           fMetaProvisioning onComplete {
             case Success(msg) => self ! msg
