@@ -60,6 +60,7 @@ class TaskFactorySpec extends Specification with JsonMatchers {
           "containers.laser-executor-python" -> "test-python-executor:tag",
           "containers.laser-executor-ruby"   -> "test-ruby-executor:tag",
           "containers.laser-executor-bash"   -> "test-bash-executor:tag",
+          "containers.laser-executor-hyper"  -> "test-hyper-executor:tag",
           // this is necessary so that the logging provider will be provisioned
           "logging.provision-provider" -> true
         )
@@ -78,9 +79,12 @@ class TaskFactorySpec extends Specification with JsonMatchers {
 
       gtf.getKongProvider(uuid, uuid) must haveServiceImage("test-kong:tag")
       gtf.getPolicyProvider(apiKey, uuid, uuid, uuid) must haveServiceImage("test-policy:tag")
-      gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid) must haveServiceImage("test-laser:tag")
       gtf.getLogProvider(uuid, GlobalElasticConfig("","",1234,1234,"")) must beSome(haveServiceImage("test-log:tag"))
       gtf.getGatewayProvider(uuid, uuid, uuid, uuid) must haveServiceImage("test-api-gateway:tag")
+
+      val laserProvider = gtf.getLaserProvider(apiKey, uuid, uuid, uuid, uuid, Seq.empty, uuid)
+      laserProvider must haveServiceImage("test-laser:tag")
+      laserProvider.toString must /("properties") /("config") /("env") /("private") /("HYPER_EXECUTOR_IMG" -> "test-hyper-executor:tag")
 
       def getImage(lr: LaserRuntime) = lr.name match {
         case "nodejs"  => "test-nodejs-executor:tag"

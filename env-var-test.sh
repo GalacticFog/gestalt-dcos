@@ -31,6 +31,7 @@ export LASER_EXECUTOR_PYTHON_IMG="python:override"
 export LASER_EXECUTOR_RUBY_IMG="ruby:override"
 export LASER_EXECUTOR_GOLANG_IMG="golang:override"
 export LASER_EXECUTOR_BASH_IMG="bash:override"
+export LASER_EXECUTOR_HYPER_IMG="hyper:override"
 
 sbt 'testOnly TaskFactoryEnvSpec'
 

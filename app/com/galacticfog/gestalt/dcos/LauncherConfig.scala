@@ -235,7 +235,7 @@ class LauncherConfig @Inject()(config: Configuration) {
       case (k,v) if !wellKnownEnvVars.contains(k) =>
         servicesWithPrefixes.find({case (_,pfx) => k.startsWith(pfx + "_")}) match {
           case Some((svc,pfx)) => Some((svc,k.stripPrefix(pfx + "_"),v))
-          case _=> None
+          case _ => None
         }
       case _ => None
     }).groupBy(_._1).map({
@@ -333,6 +333,7 @@ object LauncherConfig {
     case object EXECUTOR_GOLANG  extends WellKnownLaserExecutor {val name = "laser-executor-golang"}
     case object EXECUTOR_RUBY    extends WellKnownLaserExecutor {val name = "laser-executor-ruby"}
     case object EXECUTOR_BASH    extends WellKnownLaserExecutor {val name = "laser-executor-bash"}
+    case object EXECUTOR_HYPER   extends WellKnownLaserExecutor {val name = "laser-executor-hyper"}
   }
 
   def defaultDockerImages(service: Dockerable): String = service match {
@@ -355,6 +356,7 @@ object LauncherConfig {
     case LaserExecutors.EXECUTOR_GOLANG    => s"galacticfog/gestalt-laser-executor-golang:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_RUBY      => s"galacticfog/gestalt-laser-executor-ruby:release-${BuildInfo.version}"
     case LaserExecutors.EXECUTOR_BASH      => s"galacticfog/gestalt-laser-executor-bash:release-${BuildInfo.version}"
+    case LaserExecutors.EXECUTOR_HYPER     => s"galacticfog/gestalt-laser-executor-hyper:release-${BuildInfo.version}"
   }
 
   case class DatabaseConfig( provision: Boolean,
@@ -474,6 +476,7 @@ object LauncherConfig {
     "LASER_EXECUTOR_RUBY_IMG",
     "LASER_EXECUTOR_BASH_IMG",
     "LASER_EXECUTOR_GOLANG_IMG",
+    "LASER_EXECUTOR_HYPER",
 
     "LASER_ENABLE_NODEJS_RUNTIME",
     "LASER_ENABLE_JS_RUNTIME",
