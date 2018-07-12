@@ -504,6 +504,7 @@ class LauncherSpecs extends PlaySpecification with Mockito with MockWSHelpers {
 
     val metaProvisionProviders = Route({
       case (GET, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{Ok(Json.arr())}
+      case (POST, u) if u == s"http://$metaHost:$metaPort/migrate" => Action{Ok(Json.obj())}
       case (POST, u) if u == s"http://$metaHost:$metaPort/root/providers" => Action{ request =>
         providerCreateAttempts.getAndIncrement()
         val providerName = (request.body.asJson.get \ "name").as[String]

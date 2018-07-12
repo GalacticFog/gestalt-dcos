@@ -6,11 +6,11 @@ import scala.language.implicitConversions
 import com.galacticfog.gestalt.dcos.LauncherConfig.{FrameworkService, LaserConfig, ServiceEndpoint, acsServiceAcctFmt}
 import com.galacticfog.gestalt.dcos.marathon._
 import javax.inject.{Inject, Singleton}
-
 import com.galacticfog.gestalt.cli.GestaltProviderBuilder.CaaSTypes
 import com.galacticfog.gestalt.cli._
 import com.galacticfog.gestalt.dcos.AppSpec.USER
 import com.galacticfog.gestalt.dcos.HealthCheck.{MARATHON_HTTP, MARATHON_TCP}
+import com.galacticfog.gestalt.dcos.LauncherConfig.LaserExecutors.EXECUTOR_HYPER
 import com.galacticfog.gestalt.dcos.marathon.MarathonAppPayload.IPPerTaskInfo
 import com.galacticfog.gestalt.security.api.GestaltAPIKey
 import play.api.Logger
@@ -491,7 +491,8 @@ class GestaltTaskFactory @Inject() ( launcherConfig: LauncherConfig ) {
           laserExecutorHeartbeatPeriod = Some(launcherConfig.laser.executorHeartbeatPeriod),
           esHost = esc.map(_.hostname),
           esPort = esc.map(_.portApi),
-          esProtocol = esc.map(_.protocol)
+          esProtocol = esc.map(_.protocol),
+          hyperExecutorImg = Some(launcherConfig.dockerImage(EXECUTOR_HYPER))
         ),
         executors = Seq.empty
       ),
